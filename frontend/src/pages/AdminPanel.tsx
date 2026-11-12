@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useTanks, useConfig, User, SystemConfig, Tank, isTankPlanned } from '@/store/useStore';
-import { UserPlus, Trash2, Power, WifiOff, Settings, Loader2, Plus, Edit } from 'lucide-react';
-import { firestore } from '@/config/firebase';
+import { useTanks, useConfig, addSystemLog, User, SystemConfig, Tank, isTankPlanned } from '@/store/useStore';
+import { UserPlus, Trash2, Power, WifiOff, Settings, Loader2, Plus, Edit, Bell, Cpu } from 'lucide-react';
+import { firestore, database } from '@/config/firebase';
+import { ref, onValue } from 'firebase/database';
 import { collection, onSnapshot, query } from 'firebase/firestore';
-import { registerOperator, updateUserProfile, deleteUserProfile } from '@/services/authService';
+import { registerOperator, updateUserProfile, deleteUserProfile, grantDeviceRole, revokeDeviceRole } from '@/services/authService';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
+import { z } from 'zod';
 
 /**
  * Custom React hook local to the Admin Panel for listening to the users collection in Firestore.
@@ -734,13 +736,162 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
   );
 };
 
+// Validation schemas (E2 / R8)
+const thresholdSchema = z.object({
+  lowLevelThreshold: z.number({ invalid_type_error: 'Low-level threshold must be a number' })
+    .min(0, 'Low-level threshold must be at least 0%')
+    .max(100, 'Low-level threshold cannot exceed 100%'),
+  overflowThreshold: z.number({ invalid_type_error: 'Overflow threshold must be a number' })
+    .min(0, 'Overflow threshold must be at least 0%')
+    .max(100, 'Overflow threshold cannot exceed 100%'),
+  minPh: z.number({ invalid_type_error: 'Minimum pH must be a number' })
+    .min(0, 'Minimum pH must be at least 0')
+    .max(14, 'Minimum pH cannot exceed 14'),
+  maxPh: z.number({ invalid_type_error: 'Maximum pH must be a number' })
+    .min(0, 'Maximum pH must be at least 0')
+    .max(14, 'Maximum pH cannot exceed 14'),
+  offlineThresholdSec: z.number({ invalid_type_error: 'Offline threshold must be a number' })
+    .min(20, 'Offline threshold must be at least 20 seconds (min 2 heartbeats)')
+    .max(3600, 'Offline threshold cannot exceed 3600 seconds')
+    .optional(),
+  repeatIntervalSec: z.number({ invalid_type_error: 'Repeat interval must be a number' })
+    .min(10, 'Repeat interval must be at least 10 seconds')
+    .max(3600, 'Repeat interval cannot exceed 3600 seconds')
+    .optional(),
+  soundEnabled: z.boolean().optional(),
+}).refine(data => data.lowLevelThreshold < data.overflowThreshold, {
+  message: 'Low-level threshold must be strictly less than overflow threshold',
+  path: ['lowLevelThreshold'],
+}).refine(data => data.minPh < data.maxPh, {
+  message: 'Minimum pH must be strictly less than maximum pH',
+  path: ['minPh'],
+});
+
+const calibrationSchema = z.object({
+  levelVmin: z.number().min(0, 'Vmin must be >= 0'),
+  levelVmax: z.number().min(0, 'Vmax must be >= 0'),
+  tankHeight: z.number().positive('Tank height must be greater than 0 meters'),
+  levelOffset: z.number(),
+  phNeutralVoltage: z.number().positive('pH neutral voltage must be greater than 0V'),
+  phSlope: z.number().positive('pH slope sensitivity must be greater than 0'),
+  phOffset: z.number(),
+}).refine(data => data.levelVmin < data.levelVmax, {
+  message: 'Vmin (empty tank voltage) must be strictly less than Vmax (full tank voltage)',
+  path: ['levelVmin'],
+});
+
+/**
+ * Device Accounts card.
+ * Database rules only accept telemetry from Firebase Auth accounts holding the
+ * 'device' role, so each ESP32 controller account must be registered here once.
+ */
+const DeviceAccounts = () => {
+  const [deviceUids, setDeviceUids] = useState<string[]>([]);
+  const [uidInput, setUidInput] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onValue(
+      ref(database, 'roles'),
+      (snapshot) => {
+        const data = (snapshot.val() || {}) as Record<string, string>;
+        setDeviceUids(Object.keys(data).filter((uid) => data[uid] === 'device'));
+      },
+      (error) => console.error('Error reading device roles:', error)
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleGrant = async () => {
+    setBusy(true);
+    try {
+      await grantDeviceRole(uidInput);
+      addSystemLog({
+        action: 'Device Account Registered',
+        details: `Controller account ${uidInput.trim()} was granted the device role.`,
+        performedBy: 'Admin',
+        logLevel: 'INFO',
+      });
+      toast.success('Controller account registered.');
+      setUidInput('');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to register controller account');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRevoke = async (uid: string) => {
+    if (!window.confirm(`Remove device access for ${uid}? That controller will stop reporting until it is registered again.`)) return;
+    try {
+      await revokeDeviceRole(uid);
+      addSystemLog({
+        action: 'Device Account Removed',
+        details: `Controller account ${uid} lost the device role.`,
+        performedBy: 'Admin',
+        logLevel: 'WARNING',
+      });
+      toast.success('Controller account removed.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to remove controller account');
+    }
+  };
+
+  return (
+    <div className="rounded-xl bg-card p-6 shadow-sm border border-border">
+      <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+        <Cpu size={18} className="text-primary" /> Controller (ESP32) Accounts
+      </h3>
+      <p className="text-xs text-muted-foreground mb-4">
+        Only registered controller accounts can send telemetry. Paste the account's User UID from
+        Firebase console &gt; Authentication &gt; Users.
+      </p>
+      {deviceUids.length === 0 ? (
+        <p className="text-sm font-medium text-danger mb-3">
+          No controller account is registered. The ESP32 cannot write readings until one is added.
+        </p>
+      ) : (
+        <ul className="space-y-2 mb-3">
+          {deviceUids.map((uid) => (
+            <li key={uid} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+              <span className="font-mono text-xs break-all">{uid}</span>
+              <button onClick={() => handleRevoke(uid)} className="text-xs font-semibold text-danger hover:underline shrink-0">
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          placeholder="Controller account UID"
+          value={uidInput}
+          onChange={(e) => setUidInput(e.target.value)}
+          className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+        />
+        <button
+          onClick={handleGrant}
+          disabled={busy || !uidInput.trim()}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition disabled:opacity-50"
+        >
+          Register controller
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const Configuration = () => {
   const { config, updateConfig } = useConfig();
   const { tanks, updateTank } = useTanks();
+  const addLog = addSystemLog;
+  const { currentUser } = useAuth();
   
   // Local state to prevent database spamming on keystrokes
   const [localConfig, setLocalConfig] = useState<SystemConfig | null>(null);
   const [localTank1, setLocalTank1] = useState<Partial<Tank> | null>(null);
+  const [isConfigDirty, setIsConfigDirty] = useState(false);
+  const [isTank1Dirty, setIsTank1Dirty] = useState(false);
   
   const [controlConfirm, setControlConfirm] = useState<{ key: 'maintenanceMode' | 'pumpControlLock'; label: string; newState: boolean } | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
@@ -748,18 +899,18 @@ const Configuration = () => {
 
   const tank1 = tanks.find(t => t.id === '1');
 
-  // Initialize and synchronize local states when database loads
+  // Initialize and synchronize local states when database loads (B8: don't overwrite if form is dirty)
   useEffect(() => {
-    if (config) {
+    if (config && (!localConfig || !isConfigDirty)) {
       setLocalConfig(config);
     }
-  }, [config]);
+  }, [config, isConfigDirty]);
 
   useEffect(() => {
-    if (tank1) {
+    if (tank1 && (!localTank1 || !isTank1Dirty)) {
       setLocalTank1(tank1);
     }
-  }, [tank1]);
+  }, [tank1, isTank1Dirty]);
 
   const handleToggle = (key: 'maintenanceMode' | 'pumpControlLock', label: string) => {
     if (!localConfig) return;
@@ -782,20 +933,65 @@ const Configuration = () => {
     if (!localConfig) return;
     setIsSaving(true);
     try {
-      // Clean and parse all inputs to valid numbers before committing to Firebase
+      // Clean and parse all inputs before committing to Firebase
       const parsedConfig = {
         ...localConfig,
         lowLevelThreshold: Number(localConfig.lowLevelThreshold),
         overflowThreshold: Number(localConfig.overflowThreshold),
         minPh: Number(localConfig.minPh),
         maxPh: Number(localConfig.maxPh),
+        offlineThresholdSec: localConfig.offlineThresholdSec !== undefined ? Number(localConfig.offlineThresholdSec) : 30,
+        repeatIntervalSec: localConfig.repeatIntervalSec !== undefined ? Number(localConfig.repeatIntervalSec) : 60,
+        soundEnabled: localConfig.soundEnabled !== false,
       };
 
+      // Validate thresholds with zod (E2 / R8)
+      const configValidation = thresholdSchema.safeParse(parsedConfig);
+      if (!configValidation.success) {
+        toast.error(configValidation.error.errors[0].message);
+        setIsSaving(false);
+        return;
+      }
+
+      // Check for changes and log (R8)
+      const changes: string[] = [];
+      if (config.lowLevelThreshold !== parsedConfig.lowLevelThreshold) {
+        changes.push(`Low Level (${config.lowLevelThreshold}% -> ${parsedConfig.lowLevelThreshold}%)`);
+      }
+      if (config.overflowThreshold !== parsedConfig.overflowThreshold) {
+        changes.push(`Overflow (${config.overflowThreshold}% -> ${parsedConfig.overflowThreshold}%)`);
+      }
+      if (config.minPh !== parsedConfig.minPh) {
+        changes.push(`Min pH (${config.minPh} -> ${parsedConfig.minPh})`);
+      }
+      if (config.maxPh !== parsedConfig.maxPh) {
+        changes.push(`Max pH (${config.maxPh} -> ${parsedConfig.maxPh})`);
+      }
+      if (config.offlineThresholdSec !== parsedConfig.offlineThresholdSec) {
+        changes.push(`Offline Watchdog (${config.offlineThresholdSec || 30}s -> ${parsedConfig.offlineThresholdSec}s)`);
+      }
+      if (config.repeatIntervalSec !== parsedConfig.repeatIntervalSec) {
+        changes.push(`Repeat Interval (${config.repeatIntervalSec || 60}s -> ${parsedConfig.repeatIntervalSec}s)`);
+      }
+      if (config.soundEnabled !== parsedConfig.soundEnabled) {
+        changes.push(`Sound Alerts (${config.soundEnabled !== false ? 'Enabled' : 'Disabled'} -> ${parsedConfig.soundEnabled ? 'Enabled' : 'Disabled'})`);
+      }
+
       await updateConfig(parsedConfig);
+      setIsConfigDirty(false);
+
+      if (changes.length > 0) {
+        addLog({
+          action: 'Configuration Updated',
+          details: `Updated system thresholds: ${changes.join(', ')}`,
+          performedBy: currentUser?.username || 'Administrator',
+          logLevel: 'INFO'
+        });
+      }
 
       if (localTank1) {
-        const parsedTank1 = {
-          ...localTank1,
+        // B9: Send only calibration fields to avoid overwriting live telemetry / pump commands
+        const calibrationUpdates: Partial<Tank> = {
           levelVmin: Number(localTank1.levelVmin),
           levelVmax: Number(localTank1.levelVmax),
           tankHeight: Number(localTank1.tankHeight),
@@ -804,7 +1000,16 @@ const Configuration = () => {
           phSlope: Number(localTank1.phSlope),
           phOffset: Number(localTank1.phOffset),
         };
-        await updateTank('1', parsedTank1);
+
+        const calibValidation = calibrationSchema.safeParse(calibrationUpdates);
+        if (!calibValidation.success) {
+          toast.error(calibValidation.error.errors[0].message);
+          setIsSaving(false);
+          return;
+        }
+
+        await updateTank('1', calibrationUpdates);
+        setIsTank1Dirty(false);
       }
       
       toast.success('System configuration and sensor calibrations saved successfully!');
@@ -835,7 +1040,7 @@ const Configuration = () => {
             <input 
               type="number" 
               value={localConfig.lowLevelThreshold} 
-              onChange={e => setLocalConfig({ ...localConfig, lowLevelThreshold: e.target.value as any })}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, lowLevelThreshold: e.target.value as any }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
             <p className="text-xs text-muted-foreground mt-1">Alert when water level falls below this percentage</p>
@@ -845,7 +1050,7 @@ const Configuration = () => {
             <input 
               type="number" 
               value={localConfig.overflowThreshold} 
-              onChange={e => setLocalConfig({ ...localConfig, overflowThreshold: e.target.value as any })}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, overflowThreshold: e.target.value as any }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
             <p className="text-xs text-muted-foreground mt-1">Alert when water level exceeds this percentage</p>
@@ -860,7 +1065,7 @@ const Configuration = () => {
               type="number" 
               step="0.1" 
               value={localConfig.minPh} 
-              onChange={e => setLocalConfig({ ...localConfig, minPh: e.target.value as any })}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, minPh: e.target.value as any }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
           </div>
@@ -870,7 +1075,7 @@ const Configuration = () => {
               type="number" 
               step="0.1" 
               value={localConfig.maxPh} 
-              onChange={e => setLocalConfig({ ...localConfig, maxPh: e.target.value as any })}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, maxPh: e.target.value as any }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
           </div>
@@ -894,7 +1099,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank1.levelVmin ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, levelVmin: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, levelVmin: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 0% full</p>
@@ -905,7 +1110,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank1.levelVmax ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, levelVmax: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, levelVmax: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 100% full</p>
@@ -916,7 +1121,7 @@ const Configuration = () => {
                     type="number"
                     step="0.1"
                     value={localTank1.tankHeight ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, tankHeight: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, tankHeight: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Height of reservoir in meters</p>
@@ -927,7 +1132,7 @@ const Configuration = () => {
                     type="number"
                     step="1"
                     value={localTank1.levelOffset ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, levelOffset: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, levelOffset: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- %)</p>
@@ -944,7 +1149,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank1.phNeutralVoltage ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, phNeutralVoltage: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, phNeutralVoltage: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage at pH 7.00 (typically 2.5V)</p>
@@ -955,7 +1160,7 @@ const Configuration = () => {
                     type="number"
                     step="0.001"
                     value={localTank1.phSlope ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, phSlope: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, phSlope: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage step per pH unit (default 0.18)</p>
@@ -966,7 +1171,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank1.phOffset ?? ''}
-                    onChange={e => setLocalTank1({ ...localTank1, phOffset: e.target.value as any })}
+                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, phOffset: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- pH)</p>
@@ -977,6 +1182,57 @@ const Configuration = () => {
         ) : (
           <p className="text-sm text-muted-foreground">Tank 1 calibration data is loading...</p>
         )}
+      </div>
+
+      <DeviceAccounts />
+
+      <div className="rounded-xl bg-card p-6 shadow-sm border border-border">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Bell size={18} className="text-primary" /> Notification & Watchdog Settings
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-semibold mb-1">Offline Watchdog Threshold (s)</label>
+            <input 
+              type="number" 
+              min={20}
+              value={localConfig.offlineThresholdSec ?? 30} 
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, offlineThresholdSec: Number(e.target.value) }); }}
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
+            />
+            <p className="text-xs text-muted-foreground mt-1">Raise offline alert if controller heartbeats cease for &ge; this time (min: 20s)</p>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1">Alert Re-evaluation Interval (s)</label>
+            <input 
+              type="number" 
+              min={10}
+              value={localConfig.repeatIntervalSec ?? 60} 
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, repeatIntervalSec: Number(e.target.value) }); }}
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
+            />
+            <p className="text-xs text-muted-foreground mt-1">Interval between alert evaluation passes (min: 10s)</p>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1">System-Wide Alert Sound</label>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfigDirty(true);
+                  setLocalConfig({ ...localConfig, soundEnabled: localConfig.soundEnabled === false ? true : false });
+                }}
+                className={`relative h-6 w-11 rounded-full transition-colors shrink-0 ${localConfig.soundEnabled !== false ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${localConfig.soundEnabled !== false ? 'translate-x-5' : ''}`} />
+              </button>
+              <span className="text-sm font-medium">
+                {localConfig.soundEnabled !== false ? 'Audio Enabled' : 'Audio Disabled'}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Continuous alarm audio chime for critical alerts</p>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl bg-card p-6 shadow-sm">
@@ -1033,6 +1289,7 @@ const Configuration = () => {
               <div className="bg-secondary/40 p-3 rounded-lg text-xs space-y-1.5 border border-border/50 font-medium text-foreground/80">
                 <p>📊 <strong>Water Level Thresholds:</strong> Low: {localConfig.lowLevelThreshold}% | Overflow: {localConfig.overflowThreshold}%</p>
                 <p>🧪 <strong>pH Safety Range:</strong> Min: {localConfig.minPh} | Max: {localConfig.maxPh}</p>
+                <p>🔔 <strong>Watchdog & Sound:</strong> Offline: {localConfig.offlineThresholdSec ?? 30}s | Repeat: {localConfig.repeatIntervalSec ?? 60}s | Audio: {localConfig.soundEnabled !== false ? 'Enabled' : 'Disabled'}</p>
                 {localTank1 && (
                   <p>⚙️ <strong>Sensor Calibrations:</strong> Vmin: {localTank1.levelVmin}V | Vmax: {localTank1.levelVmax}V | Height: {localTank1.tankHeight}m</p>
                 )}

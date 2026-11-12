@@ -1,7 +1,8 @@
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
-import { firebaseConfig, firestore } from '@/config/firebase';
+import { ref, set, remove, get } from 'firebase/database';
+import { firebaseConfig, firestore, database } from '@/config/firebase';
 
 // Helper to get secondary Auth instance for creating operators without signing out admin
 const getSecondaryAuth = () => {
@@ -73,6 +74,13 @@ export async function registerOperator(
     const docRef = doc(firestore, 'users', uid);
     await setDoc(docRef, profile);
 
+    // 4. Mirror role to Realtime Database for S1 role-based rules
+    try {
+      await set(ref(database, `roles/${uid}`), role);
+    } catch (rtdbErr) {
+      console.warn('Could not mirror role to RTDB:', rtdbErr);
+    }
+
     return profile;
   } catch (error) {
     console.error('Error registering operator:', error);
@@ -87,6 +95,21 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
   try {
     const docRef = doc(firestore, 'users', uid);
     await updateDoc(docRef, updates);
+
+    // Mirror role / activation changes to RTDB so database rules follow the profile
+    if (updates.role || updates.status) {
+      try {
+        const snap = await getDoc(docRef);
+        const profile = snap.exists() ? (snap.data() as UserProfile) : null;
+        if (!profile || profile.status === 'inactive') {
+          await remove(ref(database, `roles/${uid}`));
+        } else {
+          await set(ref(database, `roles/${uid}`), profile.role);
+        }
+      } catch (rtdbErr) {
+        console.warn('Could not mirror updated role to RTDB:', rtdbErr);
+      }
+    }
   } catch (error) {
     console.error('Error updating user profile:', error);
     throw error;
@@ -103,6 +126,12 @@ export async function deleteUserProfile(uid: string): Promise<void> {
   try {
     const docRef = doc(firestore, 'users', uid);
     await deleteDoc(docRef);
+
+    try {
+      await remove(ref(database, `roles/${uid}`));
+    } catch (rtdbErr) {
+      console.warn('Could not remove role from RTDB:', rtdbErr);
+    }
   } catch (error) {
     console.error('Error deleting user profile:', error);
     throw error;
@@ -130,5 +159,34 @@ export async function seedInitialAdmin(uid: string, email: string): Promise<User
   } catch (error) {
     console.error('Error seeding initial admin profile:', error);
     throw error;
+  }
+}
+
+/**
+ * Grant the 'device' role to an ESP32 controller's Firebase Auth account.
+ * Database rules only accept telemetry from accounts holding this role.
+ * The UID is shown in Firebase console > Authentication > Users.
+ */
+export async function grantDeviceRole(uid: string): Promise<void> {
+  const cleanUid = uid.trim();
+  if (!/^[A-Za-z0-9_-]{6,128}$/.test(cleanUid)) {
+    throw new Error('Enter a valid Firebase Auth UID (letters and digits only, no spaces).');
+  }
+  const roleRef = ref(database, `roles/${cleanUid}`);
+  const existing = await get(roleRef);
+  if (existing.exists() && existing.val() !== 'device') {
+    throw new Error(`That UID already belongs to a user with the "${existing.val()}" role.`);
+  }
+  await set(roleRef, 'device');
+}
+
+/**
+ * Revoke the 'device' role. The controller can no longer write telemetry afterwards.
+ */
+export async function revokeDeviceRole(uid: string): Promise<void> {
+  const roleRef = ref(database, `roles/${uid}`);
+  const existing = await get(roleRef);
+  if (existing.exists() && existing.val() === 'device') {
+    await remove(roleRef);
   }
 }

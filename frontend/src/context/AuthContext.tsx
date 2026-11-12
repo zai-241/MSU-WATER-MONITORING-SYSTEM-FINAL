@@ -6,8 +6,9 @@ import {
   sendPasswordResetEmail,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { auth, firestore } from '@/config/firebase';
+import { doc, getDoc, setDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import { ref, get, set, update } from 'firebase/database';
+import { auth, firestore, database } from '@/config/firebase';
 import { getUserProfile, UserProfile } from '@/services/authService';
 
 export interface AuthContextType {
@@ -30,6 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sync auth state in real-time
   useEffect(() => {
     let unsubscribeFirestore: (() => void) | null = null;
+    let roleSyncedFor: string | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       // Clean up previous Firestore subscription if any
@@ -55,6 +57,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } else {
                 setCurrentUser(profile);
                 setError(null);
+
+                // Mirror role to Realtime Database if needed (S1)
+                if (profile.role) {
+                  try {
+                    const roleRef = ref(database, `roles/${firebaseUser.uid}`);
+                    const snap = await get(roleRef);
+                    if (!snap.exists() || snap.val() !== profile.role) {
+                      await set(roleRef, profile.role);
+                    }
+
+                    // Only an admin may write other users' roles, so an admin session
+                    // mirrors every Firestore profile role once per login. Existing
+                    // workers/viewers get their role this way. Device roles are untouched.
+                    if (profile.role === 'admin' && roleSyncedFor !== firebaseUser.uid) {
+                      roleSyncedFor = firebaseUser.uid;
+                      const usersSnap = await getDocs(collection(firestore, 'users'));
+                      const roleUpdates: Record<string, string | null> = {};
+                      usersSnap.forEach((userDoc) => {
+                        const data = userDoc.data() as UserProfile;
+                        roleUpdates[userDoc.id] = data.status === 'inactive' ? null : (data.role || null);
+                      });
+                      if (Object.keys(roleUpdates).length > 0) {
+                        await update(ref(database, 'roles'), roleUpdates);
+                      }
+                    }
+                  } catch (syncErr) {
+                    // Non-fatal if offline or restricted by rules
+                  }
+                }
               }
             } else {
               // Missing-profile fallback: sign out and show error

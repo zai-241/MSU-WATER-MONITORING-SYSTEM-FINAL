@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, configure } from '@testing-library/react';
 import fs from 'fs';
 import path from 'path';
 import Reports from '@/pages/Reports';
 import * as authHooks from '@/hooks/useAuth';
+
+// Reports throttles tank updates by 1.5 s. The built-in default tank no longer carries
+// invented live readings, so the first real tank arrives after that throttle window.
+configure({ asyncUtilTimeout: 4000 });
 
 const mockRef = vi.fn();
 const mockQuery = vi.fn();
@@ -69,7 +73,7 @@ describe('Historical Data & Reports Telemetry', () => {
     mockUpdate.mockResolvedValue(undefined);
   });
 
-  it('1. database.rules.json contains auth-protected history node with timestamp index under tanks/1', () => {
+  it('1. database.rules.json restricts history writes to device/admin with a timestamp index per tank', () => {
     const possiblePaths = [
       path.resolve(process.cwd(), 'backend/cloud/database.rules.json'),
       path.resolve(process.cwd(), '../backend/cloud/database.rules.json'),
@@ -81,9 +85,13 @@ describe('Historical Data & Reports Telemetry', () => {
 
     expect(rulesJson.rules.history).toBeDefined();
     expect(rulesJson.rules.history['.read']).toBe('auth != null');
-    expect(rulesJson.rules.history['.write']).toBe('auth != null');
-    expect(rulesJson.rules.history.tanks['1']).toBeDefined();
-    expect(rulesJson.rules.history.tanks['1']['.indexOn']).toContain('timestamp');
+    // History is written only by the controller (device role) and cleaned up by admins
+    expect(rulesJson.rules.history['.write']).toBeUndefined();
+    const tankRule = rulesJson.rules.history.tanks['$tankId'];
+    expect(tankRule).toBeDefined();
+    expect(tankRule['.write']).toContain("'device'");
+    expect(tankRule['.write']).toContain("'admin'");
+    expect(tankRule['.indexOn']).toContain('timestamp');
   });
 
   it('2. Shows "No data yet" and does NOT generate placeholder values when history is empty', async () => {

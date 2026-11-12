@@ -2,38 +2,77 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "tanks": {
+    "roles": {
       ".read": "auth != null",
-      ".write": "auth != null"
-    },
-    "logs": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    },
-    "notifications": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      "$uid": {
+        ".write": "root.child('roles').child(auth.uid).val() === 'admin' || (!root.child('roles').exists() && $uid === auth.uid)",
+        ".validate": "newData.isString() && newData.val().matches(/^(admin|worker|viewer|device)$/)"
+      }
     },
     "config": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      ".write": "root.child('roles').child(auth.uid).val() === 'admin'",
+      "lowLevelThreshold": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+      },
+      "overflowThreshold": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+      },
+      "minPh": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 14"
+      },
+      "maxPh": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 14"
+      }
+    },
+    "tanks": {
+      ".read": "auth != null",
+      "$tankId": {
+        ".write": "root.child('roles').child(auth.uid).val() === 'admin' || root.child('roles').child(auth.uid).val() === 'worker' || root.child('roles').child(auth.uid).val() === 'device'",
+        "phLevel": {
+          ".validate": "!newData.exists() || newData.isNumber()"
+        },
+        "waterLevel": {
+          ".validate": "!newData.exists() || newData.isNumber()"
+        },
+        "controllerOffline": {
+          ".write": "root.child('roles').child(auth.uid).exists()",
+          ".validate": "newData.isBoolean()"
+        }
+      }
     },
     "history": {
       ".read": "auth != null",
-      ".write": "auth != null",
       "tanks": {
-        "1": {
-          ".read": "auth != null",
-          ".write": "auth != null",
-          ".indexOn": ["timestamp"]
-        },
         "$tankId": {
-          ".read": "auth != null",
-          ".write": "auth != null",
+          ".write": "root.child('roles').child(auth.uid).val() === 'admin' || root.child('roles').child(auth.uid).val() === 'device'",
           ".indexOn": ["timestamp"]
         }
+      }
+    },
+    "logs": {
+      ".read": "auth != null",
+      ".write": "root.child('roles').child(auth.uid).val() === 'admin'",
+      ".indexOn": ["timestamp"],
+      "$id": {
+        ".write": "root.child('roles').child(auth.uid).exists() && (!data.exists() || root.child('roles').child(auth.uid).val() === 'admin')"
+      }
+    },
+    "notifications": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp"],
+      "$notifId": {
+        ".write": "root.child('roles').child(auth.uid).exists() && (newData.exists() || root.child('roles').child(auth.uid).val() === 'admin')",
+        "acknowledgedByUid": {
+          ".validate": "newData.val() === auth.uid || newData.val() === data.val()"
+        }
+      }
+    },
+    "userState": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
       }
     }
   }
 }
-

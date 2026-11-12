@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { auth } from '@/config/firebase';
+import { setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { Droplet, Eye, EyeOff, Mail, Lock, Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,13 +24,14 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
   // Load saved credentials on mount if remember-me was active
   useEffect(() => {
     try {
+      // S3: Clean up plaintext password from localStorage for security
+      localStorage.removeItem('wm_remembered_password');
+
       const savedRemember = localStorage.getItem('wm_remember_me') === 'true';
       setRememberMe(savedRemember);
       if (savedRemember) {
         const savedEmail = localStorage.getItem('wm_remembered_email') || '';
-        const savedPassword = localStorage.getItem('wm_remembered_password') || '';
         setEmail(savedEmail);
-        setPassword(savedPassword);
       }
     } catch (e) {
       console.error('Error loading remembered credentials:', e);
@@ -80,18 +83,23 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
     clearError();
 
     try {
+      try {
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      } catch (pErr) {
+        console.warn('Could not set auth persistence:', pErr);
+      }
+
       await login(resolvedEmail, password);
       
-      // Save or clear credentials based on the Remember Me toggle
+      // S3: Save or clear email only based on Remember Me toggle (never save password)
       if (rememberMe) {
         localStorage.setItem('wm_remember_me', 'true');
         localStorage.setItem('wm_remembered_email', email);
-        localStorage.setItem('wm_remembered_password', password);
       } else {
         localStorage.removeItem('wm_remember_me');
         localStorage.removeItem('wm_remembered_email');
-        localStorage.removeItem('wm_remembered_password');
       }
+      localStorage.removeItem('wm_remembered_password');
 
       toast.success('Successfully logged in!');
       onLogin();

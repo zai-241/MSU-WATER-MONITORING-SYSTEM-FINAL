@@ -3,7 +3,7 @@ import WaterGauge from '@/components/WaterGauge';
 import {
   useTanks,
   useConfig,
-  useLogs,
+  addSystemLog,
   useServerTimeOffset,
   isTankControllerOffline,
   isTankPlanned,
@@ -282,7 +282,7 @@ const Dashboard = () => {
   const [users, setUsers] = useState<any[]>([]);
   const { config } = useConfig();
   const { currentUser } = useAuth();
-  const { addLog } = useLogs();
+  const addLog = addSystemLog;
 
   // Firestore real-time listener for user profiles to map operator assignments on dashboard
   useEffect(() => {
@@ -331,29 +331,8 @@ const Dashboard = () => {
     connectionStatus = 'reconnecting';
   }
 
-  // Atomic transaction synchronization to avoid duplicate logs when multiple users have dashboard open
-  const inFlightTransactions = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    tanks.forEach((tank) => {
-      if (!tank.id) return;
-      if (isTankPlanned(tank)) return; // Planned tanks never generate logs or sync offline state
-      if (inFlightTransactions.current.has(tank.id)) return;
-
-      const isOffline = isTankControllerOffline(tank, serverTimeOffset);
-      const currentFlag = tank.controllerOffline ?? false;
-
-      // Only attempt transaction when offline state diverges from flag under tanks/<id>
-      if (isOffline !== currentFlag) {
-        inFlightTransactions.current.add(tank.id);
-        syncTankOfflineState(tank.id, tank.name, isOffline, addLog).finally(() => {
-          inFlightTransactions.current.delete(tank.id);
-        });
-      }
-    });
-  }, [tanks, nowServer, serverTimeOffset, addLog]);
-
   const getSignalStrength = (rssiVal: number) => {
+    if (!isOnline) return { label: 'Controller Offline', color: 'text-amber-500 bg-amber-500/10 border-amber-500/20' };
     if (ethConnected) return { label: 'Ethernet', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' };
     if (!wifiConnected) return { label: 'Disconnected', color: 'text-danger bg-danger/10 border-danger/20' };
     

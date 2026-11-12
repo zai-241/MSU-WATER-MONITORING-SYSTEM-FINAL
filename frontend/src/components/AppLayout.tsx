@@ -1,20 +1,37 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Settings, LogOut, Droplet, Menu, X, Clock, ScrollText } from 'lucide-react';
-import { useClock } from '@/store/useStore';
+import { LayoutDashboard, FileText, Settings, LogOut, Droplet, Menu, X, Clock, ScrollText, Bell, WifiOff } from 'lucide-react';
+import { useClock, useConnectionState } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationCenter from './NotificationCenter';
 import SystemMonitor from './SystemMonitor';
 
-const AppLayout = ({ children }: { children: React.ReactNode }) => {
+const SystemClock = () => {
   const clock = useClock();
+  const [dateStr, timeStr] = clock.includes(' - ') ? clock.split(' - ') : ['', clock];
+
+  return (
+    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground font-mono">
+      <Clock size={14} />
+      <span className="hidden md:inline">System Server Clock</span>
+      {dateStr && (
+        <span className="hidden sm:inline text-[10px] bg-muted px-1.5 py-0.5 rounded border border-border/40 font-semibold">
+          {dateStr}
+        </span>
+      )}
+      <span className="font-semibold text-foreground">{timeStr}</span>
+    </div>
+  );
+};
+
+const AppLayout = ({ children }: { children: React.ReactNode }) => {
+  const isConnected = useConnectionState();
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const isAdmin = currentUser?.role === 'admin';
   const isWorker = currentUser?.role === 'worker';
-  const [dateStr, timeStr] = clock.includes(' - ') ? clock.split(' - ') : ['', clock];
 
   const handleLogout = () => { 
     logout(); 
@@ -51,6 +68,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <ScrollText size={16} className="lg:w-[18px] lg:h-[18px]" /> System Logs
           </NavLink>
         )}
+        <NavLink to="/notifications" className={linkClass} onClick={() => setMobileOpen(false)}>
+          <Bell size={16} className="lg:w-[18px] lg:h-[18px]" /> Notifications
+        </NavLink>
         {isAdmin && (
           <NavLink to="/admin" className={linkClass} onClick={() => setMobileOpen(false)}>
             <Settings size={16} className="lg:w-[18px] lg:h-[18px]" /> Admin Panel
@@ -80,6 +100,15 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       </aside>
 
       <div className="lg:ml-56">
+        {!isConnected && (
+          <div
+            data-testid="connection-lost-banner"
+            className="bg-amber-500 text-amber-950 px-4 py-2 text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shadow-sm border-b border-amber-600/30 animate-in slide-in-from-top duration-300"
+          >
+            <WifiOff size={16} className="animate-pulse flex-shrink-0" />
+            <span>Connection to Realtime Database lost. You are offline — live telemetry and alerts may be stale. Reconnecting...</span>
+          </div>
+        )}
         <header className="flex items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileOpen(true)} className="lg:hidden text-foreground hover:opacity-80 transition">
@@ -96,16 +125,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           </div>
 
           <div className="flex justify-end items-center gap-4">
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground font-mono">
-              <Clock size={14} />
-              <span className="hidden md:inline">System Server Clock</span>
-              {dateStr && (
-                <span className="hidden sm:inline text-[10px] bg-muted px-1.5 py-0.5 rounded border border-border/40 font-semibold">
-                  {dateStr}
-                </span>
-              )}
-              <span className="font-semibold text-foreground">{timeStr}</span>
-            </div>
+            <SystemClock />
 
             <div className="w-px h-6 bg-border mx-2" />
 

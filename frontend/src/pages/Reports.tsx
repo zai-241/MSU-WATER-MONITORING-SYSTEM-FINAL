@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useTanks, useLogs, Tank, isTankPlanned } from '@/store/useStore';
+import { useTanks, useLogs, Tank, isTankPlanned, isTankControllerOffline } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
 import { database } from '@/config/firebase';
 import { ref, onValue, query, orderByChild, startAt, endAt, limitToLast, get, update } from 'firebase/database';
@@ -70,7 +70,7 @@ export interface GroupedTelemetryPoint {
 }
 
 const Reports = () => {
-  const { tanks: rawTanks } = useTanks();
+  const { tanks: rawTanks, serverTimeOffset } = useTanks();
   const { logs: rawLogs, addLog } = useLogs();
   const { currentUser } = useAuth();
 
@@ -140,13 +140,16 @@ const Reports = () => {
   // Determine RSSI strength label and color
   const rssiDetails = useMemo(() => {
     if (!selectedTank) return { label: 'Syncing', color: 'text-muted-foreground', pct: 0 };
+    if (isTankControllerOffline(selectedTank, serverTimeOffset)) {
+      return { label: 'Offline', color: 'text-amber-500', pct: 0 };
+    }
     const rssi = processedTank.rssi ?? -999;
     if (rssi === -999) return { label: 'Offline', color: 'text-muted-foreground', pct: 0 };
     if (rssi >= -60) return { label: 'Excellent', color: 'text-safe', pct: 100 };
     if (rssi >= -75) return { label: 'Good', color: 'text-safe/80', pct: 75 };
     if (rssi >= -85) return { label: 'Fair', color: 'text-warning', pct: 45 };
     return { label: 'Poor', color: 'text-danger', pct: 20 };
-  }, [processedTank.rssi, selectedTank]);
+  }, [processedTank.rssi, selectedTank, serverTimeOffset]);
 
   // Determine pH Chemical Category
   const phCategory = useMemo(() => {
@@ -1134,39 +1137,48 @@ const Reports = () => {
             </motion.div>
 
             {/* CARD 4: DIAGNOSTICS & SYSTEM CARD */}
-            <motion.div 
-              whileHover={{ y: -3 }}
-              className="bg-card/40 backdrop-blur-md p-5 rounded-xl border border-border/40 shadow-sm relative overflow-hidden flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 border border-orange-500/20">
-                    <Wifi size={18} />
+            {(() => {
+              const isTankOffline = selectedTank ? isTankControllerOffline(selectedTank, serverTimeOffset) : false;
+              return (
+                <motion.div 
+                  whileHover={{ y: -3 }}
+                  className="bg-card/40 backdrop-blur-md p-5 rounded-xl border border-border/40 shadow-sm relative overflow-hidden flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-2 rounded-lg border ${
+                        isTankOffline 
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' 
+                          : 'bg-orange-500/10 text-orange-500 border-orange-500/20'
+                      }`}>
+                        {isTankOffline ? <WifiOff size={18} /> : <Wifi size={18} />}
+                      </div>
+                      <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Diagnostics</span>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-md border font-bold uppercase tracking-wider ${rssiDetails.color} bg-background/50 border-border/40`}>
+                      {rssiDetails.label}
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Diagnostics</span>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-md border font-bold uppercase tracking-wider ${rssiDetails.color} bg-background/50 border-border/40`}>
-                  {rssiDetails.label}
-                </span>
-              </div>
 
-              <div className="space-y-1">
-                <h2 className="text-2xl font-extrabold tracking-tight text-foreground font-mono">
-                  {processedTank?.rssi ?? -999} dBm
-                </h2>
-                <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
-                  <span>Link: {processedTank?.ethConnected ? 'Ethernet' : 'WiFi Backup'}</span>
-                  <Database size={14} className={processedTank?.firebaseConnected ? 'text-safe' : 'text-danger'} />
-                </div>
-              </div>
+                  <div className="space-y-1">
+                    <h2 className="text-2xl font-extrabold tracking-tight text-foreground font-mono">
+                      {isTankOffline ? '--' : `${processedTank?.rssi ?? -999} dBm`}
+                    </h2>
+                    <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
+                      <span>Link: {isTankOffline ? 'Disconnected' : (processedTank?.ethConnected ? 'Ethernet' : 'WiFi Backup')}</span>
+                      <Database size={14} className={isTankOffline ? 'text-danger' : (processedTank?.firebaseConnected ? 'text-safe' : 'text-danger')} />
+                    </div>
+                  </div>
 
-              <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-                <span>Sync Timestamp:</span>
-                <span className="font-semibold text-foreground">
-                  {new Date(processedTank?.lastUpdate || Date.now()).toLocaleTimeString()}
-                </span>
-              </div>
-            </motion.div>
+                  <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
+                    <span>{isTankOffline ? 'Last Seen:' : 'Sync Timestamp:'}</span>
+                    <span className="font-semibold text-foreground">
+                      {new Date(processedTank?.lastUpdate || Date.now()).toLocaleTimeString()}
+                    </span>
+                  </div>
+                </motion.div>
+              );
+            })()}
           </>
         )}
       </div>
