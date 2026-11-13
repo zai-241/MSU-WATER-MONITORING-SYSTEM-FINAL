@@ -36,13 +36,20 @@ the current types.
 | 2 | Unused eslint-disable (warning) | `frontend/public/firebase-messaging-sw.js` and `frontend/dist/...` | Remove the comment in `public/`; see the next row for `dist/` |
 | n/a | Built files linted | `eslint.config.js` ignores `dist` but the build goes to `frontend/dist` | Change the ignore to `"frontend/dist"` |
 
-## 3. Alert worker dependencies
+---
 
-`npm run worker:check` fails with "'tsx' is not recognized": the worker's packages aren't
-installed on this computer. On the machine that will run the worker during the defense:
+## Done
+
+### ✅ Done: Alert worker dependencies
+
+`npm run worker:check` failed with "'tsx' is not recognized" because the worker's packages were
+not installed. Done on 2026-11-13: the packages are installed, the service-account key and `.env`
+are in place, the check passes, and push notifications were tested on a phone. On another computer
+(for example the defense laptop), run:
 
 ```
 npm run worker:setup
 ```
 
 then `npm run worker` and leave it running. Phone notifications only arrive while it runs.
+
