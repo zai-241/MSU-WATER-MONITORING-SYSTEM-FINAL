@@ -94,7 +94,7 @@ bool wifiConnected = false;
 bool timeInitialized = false;
 
 // ==========================================
-// FreeRTOS Mutex for shared sensor/pump data
+// FreeRTOS Mutex for shared sensor data
 // Protects all variables read by networkTask and written by sensorTask.
 // ==========================================
 SemaphoreHandle_t sensorDataMutex = NULL;
@@ -116,9 +116,8 @@ volatile bool needWifiDownLog = false;
 bool isNetworkConnected() { return ethConnected || wifiConnected; }
 
 // ==========================================
-// Sensor & Actuator Pin Definitions
+// Sensor Pin Definitions
 // ==========================================
-#define RELAY_PIN 32
 #define PH_SENSOR_PIN 34
 #define LEVEL_SENSOR_PIN 35
 
@@ -192,15 +191,7 @@ bool commandClientConfigured = false;
 // ==========================================
 // Global Variables
 // ==========================================
-bool lastPumpState = false;
-bool currentPumpState = false;
-bool lastSentPumpState = false;
-unsigned long lastPumpStopTime = 0;
-const unsigned long PUMP_MIN_OFF_TIME = 30000; // anti-chatter
-
 float lastPhValue = 7.0;
-
-bool lastActualPumpState = false;
 
 // ==========================================
 // Filtering, Decoupling, and Deadband Constants
@@ -321,7 +312,6 @@ float overflowThreshold = 95.0;
 float minPh = 6.5;
 float maxPh = 8.5;
 bool maintenanceMode = false;
-bool pumpControlLock = false;
 
 SystemAlert lowLevelAlert = {"Low Water Level", STATE_NORMAL, 0, 0, 0, false};
 SystemAlert highLevelAlert = {"High Water Level", STATE_NORMAL, 0, 0, 0, false};
@@ -393,8 +383,6 @@ String getHistoryUrl();
 void postHistorySample();
 void pushRamLog(const String &payload);
 void flushRamLogBuffer();
-void updateFirebasePumpState(bool pumpState);
-void processAutomaticPumpControl();
 
 void updateAlertState(SystemAlert &alert, bool abnormalCondition,
                       String details) {
@@ -1357,123 +1345,6 @@ void checkNetworkWatchdog() {
 }
 
 // ==========================================
-// Pump Control & Synchronization Helper
-// ==========================================
-void updateFirebasePumpState(bool pumpState) {
-  lastSentPumpState = pumpState;
-  if (isNetworkConnected()) {
-    if (ensureFirebaseAuth()) {
-      WiFiClientSecure secureClient;
-      secureClient.setInsecure();
-      HTTPClient http;
-      http.begin(secureClient, getTanksUrl());
-      http.setTimeout(1500);
-      http.addHeader("Content-Type", "application/json");
-      String patchPayload =
-          "{\"pumpOn\":" + String(pumpState ? "true" : "false") +
-          ",\"lastUpdate\":{\".sv\":\"timestamp\"}}";
-      int code = http.sendRequest("PATCH", patchPayload);
-      if (code == 401) {
-        DEBUG_PRINTLN(
-            "[FirebaseAuth] Received 401 in updateFirebasePumpState.");
-        firebaseAuthValid = false;
-      }
-      if (code >= 200 && code < 300) {
-        lastSensorWrite = millis();
-        DEBUG_PRINTF("[Pump] Updated pumpOn in tanks/%d to %s (HTTP %d)\n",
-                     TANK_ID, pumpState ? "true" : "false", code);
-      } else {
-        DEBUG_PRINTF("[Pump] Failed to PATCH pumpOn in tanks/%d. Code: %d\n",
-                     TANK_ID, code);
-      }
-      http.end();
-    }
-  }
-}
-
-void processAutomaticPumpControl() {
-  unsigned long now = millis();
-
-  // Snapshot sensor values under mutex
-  int levelPercent;
-  bool levelOk;
-  if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-    levelPercent = stabilizedWaterLevelPercent;
-    levelOk = levelSensorOk;
-    xSemaphoreGive(sensorDataMutex);
-  } else {
-    return;
-  }
-
-  // Rule 1: maintenanceMode forces the pump OFF and blocks automatic starts.
-  if (maintenanceMode) {
-    if (currentPumpState) {
-      currentPumpState = false;
-      lastPumpStopTime = now;
-      logSystemEvent(
-          "Pump Controller",
-          "Pump stopped automatically. Water level: " + String(levelPercent) +
-              "%. Reason: Maintenance mode active.",
-          LEVEL_WARNING);
-      updateFirebasePumpState(false);
-    }
-    return;
-  }
-
-  // Rule 3: faulty level sensor -> never auto-start, stop if running.
-  if (!levelOk) {
-    if (currentPumpState) {
-      currentPumpState = false;
-      lastPumpStopTime = now;
-      logSystemEvent(
-          "Pump Controller",
-          "Pump stopped automatically. Water level: " + String(levelPercent) +
-              "%. Reason: Water level sensor faulty.",
-          LEVEL_CRITICAL);
-      updateFirebasePumpState(false);
-    }
-    return;
-  }
-
-  if (levelPercent < 0) {
-    return;
-  }
-
-  // Rule 2: overflow shutoff always applies.
-  if (currentPumpState && (levelPercent >= (int)overflowThreshold)) {
-    currentPumpState = false;
-    lastPumpStopTime = now;
-    logSystemEvent(
-        "Pump Controller",
-        "Pump stopped automatically. Water level: " + String(levelPercent) +
-            "% reached overflow threshold (" + String((int)overflowThreshold) +
-            "%). Reason: Overflow shutoff protection.",
-        LEVEL_INFO);
-    updateFirebasePumpState(false);
-    return;
-  }
-
-  // Automatic start when level falls to lowLevelThreshold or below
-  if (!currentPumpState && (levelPercent <= (int)lowLevelThreshold)) {
-    if (now - lastPumpStopTime >= PUMP_MIN_OFF_TIME) {
-      currentPumpState = true;
-      logSystemEvent(
-          "Pump Controller",
-          "Pump started automatically. Water level: " + String(levelPercent) +
-              "% fell to low level threshold (" +
-              String((int)lowLevelThreshold) +
-              "%). Reason: Low water level refill triggered.",
-          LEVEL_INFO);
-      updateFirebasePumpState(true);
-    } else {
-      DEBUG_PRINTF(
-          "[Pump] Auto-start pending anti-chatter cooldown (%lus remaining)\n",
-          (PUMP_MIN_OFF_TIME - (now - lastPumpStopTime)) / 1000);
-    }
-  }
-}
-
-// ==========================================
 // Historical Telemetry Sampling (every 10 mins)
 // ==========================================
 const unsigned long HISTORY_SAMPLE_INTERVAL = 600000UL;
@@ -1489,14 +1360,12 @@ void postHistorySample() {
   int lvlPercent;
   float lvlHeight, phVal;
   bool lvlOk, phOk;
-  bool pumpOn;
   if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     lvlPercent = stabilizedWaterLevelPercent;
     lvlHeight = stabilizedWaterHeight;
     phVal = stabilizedPhValue;
     lvlOk = levelSensorOk;
     phOk = phSensorOk;
-    pumpOn = currentPumpState;
     xSemaphoreGive(sensorDataMutex);
   } else {
     return;
@@ -1525,7 +1394,6 @@ void postHistorySample() {
     jsonPayload += "\"phLevel\":null,";
   }
 
-  jsonPayload += "\"pumpOn\":" + String(pumpOn ? "true" : "false") + ",";
   jsonPayload += "\"timestamp\":{\".sv\":\"timestamp\"}";
   jsonPayload += "}";
 
@@ -1553,7 +1421,7 @@ void postHistorySample() {
 
 // =================================================================================
 // SENSOR TASK  (Core 1)
-// Handles: sensor sampling, stabilization, spike rejection, relay driving,
+// Handles: sensor sampling, stabilization, spike rejection,
 //          alert state machine.
 // This task NEVER touches WiFi, HTTP, or Firebase so it runs uninterrupted.
 // =================================================================================
@@ -1620,13 +1488,6 @@ void sensorTask(void *pvParameters) {
           "Water level is reaching overflow capacity: " + String(lvlPct) + "%");
       updateAlertState(phAlert, isPhAbnormal,
                        "Unsafe pH level detected: " + String(phV, 2));
-
-      // Drive relay directly with no network dependency
-      bool desiredPumpState = currentPumpState;
-      if (desiredPumpState != lastActualPumpState) {
-        digitalWrite(RELAY_PIN, desiredPumpState ? HIGH : LOW);
-        lastActualPumpState = desiredPumpState;
-      }
     }
 
     vTaskDelay(pdMS_TO_TICKS(5)); // Yield to other tasks
@@ -1683,9 +1544,6 @@ void networkTask(void *pvParameters) {
       flushRamLogBuffer();
     }
 
-    // 6. Automatic pump control decision (calls Firebase if state changes)
-    processAutomaticPumpControl();
-
     // =============================================================
     // 7. CONSOLIDATED COMMAND POLLING (READS from Firebase)
     // =============================================================
@@ -1725,93 +1583,6 @@ void networkTask(void *pvParameters) {
 
           String payload = http.getString();
           payload.trim();
-
-          bool firebasePump = getBoolFromJson(payload, "pumpOn");
-
-          if (firebasePump != lastSentPumpState) {
-            if (firebasePump) {
-              // Manual ON command requested
-              bool lvlOk;
-              int lvlPct;
-              if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) ==
-                  pdTRUE) {
-                lvlOk = levelSensorOk;
-                lvlPct = stabilizedWaterLevelPercent;
-                xSemaphoreGive(sensorDataMutex);
-              } else {
-                lvlOk = false;
-                lvlPct = 0;
-              }
-
-              if (lvlOk && lvlPct >= 0 && lvlPct >= (int)overflowThreshold) {
-                DEBUG_PRINTLN(
-                    "[Pump] Manual ON command refused: Water level is "
-                    "at or above overflowThreshold.");
-                logSystemEvent("Pump Controller",
-                               "Manual pump ON command refused: Water level (" +
-                                   String(lvlPct) +
-                                   "%) is at or above overflow threshold (" +
-                                   String((int)overflowThreshold) + "%).",
-                               LEVEL_WARNING);
-                updateFirebasePumpState(false);
-                currentPumpState = false;
-              } else if (maintenanceMode) {
-                DEBUG_PRINTLN("[Pump] Manual ON command refused: Maintenance "
-                              "mode is active.");
-                logSystemEvent("Pump Controller",
-                               "Manual pump ON command refused: Maintenance "
-                               "mode is active.",
-                               LEVEL_WARNING);
-                updateFirebasePumpState(false);
-                currentPumpState = false;
-              } else if (pumpControlLock) {
-                DEBUG_PRINTLN("[Pump] Manual toggle refused: Pump control lock "
-                              "is enabled.");
-                logSystemEvent(
-                    "Pump Controller",
-                    "Manual pump toggle refused: Pump control lock is enabled.",
-                    LEVEL_WARNING);
-                updateFirebasePumpState(currentPumpState);
-              } else if (!lvlOk) {
-                DEBUG_PRINTLN("[Pump] Manual ON command refused: Level sensor "
-                              "is faulty.");
-                logSystemEvent("Pump Controller",
-                               "Manual pump ON command refused: Water level "
-                               "sensor is faulty.",
-                               LEVEL_CRITICAL);
-                updateFirebasePumpState(false);
-                currentPumpState = false;
-              } else {
-                currentPumpState = true;
-                lastSentPumpState = true;
-                logSystemEvent(
-                    "Pump Controller",
-                    "Manual pump ON command accepted. Water level: " +
-                        String(lvlPct) + "%",
-                    LEVEL_INFO);
-              }
-            } else {
-              // Manual OFF command requested
-              if (pumpControlLock) {
-                DEBUG_PRINTLN("[Pump] Manual toggle refused: Pump control lock "
-                              "is enabled.");
-                logSystemEvent(
-                    "Pump Controller",
-                    "Manual pump toggle refused: Pump control lock is enabled.",
-                    LEVEL_WARNING);
-                updateFirebasePumpState(currentPumpState);
-              } else {
-                currentPumpState = false;
-                lastSentPumpState = false;
-                lastPumpStopTime = millis();
-                logSystemEvent(
-                    "Pump Controller",
-                    "Manual pump OFF command accepted. Water level: " +
-                        String(stabilizedWaterLevelPercent) + "%",
-                    LEVEL_INFO);
-              }
-            }
-          }
 
           // --- DYNAMIC CALIBRATION SYNC ---
           if (hasKeyInJson(payload, "levelVmin")) {
@@ -1903,9 +1674,6 @@ void networkTask(void *pvParameters) {
           if (hasKeyInJson(configPayload, "maintenanceMode")) {
             maintenanceMode = getBoolFromJson(configPayload, "maintenanceMode");
           }
-          if (hasKeyInJson(configPayload, "pumpControlLock")) {
-            pumpControlLock = getBoolFromJson(configPayload, "pumpControlLock");
-          }
         } else {
           if (configResponseCode <= 0) {
             commandClient.stop();
@@ -1936,14 +1704,12 @@ void networkTask(void *pvParameters) {
     int snapLevel;
     float snapPh, snapHeight;
     bool snapPhOk, snapLevelOk;
-    bool snapPumpState;
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       snapLevel = stabilizedWaterLevelPercent;
       snapPh = stabilizedPhValue;
       snapHeight = stabilizedWaterHeight;
       snapPhOk = phSensorOk;
       snapLevelOk = levelSensorOk;
-      snapPumpState = currentPumpState;
       xSemaphoreGive(sensorDataMutex);
     } else {
       vTaskDelay(pdMS_TO_TICKS(10));
@@ -1956,7 +1722,6 @@ void networkTask(void *pvParameters) {
     bool phChangedSignificantly =
         (lastSentPhValue == -999.0) ||
         (abs(snapPh - lastSentPhValue) >= PH_LEVEL_DEADBAND);
-    bool pumpStateChanged = (snapPumpState != lastSentPumpState);
     bool phHealthChanged = (snapPhOk != lastSentPhHealth);
     bool levelHealthChanged = (snapLevelOk != lastSentLevelHealth);
     bool alertStateChanged =
@@ -1970,7 +1735,7 @@ void networkTask(void *pvParameters) {
     if (isNetworkConnected()) {
       if (rateLimitElapsed &&
           (levelChangedSignificantly || phChangedSignificantly ||
-           pumpStateChanged || phHealthChanged || levelHealthChanged ||
+           phHealthChanged || levelHealthChanged ||
            alertStateChanged || heartbeatElapsed)) {
         if (ensureFirebaseAuth()) {
 
@@ -1991,8 +1756,6 @@ void networkTask(void *pvParameters) {
           jsonPayload += "\"phLevel\":" + String(snapPh, 2) + ",";
           jsonPayload += "\"waterHeight\":" + String(snapHeight, 2) + ",";
           jsonPayload += "\"status\":\"" + status + "\",";
-          jsonPayload +=
-              "\"pumpOn\":" + String(snapPumpState ? "true" : "false") + ",";
           jsonPayload +=
               "\"phSensorOk\":" + String(snapPhOk ? "true" : "false") + ",";
           jsonPayload +=
@@ -2048,7 +1811,6 @@ void networkTask(void *pvParameters) {
               flushRamLogBuffer();
             }
 
-            lastSentPumpState = snapPumpState;
             lastSentWaterLevelPercent = snapLevel;
             lastSentPhValue = snapPh;
             lastSentWaterHeight = snapHeight;
@@ -2108,9 +1870,6 @@ void setup() {
 
   Serial.println(
       "Starting ESP32 Water Monitor System (FreeRTOS dual-core mode)...");
-
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
 
   commandClient.setInsecure();
   commandClientConfigured = true;

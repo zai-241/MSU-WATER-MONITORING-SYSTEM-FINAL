@@ -57,8 +57,8 @@ The **MSU Water Monitoring & Control System** is a full-stack IoT platform for a
 │               Edge Layer (ESP32 Node)                  │
 │                                                        │
 │  Hydrostatic Level (GPIO 35) ──┐                       │
-│  pH Glass Electrode (GPIO 34) ─┼──► ESP32 MCU ────────► Firebase RTDB
-│  Relay Actuator (GPIO 32)   ◄──┘        │              │
+│  pH Glass Electrode (GPIO 34) ─┴──► ESP32 MCU ────────► Firebase RTDB
+│                                         │              │
 └─────────────────────────────────────────┼──────────────┘
                                           │
                          ┌────────────────┴───────────────┐
@@ -134,7 +134,6 @@ The ESP32 communicates with Firebase via **Ethernet (LAN8720, primary)** or **Wi
 | **LAN8720 Ethernet PHY** | MDC: GPIO 23<br/>MDIO: GPIO 18<br/>CLK: GPIO 17 | Primary wired local network | RMII mode, 50MHz oscillator output |
 | **Hydrostatic Level Sensor** | GPIO 35 (ADC1_CH7) | Submersible water level measurement | Analog DC voltage (0.25V empty – 3.00V full), input-only pin |
 | **pH Glass Electrode Module** | GPIO 34 (ADC1_CH6) | Hydrogen-ion concentration | Analog DC voltage (2.50V @ pH 7.00, 0.18V/pH slope), input-only pin |
-| **Relay Module (5V)** | GPIO 32 | 220V AC pump power switching | Optocoupled, Active-HIGH trigger, 30s anti-chatter cooldown |
 
 > [!NOTE]
 > **Controller Architecture**: The operational edge controller is strictly the **ESP32 Dev Module**. *(Orange Pi One: Not implemented / TO CONFIRM as an unadopted edge gateway).* No servo motor or mechanical valve is used; pump control is executed solely via the 5V relay module on GPIO 32.

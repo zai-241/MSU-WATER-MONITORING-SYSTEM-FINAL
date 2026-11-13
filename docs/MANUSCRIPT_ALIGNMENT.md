@@ -3,7 +3,7 @@
 What to change in the capstone manuscript so it describes the finished system.
 
 - **Rule:** the system wins and the manuscript changes to match it.
-- **One exception:** pump control. The adviser decided it is a recommendation only, so the paper keeps it as future work and the system hides it (section 1).
+- **One exception:** pump control. The adviser decided it is a recommendation only, so the paper keeps it as future work and the system drops it, along with the 5 V relay (section 1).
 - **Manuscript:** the Google Doc draft last modified 2026-11-12 (*IoT-Based Water Level and Quality Monitoring System for MSU Motor Pool, Main Campus Marawi City*).
 - **System:** this repository at commit `1ae64a5`.
 
@@ -11,7 +11,7 @@ What to change in the capstone manuscript so it describes the finished system.
 
 | # | What the manuscript gets wrong | Priority |
 | :-: | :-- | :-- |
-| 1 | Pump control is a recommendation only (adviser's decision), but the system still shows and runs it. Hide it in the system. | High |
+| 1 | Pump control is a recommendation only (adviser's decision), but the system still shows and runs it. Remove it from the system. | High |
 | 2 | Says alerts work only while the app is open. The system has background push notifications. | High |
 | 3 | Leaves out the alert service (the always-on worker). | High |
 | 4 | Leaves out several working features: maintenance mode, offline detection, device accounts, security rules. | Medium |
@@ -26,26 +26,31 @@ What to change in the capstone manuscript so it describes the finished system.
 
 ## Part 1 — Rewrite these sections
 
-### 1. Pump control — recommendation only
+### 1. Pump control and the 5 V relay
 
-**Decision (adviser):** pump control is future work. It stays in section 5.3 and is not described as a feature.
+**Decision (adviser):** pump control is future work. It stays in section 5.3 and is not described as a feature. The 5 V relay is removed from the system.
 
-**In the paper: no change.** These parts are already correct and must stay as they are:
+**Done in this repository**
 
-- 1.4 Limitations, *Remote Pump Actuation*: the system does not control or switch pump motors.
-- 5.3 Recommendation 3: remote pump control and automated actuation.
-- 3.6.1: the 5 V relay is used only as a local alert indicator.
+- [x] Firmware: relay pin (GPIO 32), automatic pump start/stop, manual pump commands, and the `pumpOn` field removed from `backend/firmware/esp32_firmware.ino`. **Not compiled or flashed yet.**
+- [x] Relay removed from the hardware lists in `README.md` and `docs/System_Overview.md`.
 
-**In the system: hide it.** The system currently contradicts the paper. A pump switch on the dashboard or a pump section in a report would conflict with the limitation above during the defense.
+**In the paper**
 
-- [ ] `frontend/src/pages/Dashboard.tsx`: hide the pump ON/OFF switch and the "Pump Control Lock" banner.
-- [ ] `frontend/src/pages/admin/Configuration.tsx`: hide the Pump Control Lock setting.
-- [ ] `frontend/src/lib/reportExport.ts` and `pages/Reports.tsx`: remove the "Pump Activity" section and "Total Pump Cycles" from the PDF and Excel exports.
+- [ ] 3.6.1 Testing locale: delete "5V relays (used only for local visual/audible alert indicators and threshold simulation)".
+- [ ] Remove the relay from any wiring diagram, hardware photo caption, or hardware table that shows it.
+- [ ] Keep 1.4 *Remote Pump Actuation* and 5.3 Recommendation 3 as they are. Recommendation 3 already says relay modules would be added in the future.
+
+**Still to do in the system**
+
+The dashboard still shows pump controls, but with the relay gone they no longer do anything.
+
+- [ ] `frontend/src/pages/Dashboard.tsx`: remove the pump ON/OFF switch and the "Pump Control Lock" banner.
+- [ ] `frontend/src/pages/admin/Configuration.tsx`: remove the Pump Control Lock setting.
+- [ ] `frontend/src/lib/reportExport.ts` and `pages/Reports.tsx`: remove the "Pump Activity" section and "Total Pump Cycles".
 - [ ] Reword the Maintenance Mode banner so it no longer mentions pumps.
-- [ ] `backend/firmware/esp32_firmware.ino`: turn off `processAutomaticPumpControl()` and ignore pump commands. Let the relay follow the alert state, as the paper describes.
 - [ ] `README.md`, `docs/SRS.md`, `docs/System_Overview.md`, `docs/Methodology.md`: remove the pump control sections and the "& Control" in the system name.
-
-Switch the code off; do not delete it. It is the starting point for the future work in Recommendation 3.
+- [ ] Compile and flash the firmware, then unplug the relay module from the ESP32.
 
 ### 2. Push notifications
 
@@ -127,7 +132,7 @@ These are inside the manuscript itself.
 
 - [ ] **Respondents.** Section 3.6.1 says 3 engineers and 27 others. Section 5.1 says 15 controllers, 10 administrative staff, and 5 engineers. Use the true breakdown in both.
 - [ ] **Typo.** "gllons" in 4.3.1.
-- [ ] **Figures 4.1 – 4.9** are still placeholders. Take the screenshots after the pump controls are hidden (section 1), and include a push notification.
+- [ ] **Figures 4.1 – 4.9** are still placeholders. Take the screenshots after the pump controls are removed (section 1), and include a push notification.
 
 ---
 
@@ -181,7 +186,7 @@ The 2.34-second notification latency was measured for the in-app toast, not for 
 
 ## Order of work
 
-1. Hide pump control in the system (section 1).
+1. Finish removing pump control from the app, flash the firmware, and unplug the relay (section 1).
 2. Confirm the question at the top.
 3. Rewrite the *Notification Channels* limitation in 1.4, then the Abstract, Chapter 1, and Chapter 5 to match.
 4. Update Chapter 3: requirements table, diagrams, ERD, hardware and software tables.
