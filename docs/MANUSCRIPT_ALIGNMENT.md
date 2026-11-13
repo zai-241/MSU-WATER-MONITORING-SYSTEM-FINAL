@@ -2,7 +2,8 @@
 
 What to change in the capstone manuscript so it describes the finished system.
 
-- **Rule:** the system wins. The code stays as it is; the manuscript changes.
+- **Rule:** the system wins and the manuscript changes to match it.
+- **One exception:** pump control. The adviser decided it is a recommendation only, so the paper keeps it as future work and the system hides it (section 1).
 - **Manuscript:** the Google Doc draft last modified 2026-11-12 (*IoT-Based Water Level and Quality Monitoring System for MSU Motor Pool, Main Campus Marawi City*).
 - **System:** this repository at commit `1ae64a5`.
 
@@ -10,52 +11,41 @@ What to change in the capstone manuscript so it describes the finished system.
 
 | # | What the manuscript gets wrong | Priority |
 | :-: | :-- | :-- |
-| 1 | Says the system does not control the pump. It does. | High |
+| 1 | Pump control is a recommendation only (adviser's decision), but the system still shows and runs it. Hide it in the system. | High |
 | 2 | Says alerts work only while the app is open. The system has background push notifications. | High |
 | 3 | Leaves out the alert service (the always-on worker). | High |
 | 4 | Leaves out several working features: maintenance mode, offline detection, device accounts, security rules. | Medium |
 | 5 | Has wrong numbers: thresholds, test count, Android version, telemetry rate. | Medium |
 | 6 | Contradicts itself in a few places. | Medium |
 
-**Before you start, confirm two things.** They decide how sections 1 and 2 are worded.
+**Before you start, confirm one thing.** It decides how sections 2 and 3 are worded.
 
-- [ ] **Is a real pump wired to the relay at Reservoir Tank No. 1?** The firmware switches the relay on GPIO 32 as a pump. The manuscript says the relay is only an alert indicator. Write what is physically installed.
 - [ ] **Are the alert service and push notifications switched on in your Firebase project?** The code is complete, but each needs a setup step from `PHASE3_SETUP.md`. If a step was skipped, that feature is built but not deployed, and the manuscript should say so.
 
 ---
 
 ## Part 1 — Rewrite these sections
 
-### 1. Pump control
+### 1. Pump control — recommendation only
 
-**The system does this:**
+**Decision (adviser):** pump control is future work. It stays in section 5.3 and is not described as a feature.
 
-- Starts the pump automatically when the level falls to the low threshold (15%).
-- Stops the pump automatically when the level reaches the overflow threshold (95%).
-- Waits at least 30 seconds after a stop before starting again.
-- Forces the pump off when the level sensor is faulty or Maintenance Mode is on.
-- Keeps doing all of this with no network connection.
-- Lets Admins switch the pump from the dashboard. Workers can too, for their assigned tank, unless the Admin turns on Pump Control Lock.
-- Logs every pump action with the reason or the user.
-- Includes pump activity and total pump cycles in the reports.
+**In the paper: no change.** These parts are already correct and must stay as they are:
 
-**Manuscript sections to change:**
+- 1.4 Limitations, *Remote Pump Actuation*: the system does not control or switch pump motors.
+- 5.3 Recommendation 3: remote pump control and automated actuation.
+- 3.6.1: the 5 V relay is used only as a local alert indicator.
 
-| Section | Now says | Change to |
-| :-- | :-- | :-- |
-| 1.4 Limitations, *Remote Pump Actuation* | The system does not control or switch pump motors. | Delete this limitation. Describe pump control under the scope instead. |
-| 1.2, 1.5 | The system "does not … directly control pump operations" and only supports manual intervention. | State that it monitors **and** controls the pump, with manual override. |
-| 1.3 Objectives | Develop and Implement list monitoring only. | Add automatic pump control and manual override. |
-| Abstract, 5.1, 5.2 | Monitoring and alerts only. | Add one sentence on automatic pump control. |
-| 5.3 Recommendation 3 | Pump control is future work. | Remove it, or narrow it to what is still missing (for example motorized valves). |
-| 3.6.1 Testing locale | The 5 V relay is "used only for local visual/audible alert indicators". | Describe the relay as the pump switch. |
-| 3.4.1, 3.4.6 Workflow and activity diagrams | The controller walks to the tank and operates the pump by hand. | Add the automatic pump step and the dashboard pump switch. |
-| 3.4.5 Use case diagram | No pump use case. | Add "Control Pump" for Admin and Worker, and "Lock Pump Control" for Admin. |
-| 3.4.7 ERD | No pump fields. | Add `pumpOn` to TANKS and HISTORY_TANKS, and `pumpControlLock` and `maintenanceMode` to CONFIG. |
-| 3.4.3, 3.4.4, 3.4.8 HIPO, IPO, architecture | No actuator. | Add the relay as an output of the edge layer. |
-| Table 3-5 Hardware | Relay not listed. | Add the 5 V relay module. |
-| 4.1 Features | No pump section. | Add a section on automatic pump control and its safety rules. |
-| 4.1.4 Reports | Water level and pH only. | Add pump activity. |
+**In the system: hide it.** The system currently contradicts the paper. A pump switch on the dashboard or a pump section in a report would conflict with the limitation above during the defense.
+
+- [ ] `frontend/src/pages/Dashboard.tsx`: hide the pump ON/OFF switch and the "Pump Control Lock" banner.
+- [ ] `frontend/src/pages/admin/Configuration.tsx`: hide the Pump Control Lock setting.
+- [ ] `frontend/src/lib/reportExport.ts` and `pages/Reports.tsx`: remove the "Pump Activity" section and "Total Pump Cycles" from the PDF and Excel exports.
+- [ ] Reword the Maintenance Mode banner so it no longer mentions pumps.
+- [ ] `backend/firmware/esp32_firmware.ino`: turn off `processAutomaticPumpControl()` and ignore pump commands. Let the relay follow the alert state, as the paper describes.
+- [ ] `README.md`, `docs/SRS.md`, `docs/System_Overview.md`, `docs/Methodology.md`: remove the pump control sections and the "& Control" in the system name.
+
+Switch the code off; do not delete it. It is the starting point for the future work in Recommendation 3.
 
 ### 2. Push notifications
 
@@ -106,7 +96,7 @@ The manuscript says alerts are checked by "the ESP32 firmware and the client-sid
 
 Add these to section 4.1, and to the diagrams where noted.
 
-- [ ] **Maintenance Mode.** An Admin switch that turns the pump off and silences alerts during servicing. Add to the use case diagram.
+- [ ] **Maintenance Mode.** An Admin switch that silences alerts during servicing. Add to the use case diagram.
 - [ ] **Controller offline detection.** A tank is marked offline when it has not reported for 30 seconds. The Admin can change this (minimum 20 seconds).
 - [ ] **Adjustable alert repeat.** The 60-second cooldown is the default. The Admin can change it (minimum 10 seconds).
 - [ ] **Sensor fault alerts.** A faulty level or pH sensor raises its own alert. The manuscript mentions fault detection but not the alert.
@@ -137,7 +127,7 @@ These are inside the manuscript itself.
 
 - [ ] **Respondents.** Section 3.6.1 says 3 engineers and 27 others. Section 5.1 says 15 controllers, 10 administrative staff, and 5 engineers. Use the true breakdown in both.
 - [ ] **Typo.** "gllons" in 4.3.1.
-- [ ] **Figures 4.1 – 4.9** are still placeholders. Take the screenshots from the finished system, including the pump switch and a push notification.
+- [ ] **Figures 4.1 – 4.9** are still placeholders. Take the screenshots after the pump controls are hidden (section 1), and include a push notification.
 
 ---
 
@@ -182,26 +172,27 @@ Leave these as they are. They were checked against the code.
 
 ## A caution on Chapter 4 results
 
-Pump control and push notifications become part of the stated scope and objectives, but the manuscript has no test results for them.
+Push notifications become part of the stated scope, but the manuscript has no test results for them.
 
-- [ ] Add test cases and real measurements for them (for example: pump starts at 15%, stops at 95%, push arrives with the app closed).
-- [ ] Or state clearly that they were implemented but not part of the measured evaluation.
+- [ ] Add a test case and a real measurement (for example: push arrives with the app closed).
+- [ ] Or state clearly that push was implemented but not part of the measured evaluation.
 
-Do not reuse the existing figures for features they did not measure. The 2.34-second notification latency was measured for the in-app toast, not for push.
+The 2.34-second notification latency was measured for the in-app toast, not for push. Do not reuse it.
 
 ## Order of work
 
-1. Confirm the two questions at the top.
-2. Rewrite section 1.4 (Scope and Limitations). Everything else follows from it.
-3. Update the Abstract, Chapter 1, and Chapter 5 to match.
+1. Hide pump control in the system (section 1).
+2. Confirm the question at the top.
+3. Rewrite the *Notification Channels* limitation in 1.4, then the Abstract, Chapter 1, and Chapter 5 to match.
 4. Update Chapter 3: requirements table, diagrams, ERD, hardware and software tables.
 5. Update Chapter 4: features, numbers, screenshots.
 6. Fix Parts 2 and 3.
 
 ## Repo docs
 
-`README.md` and the files in `docs/` already describe pump control. They are out of date on two points:
+`README.md` and the files in `docs/` are out of date on three points:
 
+- [ ] They describe pump control as a feature (see section 1).
 - [ ] They do not mention the alert service or push notifications.
 - [ ] They say 37 tests.
 
