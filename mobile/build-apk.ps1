@@ -6,6 +6,13 @@
 # Requires Android Studio (for its bundled Java) and the Android SDK, both in
 # their default install locations. The APK is written to
 #     mobile\MSU-Water-System-debug.apk
+#
+# Push notifications need mobile\android\app\google-services.json (Firebase console ->
+# Project settings -> Android app com.watersystem.msu). Without it the build stops,
+# because the APK would install fine but never receive a push. To build without
+# push anyway, add -NoPush.
+
+param([switch]$NoPush)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -14,6 +21,20 @@ $jbr = 'C:\Program Files\Android\Android Studio\jbr'
 $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 if (-not (Test-Path "$jbr\bin\java.exe")) { throw "Android Studio's Java was not found at $jbr. Install Android Studio first." }
 if (-not (Test-Path $sdk)) { throw "Android SDK was not found at $sdk. Open Android Studio once to install it." }
+
+$servicesJson = Join-Path $PSScriptRoot 'android\app\google-services.json'
+if (-not (Test-Path $servicesJson)) {
+    if ($NoPush) {
+        Write-Warning 'google-services.json not found: building WITHOUT push notifications.'
+    } else {
+        throw "google-services.json not found at $servicesJson. Push notifications cannot work without it. Download it from the Firebase console (Project settings -> Your apps -> Android app com.watersystem.msu) and put it there, or run with -NoPush to build without push."
+    }
+} else {
+    $pkg = (Get-Content $servicesJson -Raw | ConvertFrom-Json).client.client_info.android_client_info.package_name
+    if ($pkg -notcontains 'com.watersystem.msu') {
+        throw "google-services.json is for '$($pkg -join ', ')', not com.watersystem.msu. Register the Android app with package name com.watersystem.msu in Firebase and download its google-services.json."
+    }
+}
 
 $env:JAVA_HOME = $jbr
 $env:ANDROID_HOME = $sdk

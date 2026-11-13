@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Bell,
   Check,
@@ -15,7 +15,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
 import { alertSound } from '@/utils/alertSound';
 import { toast } from 'sonner';
-import { getPushStatus, enablePush, disablePush, type PushStatus } from '@/utils/push';
+import {
+  getPushStatus,
+  enablePush,
+  disablePush,
+  setPushOptOut,
+  autoEnableNativePush,
+  clearDeliveredPushNotifications,
+  type PushStatus,
+} from '@/utils/push';
 
 const NotificationCenter = () => {
   const { notifications, acknowledgeNotification } = useNotifications();
@@ -86,6 +94,28 @@ const NotificationCenter = () => {
     return () => { cancelled = true; };
   }, [open, currentUser?.id]);
 
+  // Android app: switch push on by itself after sign-in (asks Android permission once)
+  useEffect(() => {
+    const uid = currentUser?.id;
+    if (!uid) return;
+    let cancelled = false;
+    autoEnableNativePush(uid).then((result) => {
+      if (cancelled || !result) return;
+      setPushStatus(result.status);
+      if (result.status === 'enabled') toast.success('Push alerts are on for this phone.');
+      else if (result.message) toast.error(result.message);
+    });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  // Android app: once everything is read, clear the alerts in the shade and the app-icon badge.
+  // Only on a change to zero, so the empty list while data is still loading does not clear them.
+  const previousUnread = useRef(unreadCount);
+  useEffect(() => {
+    if (previousUnread.current > 0 && unreadCount === 0) clearDeliveredPushNotifications();
+    previousUnread.current = unreadCount;
+  }, [unreadCount]);
+
   const togglePush = async () => {
     const uid = currentUser?.id;
     if (!uid || pushBusy) return;
@@ -93,10 +123,12 @@ const NotificationCenter = () => {
     try {
       if (pushStatus === 'enabled') {
         await disablePush(uid);
+        setPushOptOut(true);
         setPushStatus(await getPushStatus());
         toast.success('Push alerts turned off on this device.');
         return;
       }
+      setPushOptOut(false);
       const result = await enablePush(uid);
       setPushStatus(result.status);
       if (desktopSupported) setDesktopPermission(window.Notification.permission);

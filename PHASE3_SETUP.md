@@ -135,25 +135,26 @@ The Android app shows the hosted site inside a WebView, and WebView cannot recei
 
 1. Firebase console → Project settings → Your apps → **Add app** → Android. Package name: `com.watersystem.msu`.
 2. Download `google-services.json` and place it at `mobile/android/app/google-services.json`.
-3. Build the web app, sync, and build the APK:
+3. Build the APK. On Windows, from the project root in PowerShell (it builds the web app, syncs and builds in one go, and stops if `google-services.json` is missing or is for another package):
 
 ```bash
-npm run build
+powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1
 ```
 
-```bash
-npm run cap:sync
-```
+   Or build the web app, run `npm run cap:sync`, then `npm run cap:open` and build from Android Studio.
 
-```bash
-npm run cap:open
-```
+4. Deploy the site (step 3) and restart the worker (step 2), so both have the latest push code.
+5. Install the APK and sign in. The app asks for notification permission by itself; tap **Allow**. (If it was dismissed: bell → **Enable Push**.)
 
-   Then build and install from Android Studio.
+What a push looks like on the phone:
 
-4. In the app: bell → **Enable Push** → allow notifications.
+- **Banner:** alerts pop up at the top of the screen (heads-up) with sound and vibration, whether the app is closed or open. They use the "Water alerts" channel, which the app creates at high importance.
+- **Badge:** the app icon shows a dot, or the unread count on launchers that show counts (e.g. Samsung). The worker sends each user their own unread count. Once that user has read everything in the app, the alerts are cleared from the shade and the badge goes away.
+- **Tap:** opens the Notifications page.
 
-Because the app loads the hosted site, the site must be deployed (step 3) for the app to show the Enable Push button. Without `google-services.json` the app still works; only push is unavailable.
+If banners do not pop up on a phone where the app was installed before this change: Android keeps a channel's settings once created. Long-press the app → App info → Notifications → **Water alerts** → turn on "Pop on screen", or uninstall and reinstall the app.
+
+Because the app loads the hosted site, the site must be deployed for the app to register for push. Without `google-services.json` the app still works; only push is unavailable.
 
 ---
 

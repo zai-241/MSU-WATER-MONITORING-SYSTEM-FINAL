@@ -187,47 +187,82 @@ const DEAD_TOKEN_CODES = new Set([
   'messaging/invalid-argument',
 ]);
 
+/** Android channel created by the app (MainActivity): heads-up banner, sound, icon badge. */
+const ALERT_CHANNEL_ID = 'water_alerts';
+
+/** Same rule as the web app's isUnread: newer than "mark all read" and not read one by one. */
+function unreadCountFor(user: admin.database.DataSnapshot, newAlertId: string): number {
+  const lastReadAt = Number(user.child('notificationsLastReadAt').val()) || 0;
+  const readIds = (user.child('notificationsReadIds').val() ?? {}) as Record<string, unknown>;
+  let count = 1; // the alert being pushed now is unread for everyone
+  for (const [id, alert] of Object.entries(alerts)) {
+    if (id === newAlertId || !alert) continue;
+    if (alert.timestamp > lastReadAt && !readIds[id]) count++;
+  }
+  return count;
+}
+
 async function sendPush(title: string, body: string, tag: string): Promise<void> {
   if (!PUSH_ENABLED || config.pushEnabled === false) return;
 
-  // token -> uid, so dead tokens can be removed from the right user
-  const owners = new Map<string, string>();
+  // One message per user, so each phone's app-icon badge shows that user's unread count
+  const recipients: { uid: string; tokens: string[]; unread: number }[] = [];
   const snap = await db.ref('userState').get();
   snap.forEach((user) => {
     const tokens = user.child('fcmTokens').val();
     if (tokens && typeof tokens === 'object' && user.key) {
-      Object.keys(tokens).forEach((token) => owners.set(token, user.key as string));
+      recipients.push({ uid: user.key, tokens: Object.keys(tokens), unread: unreadCountFor(user, tag) });
     }
   });
-  const tokens = [...owners.keys()];
-  if (tokens.length === 0) return;
+  if (recipients.length === 0) return;
 
   const link = APP_URL ? `${APP_URL}/notifications` : undefined;
-  // FCM accepts at most 500 tokens per call
-  for (let i = 0; i < tokens.length; i += 500) {
-    const batch = tokens.slice(i, i + 500);
-    const response = await admin.messaging().sendEachForMulticast({
-      tokens: batch,
-      notification: { title, body },
-      data: { tag, link: link ?? '' },
-      android: { priority: 'high', notification: { tag } },
-      webpush: {
-        headers: { Urgency: 'high' },
-        notification: { tag, icon: '/msu-logo.png', requireInteraction: true },
-        ...(link ? { fcmOptions: { link } } : {}),
-      },
-    });
+  let delivered = 0;
+  let failed = 0;
+  const removals: Record<string, null> = {};
 
-    const removals: Record<string, null> = {};
-    response.responses.forEach((res, index) => {
-      if (!res.success && res.error && DEAD_TOKEN_CODES.has(res.error.code)) {
-        const token = batch[index];
-        removals[`userState/${owners.get(token)}/fcmTokens/${token}`] = null;
-      }
-    });
-    if (Object.keys(removals).length > 0) await db.ref().update(removals);
-    log(`push "${title}": ${response.successCount} delivered, ${response.failureCount} failed`);
+  for (const { uid, tokens, unread } of recipients) {
+    // FCM accepts at most 500 tokens per call
+    for (let i = 0; i < tokens.length; i += 500) {
+      const batch = tokens.slice(i, i + 500);
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens: batch,
+        notification: { title, body },
+        data: { tag, link: link ?? '', unread: String(unread) },
+        android: {
+          priority: 'high',
+          notification: {
+            tag,
+            channelId: ALERT_CHANNEL_ID,
+            icon: 'ic_stat_notification',
+            color: '#0288D1',
+            priority: 'max',
+            visibility: 'public',
+            defaultSound: true,
+            defaultVibrateTimings: true,
+            notificationCount: unread,
+          },
+        },
+        apns: { payload: { aps: { badge: unread, sound: 'default' } } },
+        webpush: {
+          headers: { Urgency: 'high' },
+          notification: { tag, icon: '/msu-logo.png', requireInteraction: true },
+          ...(link ? { fcmOptions: { link } } : {}),
+        },
+      });
+
+      delivered += response.successCount;
+      failed += response.failureCount;
+      response.responses.forEach((res, index) => {
+        if (!res.success && res.error && DEAD_TOKEN_CODES.has(res.error.code)) {
+          removals[`userState/${uid}/fcmTokens/${batch[index]}`] = null;
+        }
+      });
+    }
   }
+
+  if (Object.keys(removals).length > 0) await db.ref().update(removals);
+  log(`push "${title}": ${delivered} delivered, ${failed} failed`);
 }
 
 // ---------------------------------------------------------------------------

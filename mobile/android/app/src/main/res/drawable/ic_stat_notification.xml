@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon for push alerts. Android draws it as a white silhouette, so it must be single-colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.5C12,2.5 5.5,9.9 5.5,14.5C5.5,18.09 8.41,21 12,21C15.59,21 18.5,18.09 18.5,14.5C18.5,9.9 12,2.5 12,2.5Z" />
+</vector>

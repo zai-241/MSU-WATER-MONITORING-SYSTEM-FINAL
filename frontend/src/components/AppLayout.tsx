@@ -5,7 +5,7 @@ import { useClock, useConnectionState } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationCenter from './NotificationCenter';
 import SystemMonitor from './SystemMonitor';
-import { refreshPushRegistration } from '@/utils/push';
+import { refreshPushRegistration, listenForPushTaps } from '@/utils/push';
 
 const SystemClock = () => {
   const clock = useClock();
@@ -38,6 +38,11 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (currentUser?.id) refreshPushRegistration(currentUser.id);
   }, [currentUser?.id]);
+
+  // Android app: tapping a push alert opens the Notifications page
+  useEffect(() => {
+    listenForPushTaps((path) => navigate(path));
+  }, [navigate]);
 
   const handleLogout = () => { 
     logout(); 

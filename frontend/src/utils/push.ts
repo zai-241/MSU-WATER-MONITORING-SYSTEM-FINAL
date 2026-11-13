@@ -89,26 +89,30 @@ async function registerNative(uid: string): Promise<PushResult> {
     return { status: 'blocked', message: 'Notifications are turned off for this app in Android settings.' };
   }
 
-  return new Promise<PushResult>((resolve) => {
+  const handles: { remove: () => Promise<void> }[] = [];
+  const result = await new Promise<PushResult>((resolve) => {
     let settled = false;
-    const finish = (result: PushResult) => {
+    const finish = (value: PushResult) => {
       if (!settled) {
         settled = true;
-        resolve(result);
+        resolve(value);
       }
     };
     PushNotifications.addListener('registration', (token) => {
       saveToken(uid, token.value, Capacitor.getPlatform() === 'ios' ? 'ios' : 'android')
         .then(() => finish({ status: 'enabled' }))
         .catch(() => finish({ status: 'available', message: 'Could not save this device. Check your connection.' }));
-    });
+    }).then((h) => handles.push(h));
     PushNotifications.addListener('registrationError', (error) => {
-      // Usually means google-services.json is missing from the Android build
+      // Usually means google-services.json was missing when the APK was built
       finish({ status: 'unsupported', message: `Push registration failed: ${error.error}` });
-    });
+    }).then((h) => handles.push(h));
     PushNotifications.register().catch((err) => finish({ status: 'unsupported', message: String(err?.message ?? err) }));
     setTimeout(() => finish({ status: 'available', message: 'Push registration timed out. Try again.' }), 15000);
   });
+  // These listeners are per attempt: drop them so repeated refreshes do not pile up
+  handles.forEach((h) => h.remove().catch(() => {}));
+  return result;
 }
 
 async function registerWeb(uid: string): Promise<PushResult> {
@@ -174,5 +178,65 @@ export async function disablePush(uid: string): Promise<void> {
     }
   } catch {
     // The server-side token is already gone, which is what stops delivery
+  }
+}
+
+const OPT_OUT_KEY = 'wm_push_opted_out';
+
+/** Remembers that the user turned push off themselves, so it is not switched back on. */
+export function setPushOptOut(optedOut: boolean): void {
+  try {
+    if (optedOut) localStorage.setItem(OPT_OUT_KEY, '1');
+    else localStorage.removeItem(OPT_OUT_KEY);
+  } catch {
+    // Storage unavailable
+  }
+}
+
+/**
+ * Android app only: turns push alerts on automatically after sign-in, so workers
+ * do not have to find the Enable Push button. Android shows its permission prompt
+ * the first time; after that it is silent. Skipped if the user turned push off in
+ * the bell menu or blocked notifications in Android settings.
+ */
+export async function autoEnableNativePush(uid: string): Promise<PushResult | null> {
+  if (!isNative()) return null;
+  try {
+    if (localStorage.getItem(OPT_OUT_KEY)) return null;
+    if ((await getPushStatus()) !== 'available') return null;
+  } catch {
+    return null;
+  }
+  return enablePush(uid);
+}
+
+let tapListenerAdded = false;
+
+/**
+ * Android app only: tapping a push alert (banner or notification shade) opens
+ * the Notifications page. Safe to call more than once.
+ */
+export async function listenForPushTaps(open: (path: string) => void): Promise<void> {
+  if (!isNative() || tapListenerAdded) return;
+  tapListenerAdded = true;
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    await PushNotifications.addListener('pushNotificationActionPerformed', () => open('/notifications'));
+  } catch {
+    tapListenerAdded = false;
+  }
+}
+
+/**
+ * Android app only: once everything is read, clears this app's alerts from the
+ * notification shade, which also clears the badge on the app icon.
+ */
+export async function clearDeliveredPushNotifications(): Promise<void> {
+  if (!isNative()) return;
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    await PushNotifications.removeAllDeliveredNotifications();
+  } catch {
+    // Best effort
   }
 }

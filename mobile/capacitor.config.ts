@@ -9,6 +9,10 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   plugins: {
+    PushNotifications: {
+      // Also show alerts as a banner (with sound and badge) while the app is open
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
     SplashScreen: {
       launchShowDuration: 0,
       launchAutoHide: true,

@@ -4,4 +4,8 @@
     <string name="title_activity_main">MSU Water System</string>
     <string name="package_name">com.watersystem.msu</string>
     <string name="custom_url_scheme">com.watersystem.msu</string>
+    <!-- Push alerts: must match ALERT_CHANNEL_ID in backend/worker/src/index.ts -->
+    <string name="alert_channel_id">water_alerts</string>
+    <string name="alert_channel_name">Water alerts</string>
+    <string name="alert_channel_description">Tank level, sensor and controller alerts</string>
 </resources>
