@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
 import { estimateVolumeLiters } from '@/lib/constants';
+import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from '@/lib/reportLogs';
 
@@ -72,7 +73,7 @@ const Reports = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [exportingType, setExportingType] = useState<'excel' | 'pdf' | null>(null);
+  const [exportingType, setExportingType] = useState<'excel' | 'pdf' | 'csv' | null>(null);
   const itemsPerPage = 7;
 
   const canExport = currentUser?.role === 'admin' || currentUser?.role === 'worker';
@@ -372,7 +373,14 @@ const Reports = () => {
     );
   };
 
-  const handleExport = (type: 'csv' | 'print') => {
+  // Only report success once the file was really saved (or handed to the share sheet in the app)
+  const announceSaved = (result: SaveResult, label: string) => {
+    if (result === 'downloaded') toast.success(`${label} exported successfully!`);
+    else if (result === 'shared') toast.success(`${label} is ready. Choose where to save or share it.`);
+    else toast.info(`${label} export cancelled.`);
+  };
+
+  const handleExport = async (type: 'csv' | 'print') => {
     if (!selectedTank) return;
     
     if (type === 'csv') {
@@ -385,12 +393,16 @@ const Reports = () => {
       }).join('\n');
       
       const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
-      a.click();
-      toast.success('CSV spreadsheet exported successfully!');
+      const filename = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
+      setExportingType('csv');
+      try {
+        announceSaved(await saveFile(blob, filename), 'CSV spreadsheet');
+      } catch (err) {
+        console.error('Error saving CSV file:', err);
+        toast.error('Failed to save CSV file.');
+      } finally {
+        setExportingType(null);
+      }
     } else {
       toast.info('Preparing document workspace layout for high-quality print...');
       setTimeout(() => {
@@ -430,15 +442,8 @@ const Reports = () => {
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       const dateStr = new Date().toISOString().split('T')[0];
-      a.download = `WaterReport_Tank${selectedTankId}_${dateStr}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      toast.success('Excel workbook (.xlsx) exported successfully!');
+      announceSaved(await saveFile(blob, `WaterReport_Tank${selectedTankId}_${dateStr}.xlsx`), 'Excel workbook (.xlsx)');
     } catch (err) {
       console.error('Error generating Excel file:', err);
       toast.error('Failed to generate Excel file.');
@@ -457,8 +462,8 @@ const Reports = () => {
       const doc = buildPdfDocument(exportData);
 
       const dateStr = new Date().toISOString().split('T')[0];
-      doc.save(`WaterReport_Tank${selectedTankId}_${dateStr}.pdf`);
-      toast.success('PDF document exported successfully!');
+      const blob = doc.output('blob');
+      announceSaved(await saveFile(blob, `WaterReport_Tank${selectedTankId}_${dateStr}.pdf`), 'PDF document');
     } catch (err) {
       console.error('Error generating PDF file:', err);
       toast.error('Failed to generate PDF file.');
@@ -1215,8 +1220,9 @@ const Reports = () => {
               {telemetryData.length === 0 ? 'CSV - No data to export' : 'Download CSV Spreadsheet'}
             </button>
 
-            {/* PRINT LAYOUT BUTTON */}
-            <button
+            {/* PRINT LAYOUT BUTTON (hidden in the Android app: its WebView cannot print;
+                print from the PDF viewer after exporting the PDF instead) */}
+            {!isNativeApp() && <button
               disabled={exportingType !== null || telemetryData.length === 0}
               onClick={() => handleExport('print')}
               title={telemetryData.length === 0 ? "No data to export" : "Print layout"}
@@ -1224,7 +1230,7 @@ const Reports = () => {
             >
               <Printer size={15} />
               {telemetryData.length === 0 ? 'Print - No data to export' : 'Print Layout'}
-            </button>
+            </button>}
           </div>
         </div>
       )}
