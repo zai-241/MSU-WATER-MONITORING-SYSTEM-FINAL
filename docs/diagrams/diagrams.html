@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chapter 3 Diagrams</title>
+<style>
+:root { --bg:#f6f7f9; --card:#ffffff; --text:#1c2430; --muted:#5b6575; --border:#dde2e8; --accent:#1f5fbf; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#14181f; --card:#1d232c; --text:#e7ebf0; --muted:#9aa5b4; --border:#2c3440; --accent:#6ea3ff; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding:24px 16px 8px; max-width:1100px; margin:0 auto; }
+h1 { margin:0 0 4px; font-size:22px; }
+header p { margin:0; color:var(--muted); }
+main { max-width:1100px; margin:0 auto; padding:8px 16px 48px; display:grid; gap:20px; }
+.fig { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
+h2 { margin:0; font-size:16px; }
+.actions { display:flex; gap:8px; }
+button { font:inherit; font-size:13px; padding:6px 10px; border-radius:6px; border:1px solid var(--accent); background:transparent; color:var(--accent); cursor:pointer; }
+button:hover { background:var(--accent); color:#fff; }
+.note { margin:8px 0 0; color:var(--muted); font-size:13px; }
+.canvas { margin-top:12px; background:#ffffff; border-radius:6px; padding:12px; overflow-x:auto; }
+.canvas svg { max-width:100%; height:auto; }
+</style></head>
+<body>
+<header><h1>Chapter 3 Diagrams</h1>
+<p>Updated figures that match the system. Download each as SVG (best quality; Word 365 can insert it directly) or PNG. Needs an internet connection to draw the diagrams.</p></header>
+<main>
+<section class="fig" id="fig0">
+  <div class="head"><h2>Figure 3-4: Proposed Operational Workflow of MPWSD</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig0">Download SVG</button><button data-fmt="png" data-id="fig0">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart TB
+  subgraph IOT[&quot;IoT System (ESP32)&quot;]
+    A([&quot;Start: 24/7 monitoring&quot;]) --&gt; B[&quot;Read sensor data&lt;br/&gt;(water level and pH)&quot;]
+    B --&gt; C[&quot;Filter and convert readings&quot;]
+    C --&gt; D[&quot;Log data to Firebase&lt;br/&gt;(on change or every 10 s)&quot;]
+    D --&gt; E{&quot;Level low/high or pH unsafe&lt;br/&gt;for 5 seconds?&quot;}
+    E -- &quot;No&quot; --&gt; B
+  end
+  subgraph SVC[&quot;Alert Service&quot;]
+    F[&quot;Raise alert:&lt;br/&gt;notification + push notification&quot;]
+  end
+  subgraph OP[&quot;Operator (Water Controller)&quot;]
+    G[&quot;Receive toast, chime&lt;br/&gt;and push notification&quot;] --&gt; H[&quot;Acknowledge alert&lt;br/&gt;(chime silenced, logged)&quot;]
+    H --&gt; I[&quot;Perform on-site inspection&quot;]
+  end
+  subgraph AD[&quot;Administrator&quot;]
+    J[&quot;Monitor dashboard&lt;br/&gt;and system logs&quot;] --&gt; K[&quot;Verify readings are&lt;br/&gt;back to normal&quot;]
+  end
+  E -- &quot;Yes&quot; --&gt; F
+  F --&gt; G
+  F --&gt; J
+  I --&gt; K
+  K --&gt; L([&quot;End&quot;])
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+  class A,E,L green
+</pre></div>
+</section>
+<section class="fig" id="fig1">
+  <div class="head"><h2>Figure 3-5: System Data Processing and Logic Flowchart</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig1">Download SVG</button><button data-fmt="png" data-id="fig1">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart TB
+  S([&quot;Start&quot;]) --&gt; R[&quot;Sample level and pH voltages&lt;br/&gt;every 20 ms&quot;]
+  R --&gt; P[&quot;Every 200 ms: median filter (5)&lt;br/&gt;then moving average (10)&quot;]
+  P --&gt; CV[&quot;Convert to height (m), level (%)&lt;br/&gt;and pH using calibration values&quot;]
+  CV --&gt; BC{&quot;Voltage outside 0.05–3.25 V&lt;br/&gt;or value impossible for 10 s?&quot;}
+  BC -- &quot;Yes&quot; --&gt; SF[&quot;Sensor Fault: log CRITICAL,&lt;br/&gt;suppress that sensor&#x27;s alerts&quot;]
+  SF --&gt; R
+  BC -- &quot;No&quot; --&gt; SP[&quot;Spike check&quot;]
+  SP --&gt; DB{&quot;Changed ≥ 2% or ≥ 0.15 pH,&lt;br/&gt;alert state changed,&lt;br/&gt;or 10 s heartbeat due?&quot;}
+  DB -- &quot;No&quot; --&gt; R
+  DB -- &quot;Yes&quot; --&gt; W[&quot;Write telemetry to Firebase&lt;br/&gt;(history every 10 min)&quot;]
+  W --&gt; T{&quot;Level &lt; 15%, level &gt; 95%,&lt;br/&gt;or pH outside 6.5–8.5?&quot;}
+  T -- &quot;No&quot; --&gt; N[&quot;Normal: update dashboard cards,&lt;br/&gt;gauges and charts&quot;]
+  N --&gt; R
+  T -- &quot;Yes&quot; --&gt; V{&quot;Condition persists&lt;br/&gt;for 5 seconds?&quot;}
+  V -- &quot;No&quot; --&gt; R
+  V -- &quot;Yes&quot; --&gt; AL[&quot;Raise alert:&lt;br/&gt;CRITICAL (low level, pH)&lt;br/&gt;WARNING (overflow)&quot;]
+  AL --&gt; NT[&quot;Alert service creates notification&lt;br/&gt;and sends push notification&quot;]
+  NT --&gt; UI[&quot;Clients show toast&lt;br/&gt;and play chime&quot;]
+  UI --&gt; ACK{&quot;Acknowledged?&quot;}
+  ACK -- &quot;No&quot; --&gt; RP[&quot;Repeat every 60 s&quot;]
+  RP --&gt; ACK
+  ACK -- &quot;Yes&quot; --&gt; SL[&quot;Silence chime,&lt;br/&gt;log acknowledgment&quot;]
+  SL --&gt; RC{&quot;Normal for 5 s?&lt;br/&gt;(level ≥ 17% / ≤ 93%,&lt;br/&gt;pH back in range)&quot;}
+  RC -- &quot;No&quot; --&gt; RC
+  RC -- &quot;Yes&quot; --&gt; RS[&quot;Alert resolved,&lt;br/&gt;Recovered logged&quot;]
+  RS --&gt; R
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+  class ACK,BC,DB,RC,S,T,V green
+</pre></div>
+</section>
+<section class="fig" id="fig2">
+  <div class="head"><h2>Figure 3-6: Hierarchical Input-Process-Output (HIPO) Model</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig2">Download SVG</button><button data-fmt="png" data-id="fig2">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart LR
+  ROOT[&quot;IoT-Based Water Level and Quality&lt;br/&gt;Monitoring System&quot;]
+  ROOT --&gt; M1[&quot;1.0 Data Acquisition&lt;br/&gt;(ESP32)&quot;]
+  ROOT --&gt; M2[&quot;2.0 Alert Processing&lt;br/&gt;(Alert Service)&quot;]
+  ROOT --&gt; M3[&quot;3.0 Monitoring and Reporting&lt;br/&gt;(Web and Android App)&quot;]
+  ROOT --&gt; M4[&quot;4.0 Administration&quot;]
+  M1 --&gt; M11[&quot;1.1 Read level and pH sensors&quot;]
+  M1 --&gt; M12[&quot;1.2 Filter, validate and convert&quot;]
+  M1 --&gt; M13[&quot;1.3 Send telemetry and history&quot;]
+  M1 --&gt; M14[&quot;1.4 Ethernet / Wi-Fi failover&quot;]
+  M1 --&gt; M15[&quot;1.5 Pump logic (simulation)&quot;]
+  M2 --&gt; M21[&quot;2.1 Evaluate thresholds (5 s rule)&quot;]
+  M2 --&gt; M22[&quot;2.2 Create, repeat and resolve alerts&quot;]
+  M2 --&gt; M23[&quot;2.3 Send push notifications&quot;]
+  M2 --&gt; M24[&quot;2.4 Detect offline controllers&quot;]
+  M2 --&gt; M25[&quot;2.5 Delete records older than 90 days&quot;]
+  M3 --&gt; M31[&quot;3.1 Login and role-based access&quot;]
+  M3 --&gt; M32[&quot;3.2 Live dashboard&quot;]
+  M3 --&gt; M33[&quot;3.3 Notifications and acknowledgment&quot;]
+  M3 --&gt; M34[&quot;3.4 Reports and export (PDF, Excel, CSV)&quot;]
+  M3 --&gt; M35[&quot;3.5 System logs&quot;]
+  M4 --&gt; M41[&quot;4.1 User management&quot;]
+  M4 --&gt; M42[&quot;4.2 Tank assignment&quot;]
+  M4 --&gt; M43[&quot;4.3 Thresholds and alert settings&quot;]
+  M4 --&gt; M44[&quot;4.4 Sensor calibration&quot;]
+  M4 --&gt; M45[&quot;4.5 Maintenance mode and pump lock&quot;]
+  M4 --&gt; M46[&quot;4.6 Device accounts&quot;]
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+</pre></div>
+</section>
+<section class="fig" id="fig3">
+  <div class="head"><h2>Figure 3-8: IPO Model for Backend Server and Application Logic</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig3">Download SVG</button><button data-fmt="png" data-id="fig3">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart LR
+  I[&quot;INPUT&lt;br/&gt;&lt;br/&gt;• Live telemetry from the&lt;br/&gt;Realtime Database&lt;br/&gt;• Thresholds and alert settings&lt;br/&gt;• User credentials and roles&lt;br/&gt;• Device push tokens&lt;br/&gt;• Controller update times&quot;]
+  P[&quot;PROCESS&lt;br/&gt;&lt;br/&gt;• Firebase Authentication and&lt;br/&gt;role-based security rules&lt;br/&gt;• Alert service: 5-second threshold check&lt;br/&gt;• Create, repeat (60 s) and resolve alerts&lt;br/&gt;• Send push notifications (FCM)&lt;br/&gt;• Mark controllers offline after 30 s&lt;br/&gt;• Delete records older than 90 days&lt;br/&gt;• Heartbeat; clients take over if it stops&quot;]
+  O[&quot;OUTPUT&lt;br/&gt;&lt;br/&gt;• Alert notifications&lt;br/&gt;• Push notifications to devices&lt;br/&gt;• Log entries (e.g. Controller Offline)&lt;br/&gt;• Alert service heartbeat&lt;br/&gt;• Cleaned-up old records&quot;]
+  I --&gt; P --&gt; O
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+</pre></div>
+</section>
+<section class="fig" id="fig4">
+  <div class="head"><h2>Figure 3-9: IPO Model for Web Dashboard and Mobile Application</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig4">Download SVG</button><button data-fmt="png" data-id="fig4">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart LR
+  I[&quot;INPUT&lt;br/&gt;&lt;br/&gt;• Login (email or username, password)&lt;br/&gt;• Live data from Firebase listeners&lt;br/&gt;• User actions: acknowledge alert,&lt;br/&gt;change settings, calibrate,&lt;br/&gt;assign tanks, choose report range&lt;br/&gt;• Push notifications&quot;]
+  P[&quot;PROCESS&lt;br/&gt;&lt;br/&gt;• Role-based routing (Admin, Worker, Viewer)&lt;br/&gt;• Render status cards and gauges&lt;br/&gt;• Toast, chime and notification center&lt;br/&gt;• Record acknowledgment (who, when)&lt;br/&gt;• Average history (hourly / daily)&lt;br/&gt;• Count alerts and pump runs per period&lt;br/&gt;• Filter and search logs&quot;]
+  O[&quot;OUTPUT&lt;br/&gt;&lt;br/&gt;• Real-time status cards&lt;br/&gt;• Alerts with sound and push&lt;br/&gt;• Trend charts (level, pH)&lt;br/&gt;• PDF, Excel and CSV reports&lt;br/&gt;• Diagnostic log tables&lt;br/&gt;• Updated settings and calibration&quot;]
+  I --&gt; P --&gt; O
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+</pre></div>
+</section>
+<section class="fig" id="fig5">
+  <div class="head"><h2>Figure 3-10: Use Case Diagram</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig5">Download SVG</button><button data-fmt="png" data-id="fig5">Download PNG</button></div></div>
+  <p class="note">Notes for the figure: Worker&#x27;s **Toggle Pump** applies only to the tank assigned to them and only when the Pump Control Lock is off.</p>
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart LR
+  ADMIN((&quot;Admin&quot;))
+  WORKER((&quot;Worker&quot;))
+  VIEWER((&quot;Viewer&quot;))
+  subgraph SYS[&quot;Water Level and Quality Monitoring System&quot;]
+    direction TB
+    UC1([&quot;Login&quot;])
+    UC1a([&quot;Validate Credentials&quot;])
+    UC1b([&quot;Check User Role&quot;])
+    UC1c([&quot;Load Session&quot;])
+    UC2([&quot;View Dashboard&quot;])
+    UC3([&quot;View Notification History&quot;])
+    UC4([&quot;Acknowledge Alert&quot;])
+    UC5([&quot;Generate / Export Report&quot;])
+    UC6([&quot;View System Logs&quot;])
+    UC7([&quot;Toggle Pump (Simulation)&quot;])
+    UC8([&quot;Manage User Account&quot;])
+    UC8a([&quot;Add User (with Role)&quot;])
+    UC8b([&quot;Activate / Deactivate Account&quot;])
+    UC8c([&quot;Delete User&quot;])
+    UC9([&quot;Configure System&lt;br/&gt;(thresholds, calibration,&lt;br/&gt;tanks, maintenance, pump lock)&quot;])
+    UC10([&quot;Provide Data&quot;])
+    UC11([&quot;Raise Alert&quot;])
+    UC12([&quot;Send Push Notification&quot;])
+    UC13([&quot;Detect Controller Offline&quot;])
+  end
+  IOT((&quot;IoT Sensors&lt;br/&gt;(ESP32)&quot;))
+  SVC((&quot;Alert Service&quot;))
+
+  UC1 -. &quot;«include»&quot; .-&gt; UC1a
+  UC1 -. &quot;«include»&quot; .-&gt; UC1b
+  UC1 -. &quot;«include»&quot; .-&gt; UC1c
+  UC8a -. &quot;«extend»&quot; .-&gt; UC8
+  UC8b -. &quot;«extend»&quot; .-&gt; UC8
+  UC8c -. &quot;«extend»&quot; .-&gt; UC8
+
+  ADMIN --- UC1 &amp; UC2 &amp; UC3 &amp; UC4 &amp; UC5 &amp; UC6 &amp; UC7 &amp; UC8 &amp; UC9
+  WORKER --- UC1 &amp; UC2 &amp; UC3 &amp; UC4 &amp; UC5 &amp; UC6 &amp; UC7
+  VIEWER --- UC1 &amp; UC2 &amp; UC3
+  UC10 --- IOT
+  UC11 --- IOT
+  UC11 --- SVC
+  UC12 --- SVC
+  UC13 --- SVC
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+  class ADMIN,WORKER,VIEWER,IOT,SVC,UC1a,UC1b,UC1c,UC8a,UC8b,UC8c green
+</pre></div>
+</section>
+<section class="fig" id="fig6">
+  <div class="head"><h2>Figure 3-11: Activity Diagram</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig6">Download SVG</button><button data-fmt="png" data-id="fig6">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart TB
+  subgraph L1[&quot;IoT System&quot;]
+    S([&quot;●&quot;]) --&gt; A1[&quot;Read sensor data&quot;]
+    A1 --&gt; A2[&quot;Evaluate parameters&quot;]
+    A2 --&gt; A3[&quot;Log telemetry to database&lt;br/&gt;and update live dashboard&quot;]
+    A3 --&gt; D1{&quot;Critical value&lt;br/&gt;for 5 seconds?&quot;}
+    D1 -- &quot;No&quot; --&gt; A1
+    D1 -- &quot;Yes&quot; --&gt; A4[&quot;Log alert event&quot;]
+  end
+  subgraph L2[&quot;Alert Service&quot;]
+    B1[&quot;Create alert notification&quot;] --&gt; B2[&quot;Send push notification&quot;]
+  end
+  subgraph L3[&quot;Operator&quot;]
+    C1[&quot;Receive toast, chime&lt;br/&gt;and push notification&quot;] --&gt; C2[&quot;Inspect tank status&quot;]
+    C2 --&gt; C3[&quot;Acknowledge alert&lt;br/&gt;(chime silenced)&quot;]
+    C3 --&gt; C4[&quot;Perform on-site&lt;br/&gt;manual inspection&quot;]
+  end
+  subgraph L4[&quot;Admin&quot;]
+    E1[&quot;Receive system alert&quot;] --&gt; E2[&quot;Monitor real-time telemetry&quot;]
+    E2 --&gt; E3[&quot;Inspect system diagnostic logs&quot;]
+    E3 --&gt; E4[&quot;Verify telemetry stabilization&lt;br/&gt;(alert resolves after 5 s normal)&quot;]
+    E4 --&gt; F([&quot;◉&quot;])
+  end
+  A4 --&gt; B1
+  B2 --&gt; C1
+  B2 --&gt; E1
+  C4 --&gt; E4
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+  class D1,F,S green
+</pre></div>
+</section>
+<section class="fig" id="fig7">
+  <div class="head"><h2>Figure 3-12: Entity-Relationship Diagram (ERD)</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig7">Download SVG</button><button data-fmt="png" data-id="fig7">Download PNG</button></div></div>
+  <p class="note">Notes for the figure: USERS is stored in Cloud Firestore; all other entities are in the Firebase Realtime Database. SYSTEM_WORKER is the alert service&#x27;s heartbeat and has no relationships.</p>
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+erDiagram
+  CONFIG {
+    number lowLevelThreshold
+    number overflowThreshold
+    number minPh
+    number maxPh
+    boolean maintenanceMode
+    boolean pumpControlLock
+    number offlineThresholdSec
+    number repeatIntervalSec
+    boolean soundEnabled
+    boolean pushEnabled
+  }
+  TANKS {
+    string id PK
+    string name
+    string location
+    boolean enabled
+    string assignedWorker FK
+    number waterLevel
+    number waterHeight
+    number phLevel
+    string status
+    boolean pumpOn
+    number levelVmin
+    number levelVmax
+    number tankHeight
+    number levelOffset
+    number phNeutralVoltage
+    number phSlope
+    number phOffset
+    boolean levelSensorOk
+    boolean phSensorOk
+    string lowLevelAlert
+    string highLevelAlert
+    string phAlert
+    number lastUpdate
+    number rssi
+    boolean ethConnected
+    boolean wifiConnected
+    boolean controllerOffline
+  }
+  HISTORY_TANKS {
+    string id PK
+    string tankId FK
+    number waterLevel
+    number waterHeight
+    number phLevel
+    boolean pumpOn
+    number timestamp
+  }
+  USERS {
+    string id PK
+    string username
+    string email
+    string role
+    string jobTitle
+    string status
+    number createdAt
+  }
+  ROLES {
+    string uid PK, FK
+    string role &quot;admin, worker, viewer, device&quot;
+  }
+  USER_STATE {
+    string uid PK, FK
+    number notificationsLastReadAt
+    map notificationsReadIds
+    map fcmTokens &quot;push device tokens&quot;
+  }
+  NOTIFICATIONS {
+    string id PK
+    string tankId FK
+    string title
+    string message
+    string type
+    number timestamp
+    boolean acknowledged
+    string acknowledgedBy &quot;display name&quot;
+    string acknowledgedByUid FK
+    number acknowledgedAt
+    boolean resolved
+    number resolvedAt
+    number lastRepeatedAt
+  }
+  LOGS {
+    string id PK
+    string action
+    string details
+    string performedBy &quot;name of user or component&quot;
+    string logLevel
+    number timestamp
+  }
+  SYSTEM_WORKER {
+    number lastSeen
+    number startedAt
+  }
+
+  CONFIG ||--o{ TANKS : &quot;sets thresholds for&quot;
+  TANKS ||--o{ HISTORY_TANKS : &quot;records&quot;
+  TANKS ||--o{ NOTIFICATIONS : &quot;raises&quot;
+  USERS |o--o{ TANKS : &quot;is assigned&quot;
+  USERS ||--|| ROLES : &quot;has&quot;
+  USERS ||--o| USER_STATE : &quot;has&quot;
+  USERS |o--o{ NOTIFICATIONS : &quot;acknowledges&quot;
+  USERS |o..o{ LOGS : &quot;performedBy (name, not a strict key)&quot;
+</pre></div>
+</section>
+<section class="fig" id="fig8">
+  <div class="head"><h2>Figure 3-13: Architectural Design of the System</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig8">Download SVG</button><button data-fmt="png" data-id="fig8">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart TB
+  subgraph EDGE[&quot;Edge Tier (Physical Perception)&quot;]
+    direction LR
+    LS[&quot;Hydrostatic level sensor&lt;br/&gt;0–5 m, 4–20 mA&quot;] --&gt; CVM[&quot;Current-to-voltage&lt;br/&gt;module&quot;]
+    CVM --&gt; ESP[&quot;ESP32-WROOM-32&lt;br/&gt;filtering, alert states,&lt;br/&gt;pump logic&quot;]
+    PH[&quot;PH-4502C&lt;br/&gt;pH sensor&quot;] --&gt; ESP
+    ESP --- LAN[&quot;LAN8720&lt;br/&gt;Ethernet&quot;]
+  end
+  subgraph NETCLOUD[&quot;Network &amp; Cloud Tier&quot;]
+    direction LR
+    B1[&quot;TP-Link CPE210&quot;] -. &quot;point-to-point&lt;br/&gt;2.4 GHz&quot; .-&gt; B2[&quot;TP-Link CPE210&quot;]
+    B2 --&gt; RT[&quot;Wireless router /&lt;br/&gt;Internet gateway&quot;]
+    RT --&gt; FB[(&quot;Firebase&lt;br/&gt;Realtime Database · Firestore&lt;br/&gt;Authentication · Hosting&quot;)]
+    SVC[&quot;Alert Service&lt;br/&gt;Node.js + Firebase Admin SDK&quot;] &lt;--&gt; FB
+    SVC --&gt; FCM[&quot;Firebase Cloud&lt;br/&gt;Messaging&quot;]
+  end
+  subgraph CLIENT[&quot;Client Tier&quot;]
+    direction LR
+    WEB[&quot;Web dashboard&lt;br/&gt;React + Vite&quot;]
+    APP[&quot;Android app&lt;br/&gt;Capacitor&quot;]
+  end
+  LAN -- &quot;Cat6 / RJ45&quot; --&gt; B1
+  ESP -. &quot;Wi-Fi standby link&quot; .-&gt; RT
+  FB &lt;--&gt; WEB
+  FB &lt;--&gt; APP
+  FCM -. &quot;push&quot; .-&gt; WEB
+  FCM -. &quot;push&quot; .-&gt; APP
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+</pre></div>
+</section>
+<section class="fig" id="fig9">
+  <div class="head"><h2>Figure 3-14: Network Design Topology</h2>
+    <div class="actions"><button data-fmt="svg" data-id="fig9">Download SVG</button><button data-fmt="png" data-id="fig9">Download PNG</button></div></div>
+  
+  <div class="canvas"><pre class="mermaid">%%{init: {&quot;theme&quot;: &quot;base&quot;, &quot;themeVariables&quot;: {&quot;primaryColor&quot;: &quot;#CFE2FF&quot;, &quot;primaryBorderColor&quot;: &quot;#3B3F46&quot;, &quot;primaryTextColor&quot;: &quot;#111111&quot;, &quot;lineColor&quot;: &quot;#3B3F46&quot;, &quot;secondaryColor&quot;: &quot;#C3F5C3&quot;, &quot;tertiaryColor&quot;: &quot;#FFFFFF&quot;, &quot;clusterBkg&quot;: &quot;#FFFFFF&quot;, &quot;clusterBorder&quot;: &quot;#222222&quot;, &quot;edgeLabelBackground&quot;: &quot;#FFFFFF&quot;, &quot;fontFamily&quot;: &quot;Segoe UI, Arial, sans-serif&quot;, &quot;fontSize&quot;: &quot;15px&quot;, &quot;attributeBackgroundColorOdd&quot;: &quot;#FFFFFF&quot;, &quot;attributeBackgroundColorEven&quot;: &quot;#F3F6FA&quot;}, &quot;themeCSS&quot;: &quot;.nodeLabel, .label, .edgeLabel, text { font-weight: 600; } .cluster-label text, .cluster-label .nodeLabel { font-weight: 700; font-size: 17px; }&quot;}}%%
+flowchart LR
+  subgraph SITE[&quot;Sensor site (tested on 200 L drum model of Reservoir Tank No. 1)&quot;]
+    direction TB
+    ESP[&quot;ESP32 + LAN8720&lt;br/&gt;(IP65 enclosure)&quot;]
+    CPE1[&quot;TP-Link CPE210&lt;br/&gt;(station)&quot;]
+    ESP -- &quot;Cat6 UTP / RJ45&lt;br/&gt;primary link&quot; --&gt; CPE1
+  end
+  CPE1 -. &quot;Point-to-point 2.4 GHz&lt;br/&gt;15–20 m during testing&quot; .-&gt; CPE2
+  subgraph MPWSD[&quot;MPWSD network&quot;]
+    direction TB
+    CPE2[&quot;TP-Link CPE210&lt;br/&gt;(access point)&quot;]
+    RT[&quot;Wireless router /&lt;br/&gt;gateway&quot;]
+    AP[&quot;2.4 GHz Wi-Fi&lt;br/&gt;backup access point&quot;]
+    CPE2 -- &quot;Ethernet&quot; --&gt; RT
+    AP --- RT
+  end
+  ESP -. &quot;Wi-Fi standby link&lt;br/&gt;(used if Ethernet goes down)&quot; .-&gt; AP
+  RT -- &quot;Internet&quot; --&gt; FB[(&quot;Firebase Cloud&quot;)]
+  SVC[&quot;Alert Service&quot;] -- &quot;Internet&quot; --&gt; FB
+  FB -- &quot;Wi-Fi / mobile data&quot; --&gt; U1[&quot;Admin PC / laptop&quot;]
+  FB -- &quot;Wi-Fi / mobile data&quot; --&gt; U2[&quot;Android phones / tablets&quot;]
+  classDef green fill:#C3F5C3,stroke:#3B3F46,stroke-width:1.5px,color:#111111
+</pre></div>
+</section>
+</main>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs';
+mermaid.initialize({ startOnLoad:false, theme:'base', securityLevel:'strict',
+  flowchart:{ htmlLabels:false, curve:'basis' }, er:{ useMaxWidth:false } });
+// Render one diagram at a time; rendering them together makes them overlap
+const blocks = [...document.querySelectorAll('pre.mermaid')];
+for (let i = 0; i < blocks.length; i++) {
+  const pre = blocks[i];
+  try {
+    const { svg } = await mermaid.render('diagram' + i, pre.textContent);
+    const holder = document.createElement('div');
+    holder.innerHTML = svg;
+    pre.replaceWith(holder.firstElementChild);
+  } catch (err) {
+    pre.textContent = 'Could not draw this diagram: ' + err.message;
+  }
+}
+document.body.dataset.rendered = 'true';
+
+function svgOf(id) { return document.querySelector('#' + id + ' .canvas svg'); }
+function fileName(id) {
+  const t = document.querySelector('#' + id + ' h2').textContent;
+  return t.replace(/[^A-Za-z0-9-]+/g, '_').replace(/_+$/,'');
+}
+function serialize(svg) {
+  const clone = svg.cloneNode(true);
+  const vb = svg.viewBox.baseVal;
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('width', vb.width); clone.setAttribute('height', vb.height);
+  clone.style.maxWidth = 'none'; clone.style.backgroundColor = '#ffffff';
+  return { text: new XMLSerializer().serializeToString(clone), w: vb.width, h: vb.height };
+}
+function save(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-fmt]'); if (!btn) return;
+  const id = btn.dataset.id, svg = svgOf(id); if (!svg) return;
+  const { text, w, h } = serialize(svg);
+  if (btn.dataset.fmt === 'svg') { save(new Blob([text], { type:'image/svg+xml' }), fileName(id) + '.svg'); return; }
+  const scale = 3, img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale;
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    c.toBlob((b) => save(b, fileName(id) + '.png'), 'image/png');
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text);
+});
+</script>
+</body></html>
