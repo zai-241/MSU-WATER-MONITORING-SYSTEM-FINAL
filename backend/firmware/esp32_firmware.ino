@@ -759,20 +759,33 @@ void sortArray(float arr[], int n) {
   }
 }
 
+// ADC oversampling: each sample is the average of this many back-to-back
+// conversions. Averaging N readings cuts random ADC and wiring noise by about
+// sqrt(N) (16 -> ~4x) without adding delay (16 reads take well under 1 ms).
+// The average voltage is unchanged, so existing calibration values stay valid.
+const int ADC_OVERSAMPLE = 16;
+
+float readVoltageOversampled(int pin) {
+  uint32_t sum = 0;
+  for (int i = 0; i < ADC_OVERSAMPLE; i++) {
+    sum += analogRead(pin);
+  }
+  return ((float)sum / ADC_OVERSAMPLE / 4095.0) * 3.3;
+}
+
 // Non-blocking sampling routine called every SENSOR_SAMPLE_INTERVAL ms.
 void sampleSensorsNonBlocking() {
   unsigned long now = millis();
   if (now - lastSensorSampleTime >= SENSOR_SAMPLE_INTERVAL) {
     lastSensorSampleTime = now;
 
-    levelRawSamples[levelRawIndex] =
-        (analogRead(LEVEL_SENSOR_PIN) / 4095.0) * 3.3;
+    levelRawSamples[levelRawIndex] = readVoltageOversampled(LEVEL_SENSOR_PIN);
     levelRawIndex = (levelRawIndex + 1) % FILTER_MEDIAN_WINDOW;
     if (levelRawIndex == 0) {
       levelBufferFilled = true;
     }
 
-    phRawSamples[phRawIndex] = (analogRead(PH_SENSOR_PIN) / 4095.0) * 3.3;
+    phRawSamples[phRawIndex] = readVoltageOversampled(PH_SENSOR_PIN);
     phRawIndex = (phRawIndex + 1) % FILTER_MEDIAN_WINDOW;
     if (phRawIndex == 0) {
       phBufferFilled = true;
@@ -782,7 +795,7 @@ void sampleSensorsNonBlocking() {
 
 float readLevelVoltageStable() {
   if (!levelBufferFilled) {
-    return (analogRead(LEVEL_SENSOR_PIN) / 4095.0) * 3.3;
+    return readVoltageOversampled(LEVEL_SENSOR_PIN);
   }
 
   float tempSamples[FILTER_MEDIAN_WINDOW];
@@ -805,7 +818,7 @@ float readLevelVoltageStable() {
 
 float readPhVoltageStable() {
   if (!phBufferFilled) {
-    return (analogRead(PH_SENSOR_PIN) / 4095.0) * 3.3;
+    return readVoltageOversampled(PH_SENSOR_PIN);
   }
 
   float tempSamples[FILTER_MEDIAN_WINDOW];
@@ -1564,8 +1577,8 @@ void sensorTask(void *pvParameters) {
 
   // Pre-fill filter buffers
   for (int i = 0; i < FILTER_MEDIAN_WINDOW; i++) {
-    levelRawSamples[i] = (analogRead(LEVEL_SENSOR_PIN) / 4095.0) * 3.3;
-    phRawSamples[i] = (analogRead(PH_SENSOR_PIN) / 4095.0) * 3.3;
+    levelRawSamples[i] = readVoltageOversampled(LEVEL_SENSOR_PIN);
+    phRawSamples[i] = readVoltageOversampled(PH_SENSOR_PIN);
     vTaskDelay(pdMS_TO_TICKS(10));
   }
   levelBufferFilled = true;
