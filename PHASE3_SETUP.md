@@ -54,24 +54,22 @@ While it runs, Admin Panel → Configuration shows **"Alert service: running"** 
 
    This file is a master key to the project. It is listed in `.gitignore`. Never commit it, email it, or put it in the frontend.
 
-2. Create the settings file:
+2. Create the settings file by copying `backend/worker/.env.example` to `backend/worker/.env`. The defaults are already correct for this project.
+
+3. Install and test the connection. Run this from the project root; it works in PowerShell, Command Prompt and Git Bash:
 
 ```bash
-cp backend/worker/.env.example backend/worker/.env
-```
-
-3. Install and test the connection:
-
-```bash
-cd backend/worker && npm install && npm run check
+npm run worker:setup
 ```
 
    `check passed` means the key and database URL are correct.
 
-4. Start it:
+   Note for Windows PowerShell: commands joined with `&&` (for example `cd backend/worker && npm install`) fail there with "The token '&&' is not a valid statement separator". The `npm run` commands in this guide avoid that.
+
+4. Start it (from the project root):
 
 ```bash
-cd backend/worker && npm start
+npm run worker
 ```
 
 ### Keep it running
@@ -81,7 +79,11 @@ npm install -g pm2
 ```
 
 ```bash
-cd backend/worker && pm2 start "npm start" --name water-worker && pm2 save
+pm2 start npm --name water-worker -- run worker
+```
+
+```bash
+pm2 save
 ```
 
 On Linux or a Raspberry Pi, run `pm2 startup` once and follow the command it prints. On Windows, use the `pm2-windows-startup` package or a Task Scheduler entry that runs `pm2 resurrect` at logon.
@@ -113,7 +115,7 @@ VITE_FCM_VAPID_KEY=<the key pair value>
 3. Rebuild and deploy:
 
 ```bash
-npm run build && npx firebase deploy --only hosting
+npm run deploy:hosting
 ```
 
 4. On each device: open the site, click the bell, click **Enable Push**, and allow notifications.
@@ -136,7 +138,11 @@ The Android app shows the hosted site inside a WebView, and WebView cannot recei
 3. Build the web app, sync, and build the APK:
 
 ```bash
-npm run build && npm run cap:sync
+npm run build
+```
+
+```bash
+npm run cap:sync
 ```
 
 ```bash

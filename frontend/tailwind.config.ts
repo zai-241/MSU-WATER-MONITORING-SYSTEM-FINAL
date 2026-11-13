@@ -2,7 +2,14 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  // `relative: true` resolves these globs from this config file's folder (frontend/).
+  // Without it Tailwind resolves them from the directory the build is started in, so
+  // building from the repository root (npm run build) found no source files and
+  // produced a stylesheet with no utility classes: an unstyled site.
+  content: {
+    relative: true,
+    files: ["./index.html", "./src/**/*.{ts,tsx}"],
+  },
   prefix: "",
   theme: {
     container: {

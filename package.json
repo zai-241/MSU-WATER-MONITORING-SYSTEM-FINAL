@@ -15,7 +15,10 @@
     "cap:open": "cd mobile && npx cap open android",
     "worker": "npm --prefix backend/worker start",
     "worker:check": "npm --prefix backend/worker run check",
-    "typecheck": "tsc --noEmit -p frontend/tsconfig.app.json"
+    "typecheck": "tsc --noEmit -p frontend/tsconfig.app.json",
+    "worker:install": "npm --prefix backend/worker install",
+    "worker:setup": "npm run worker:install && npm run worker:check",
+    "deploy:hosting": "npm run build && npx firebase deploy --only hosting"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

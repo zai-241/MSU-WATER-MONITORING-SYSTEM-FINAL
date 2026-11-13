@@ -18,8 +18,10 @@
  * Run:  npm start          (needs .env, see .env.example)
  *       npm run check      (verifies credentials and database access, then exits)
  */
-import 'dotenv/config';
 import { existsSync } from 'node:fs';
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import {
   evaluateTank,
@@ -46,6 +48,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_CONFIG: EngineConfig = { lowLevelThreshold: 15, overflowThreshold: 95, minPh: 6.5, maxPh: 8.5 };
 
+// Settings are read from backend/worker/.env regardless of the current directory
+const WORKER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+dotenv.config({ path: resolve(WORKER_DIR, '.env') });
+
 const DATABASE_URL = process.env.DATABASE_URL;
 const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
 const PUSH_ENABLED = process.env.PUSH_ENABLED !== 'false';
@@ -56,10 +62,39 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-if (!DATABASE_URL) fail('DATABASE_URL is not set. Copy .env.example to .env and fill it in.');
-const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-if (!keyPath) fail('GOOGLE_APPLICATION_CREDENTIALS is not set. Point it at your service-account key file.');
-if (!existsSync(keyPath)) fail(`Service-account key not found at "${keyPath}".`);
+if (!DATABASE_URL) {
+  fail(`DATABASE_URL is not set.
+  Copy ${resolve(WORKER_DIR, '.env.example')} to ${resolve(WORKER_DIR, '.env')} and fill it in.`);
+}
+
+// The key path is resolved against the worker folder, so the worker starts correctly
+// from any directory (repo root, pm2, Task Scheduler).
+const configuredKey = process.env.GOOGLE_APPLICATION_CREDENTIALS || './serviceAccount.json';
+const keyPath = isAbsolute(configuredKey) ? configuredKey : resolve(WORKER_DIR, configuredKey);
+if (!existsSync(keyPath)) {
+  fail(
+    `Service-account key not found.
+` +
+    `  Expected at: ${keyPath}
+
+` +
+    `  How to get it (one time):
+` +
+    `   1. Open https://console.firebase.google.com/project/msu-water-monitoring-system/settings/serviceaccounts/adminsdk
+` +
+    `   2. Click "Generate new private key" and confirm.
+` +
+    `   3. Move the downloaded .json file into the worker folder and rename it to serviceAccount.json
+` +
+    `      (${resolve(WORKER_DIR, 'serviceAccount.json')})
+` +
+    `   4. Run the check again:  npm run worker:check
+
+` +
+    `  Keep this file private. It is already listed in .gitignore.`
+  );
+}
+process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
 
 admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: DATABASE_URL });
 const db = admin.database();
