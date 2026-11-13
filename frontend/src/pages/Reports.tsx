@@ -45,6 +45,8 @@ import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
 import { estimateVolumeLiters } from '@/lib/constants';
+import { useRangeLogs } from '@/hooks/useRangeLogs';
+import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from '@/lib/reportLogs';
 
 const DATE_RANGES = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days'] as const;
 type DateRange = typeof DATE_RANGES[number];
@@ -55,13 +57,12 @@ export type { HistoryRawSample, GroupedTelemetryPoint } from '@/hooks/useTankHis
 
 const Reports = () => {
   const { tanks: rawTanks, serverTimeOffset } = useTanks();
-  const { logs: rawLogs, addLog } = useLogs();
+  const { addLog } = useLogs();
   const { currentUser } = useAuth();
   const { config } = useConfig();
 
   // Throttle high-frequency updates from Firebase to stabilize chart drawings and heavy table pagination
   const allTanks = useThrottledValue(rawTanks, 1500);
-  const logs = useThrottledValue(rawLogs, 1500);
 
   // Exclude planned expansion tanks from Reports, exports, summary averages, and alert counts
   const tanks = useMemo(() => allTanks.filter(t => !isTankPlanned(t)), [allTanks]);
@@ -95,6 +96,13 @@ const Reports = () => {
   const selectedTank = useMemo(() => {
     return tanks.find(t => t.id === selectedTankId) || null;
   }, [tanks, selectedTankId]);
+
+  // Every log entry in the selected window (not just the newest 100) that concerns this tank
+  const { logs: rangeLogs } = useRangeLogs(days);
+  const logs = useMemo(
+    () => (selectedTank ? rangeLogs.filter(l => logBelongsToTank(l, selectedTank)) : []),
+    [rangeLogs, selectedTank]
+  );
 
   // Setup processedTank with state buffering, stabilization rounding, and debounce timers
   const dummyTank: Tank = {
@@ -281,13 +289,7 @@ const Reports = () => {
     const rangeData = [];
     const now = new Date();
     
-    // A pump run is logged by the controller when it actually starts the pump:
-    // automatically at the low threshold, or after accepting a manual ON command.
-    // Refused commands and dashboard requests (PUMP_ON) are not counted.
-    const pumpLogs = logs.filter(l =>
-      l.action === 'Pump Controller' &&
-      (l.details.startsWith('Pump started automatically') || l.details.startsWith('Manual pump ON command accepted'))
-    );
+    const pumpLogs = logs.filter(isPumpRun);
     
     for (let i = days; i >= 0; i--) {
       const d = new Date(now);
@@ -311,39 +313,11 @@ const Reports = () => {
 
   // 3. Dynamic Alert Distribution parsed from Real-Time Firebase Logs
   const alertDistributionData = useMemo(() => {
-    const categories = {
-      'Low Water Level': 0,
-      'High Water Level': 0,
-      'Unsafe pH Level': 0,
-      'Sensor Faults': 0,
-      'Network Failures': 0
-    };
-    
-    // Scan all warnings, errors and critical logs
-    logs.forEach(l => {
-      const details = l.details.toLowerCase();
-      const action = l.action.toLowerCase();
-      
-      if (details.includes('low water') || details.includes('low level')) {
-        categories['Low Water Level']++;
-      } else if (details.includes('high water') || details.includes('overflow') || details.includes('high level')) {
-        categories['High Water Level']++;
-      } else if (details.includes('ph level') || details.includes('unsafe ph')) {
-        categories['Unsafe pH Level']++;
-      } else if (action.includes('fault') || details.includes('fault') || action.includes('sensor error')) {
-        categories['Sensor Faults']++;
-      } else if (action.includes('network') || details.includes('offline') || action.includes('firebase error')) {
-        categories['Network Failures']++;
-      }
-    });
+    // One count per alert incident (the "Triggered" entry), not per reminder, recovery,
+    // or settings change that happens to mention "overflow" or "low level"
+    const categories = countAlertStarts(logs);
 
-    const result = [
-      { name: 'Low Water Level', value: categories['Low Water Level'] },
-      { name: 'High Water Level', value: categories['High Water Level'] },
-      { name: 'Unsafe pH Level', value: categories['Unsafe pH Level'] },
-      { name: 'Sensor Faults', value: categories['Sensor Faults'] },
-      { name: 'Network Failures', value: categories['Network Failures'] }
-    ];
+    const result = ALERT_CATEGORIES.map(name => ({ name, value: categories[name] }));
 
     return result.filter(item => item.value > 0);
   }, [logs]);
