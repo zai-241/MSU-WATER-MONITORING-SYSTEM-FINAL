@@ -16,7 +16,7 @@
     "worker": "npm --prefix backend/worker start",
     "worker:check": "npm --prefix backend/worker run check",
     "typecheck": "tsc --noEmit -p frontend/tsconfig.app.json",
-    "worker:install": "npm --prefix backend/worker install",
+    "worker:install": "cd backend/worker && npm install",
     "worker:setup": "npm run worker:install && npm run worker:check",
     "deploy:hosting": "npm run build && npx firebase deploy --only hosting"
   },

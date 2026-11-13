@@ -39,3 +39,11 @@ mobile/android/app/google-services.json
 # Built Android packages
 *.apk
 *.aab
+
+# Play Store upload key: never commit, keep a backup somewhere safe
+mobile/android/keystore.properties
+*.jks
+*.keystore
+
+# Thesis review outputs (contain thesis text; keep private)
+thesis-review/

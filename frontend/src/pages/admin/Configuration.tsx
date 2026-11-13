@@ -180,8 +180,28 @@ const Configuration = () => {
           return;
         }
 
+        // Log which calibration values changed, like the threshold changes above
+        type CalibrationKey = 'levelVmin' | 'levelVmax' | 'tankHeight' | 'levelOffset' | 'phNeutralVoltage' | 'phSlope' | 'phOffset';
+        const calibrationLabels: Record<CalibrationKey, string> = {
+          levelVmin: 'Level Vmin', levelVmax: 'Level Vmax', tankHeight: 'Tank Height',
+          levelOffset: 'Level Offset', phNeutralVoltage: 'pH Neutral Voltage',
+          phSlope: 'pH Slope', phOffset: 'pH Offset',
+        };
+        const calibrationChanges = (Object.keys(calibrationLabels) as CalibrationKey[])
+          .filter(key => tank1?.[key] !== calibrationUpdates[key])
+          .map(key => `${calibrationLabels[key]} (${tank1?.[key] ?? 'unset'} -> ${calibrationUpdates[key]})`);
+
         await updateTank('1', calibrationUpdates);
         setIsTank1Dirty(false);
+
+        if (calibrationChanges.length > 0) {
+          addLog({
+            action: 'Calibration Updated',
+            details: `Updated sensor calibration for ${tank1?.name ?? 'Tank 1'}: ${calibrationChanges.join(', ')}`,
+            performedBy: currentUser?.username || 'Administrator',
+            logLevel: 'INFO'
+          });
+        }
       }
       
       toast.success('System configuration and sensor calibrations saved successfully!');

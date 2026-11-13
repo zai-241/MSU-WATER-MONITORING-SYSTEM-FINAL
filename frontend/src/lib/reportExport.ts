@@ -10,6 +10,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Tank, Log } from '@/store/useStore';
 import type { GroupedTelemetryPoint } from '@/hooks/useTankHistory';
+import { estimateVolumeLiters } from './constants';
 
 /** jspdf-autotable records where the last table ended on the document */
 type DocWithTable = jsPDF & { lastAutoTable: { finalY: number } };
@@ -39,10 +40,12 @@ export interface ReportExportData {
   selectedTank: Tank;
   summaryMetrics: ReportSummaryMetrics | null;
   telemetryData: GroupedTelemetryPoint[];
+  /** Configured alert thresholds, shown as the benchmarks in the summary */
+  thresholds: { lowLevel: number; overflow: number; minPh: number; maxPh: number };
 }
 
 export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJS.Workbook> {
-  const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData } = data;
+  const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData, thresholds } = data;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = currentUser?.username || 'MSU Water Monitoring System';
@@ -95,10 +98,10 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
   });
 
   const metricsList = [
-    ['Average Water Level', summaryMetrics?.avgLevel !== null && summaryMetrics?.avgLevel !== undefined ? `${summaryMetrics.avgLevel}%` : 'N/A', 'Normal: 20% - 90%'],
+    ['Average Water Level', summaryMetrics?.avgLevel !== null && summaryMetrics?.avgLevel !== undefined ? `${summaryMetrics.avgLevel}%` : 'N/A', `Normal: ${thresholds.lowLevel}% - ${thresholds.overflow}%`],
     ['Minimum Water Level', summaryMetrics?.minLevel !== null && summaryMetrics?.minLevel !== undefined ? `${summaryMetrics.minLevel}%` : 'N/A', 'Observed Low'],
     ['Maximum Water Level', summaryMetrics?.maxLevel !== null && summaryMetrics?.maxLevel !== undefined ? `${summaryMetrics.maxLevel}%` : 'N/A', 'Observed High'],
-    ['Average pH Level', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', 'Safe: 6.5 - 8.5'],
+    ['Average pH Level', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', `Safe: ${thresholds.minPh} - ${thresholds.maxPh}`],
     ['Minimum pH Level', summaryMetrics?.minPh !== null && summaryMetrics?.minPh !== undefined ? `${summaryMetrics.minPh}` : 'N/A', 'Observed Low'],
     ['Maximum pH Level', summaryMetrics?.maxPh !== null && summaryMetrics?.maxPh !== undefined ? `${summaryMetrics.maxPh}` : 'N/A', 'Observed High'],
     ['Total Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns ?? 0, 'Activation Count in Window'],
@@ -144,7 +147,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
       waterLevel: item.waterLevel !== null ? item.waterLevel : 'Sensor Fault',
       waterHeight: item.waterLevel !== null ? item.height : 'N/A',
       phLevel: item.phLevel !== null ? item.phLevel : 'Sensor Fault',
-      volume: item.waterLevel !== null ? Math.round(item.waterLevel * 50) : 'N/A',
+      volume: item.waterLevel !== null ? estimateVolumeLiters(item.waterLevel) : 'N/A',
       sampleCount: item.sampleCount,
       status,
     });
@@ -231,7 +234,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
 }
 
 export function buildPdfDocument(data: ReportExportData): jsPDF {
-  const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData } = data;
+  const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData, thresholds } = data;
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const primaryColor: [number, number, number] = [30, 58, 138];
@@ -270,9 +273,9 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
   doc.text('1. Executive Telemetry Summary', 14, currentY);
 
   const summaryTableRows = [
-    ['Average Water Level', summaryMetrics?.avgLevel !== null && summaryMetrics?.avgLevel !== undefined ? `${summaryMetrics.avgLevel}%` : 'N/A', 'Target: 20% - 90%'],
+    ['Average Water Level', summaryMetrics?.avgLevel !== null && summaryMetrics?.avgLevel !== undefined ? `${summaryMetrics.avgLevel}%` : 'N/A', `Target: ${thresholds.lowLevel}% - ${thresholds.overflow}%`],
     ['Water Level Range', summaryMetrics ? `${summaryMetrics.minLevel}% - ${summaryMetrics.maxLevel}%` : 'N/A', 'Observed extremes'],
-    ['Average pH Value', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', 'Safe range: 6.5 - 8.5'],
+    ['Average pH Value', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', `Safe range: ${thresholds.minPh} - ${thresholds.maxPh}`],
     ['pH Value Range', summaryMetrics ? `${summaryMetrics.minPh} - ${summaryMetrics.maxPh}` : 'N/A', 'Observed extremes'],
     ['Total Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns !== undefined ? `${summaryMetrics.totalPumpRuns} cycles` : '0 cycles', 'Logged activations'],
     ['Total Alarms & Incidents', summaryMetrics?.alertsRegistered !== undefined ? `${summaryMetrics.alertsRegistered}` : '0', 'System warnings'],
@@ -312,7 +315,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
       d.waterLevel !== null ? `${d.waterLevel}%` : 'Sensor Fault',
       d.waterLevel !== null ? `${d.height} m` : 'N/A',
       d.phLevel !== null ? `${d.phLevel}` : 'Sensor Fault',
-      d.waterLevel !== null ? `${Math.round(d.waterLevel * 50)} L` : 'N/A',
+      d.waterLevel !== null ? `${estimateVolumeLiters(d.waterLevel).toLocaleString()} L` : 'N/A',
       String(d.sampleCount),
       statusStr,
     ];

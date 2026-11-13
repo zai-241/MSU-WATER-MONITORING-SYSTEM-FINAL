@@ -1,14 +1,23 @@
-# Builds the MSU Water System Android app (debug APK) without opening Android Studio.
+# Builds the MSU Water System Android app without opening Android Studio.
 #
 # Usage, from the project root in PowerShell:
-#     powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1
+#     powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1            # debug APK for testing
+#     powershell -ExecutionPolicy Bypass -File mobile\build-apk.ps1 -Release   # signed AAB for the Play Store
 #
 # Requires Android Studio (for its bundled Java) and the Android SDK, both in
-# their default install locations. The APK is written to
-#     mobile\MSU-Water-System-debug.apk
+# their default install locations. Output:
+#     mobile\MSU-Water-System-debug.apk     (debug)
+#     mobile\MSU-Water-System-release.aab   (release)
+#
+# The first -Release run creates the Play Store upload key in
+# mobile\android\upload-key.jks and its passwords in mobile\android\keystore.properties.
+# Both are git-ignored. Back them up: every future update must be signed with this key.
+
+param([switch]$Release)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$androidDir = Join-Path $PSScriptRoot 'android'
 
 $jbr = 'C:\Program Files\Android\Android Studio\jbr'
 $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
@@ -26,6 +35,28 @@ $socketDir = Join-Path $env:SystemDrive 'msu-gradle-tmp'
 New-Item -ItemType Directory -Force $socketDir | Out-Null
 $env:JAVA_TOOL_OPTIONS = "-Djdk.net.unixdomain.tmpdir=$socketDir -Djava.net.preferIPv4Stack=true"
 
+if ($Release) {
+    $propsFile = Join-Path $androidDir 'keystore.properties'
+    $keyFile = Join-Path $androidDir 'upload-key.jks'
+    if (-not (Test-Path $propsFile)) {
+        if (Test-Path $keyFile) { throw "$keyFile exists but keystore.properties is missing. Restore keystore.properties from your backup." }
+        Write-Host 'Creating the Play Store upload key (first release build only)...'
+        $chars = [char[]]'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+        $password = -join (1..24 | ForEach-Object { $chars | Get-Random })
+        & "$jbr\bin\keytool.exe" -genkeypair -v -keystore $keyFile -alias upload -keyalg RSA -keysize 2048 -validity 10000 `
+            -storepass $password -keypass $password -dname 'CN=MSU Water System, O=MSU Water System, C=PH'
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the upload key.' }
+        @(
+            'storeFile=upload-key.jks'
+            "storePassword=$password"
+            'keyAlias=upload'
+            "keyPassword=$password"
+        ) | Set-Content -Encoding ascii $propsFile
+        Write-Host "Created $keyFile"
+        Write-Host 'BACK UP upload-key.jks and keystore.properties now. You need them for every app update.'
+    }
+}
+
 Write-Host '1/3 Building the web app...'
 Push-Location $root
 npm run build
@@ -36,14 +67,20 @@ npm run cap:sync
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'Capacitor sync failed.' }
 Pop-Location
 
-Write-Host '3/3 Building the APK (the first run downloads Gradle and takes several minutes)...'
-Push-Location (Join-Path $PSScriptRoot 'android')
-.\gradlew.bat assembleDebug --console=plain --no-daemon
+$task = if ($Release) { 'bundleRelease' } else { 'assembleDebug' }
+Write-Host "3/3 Building ($task; the first run downloads Gradle and takes several minutes)..."
+Push-Location $androidDir
+.\gradlew.bat $task --console=plain --no-daemon
 $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { throw 'Android build failed. See the output above.' }
 
-$apk = Join-Path $PSScriptRoot 'android\app\build\outputs\apk\debug\app-debug.apk'
-$out = Join-Path $PSScriptRoot 'MSU-Water-System-debug.apk'
-Copy-Item $apk $out -Force
+if ($Release) {
+    $built = Join-Path $androidDir 'app\build\outputs\bundle\release\app-release.aab'
+    $out = Join-Path $PSScriptRoot 'MSU-Water-System-release.aab'
+} else {
+    $built = Join-Path $androidDir 'app\build\outputs\apk\debug\app-debug.apk'
+    $out = Join-Path $PSScriptRoot 'MSU-Water-System-debug.apk'
+}
+Copy-Item $built $out -Force
 Write-Host "Done: $out"

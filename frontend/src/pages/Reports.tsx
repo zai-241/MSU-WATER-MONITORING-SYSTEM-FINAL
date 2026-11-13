@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useTanks, useLogs, Tank, isTankPlanned, isTankControllerOffline } from '@/store/useStore';
+import { useTanks, useLogs, useConfig, Tank, isTankPlanned, isTankControllerOffline } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
 import { database } from '@/config/firebase';
 import { ref, query, orderByChild, endAt, get, update } from 'firebase/database';
@@ -44,6 +44,7 @@ import {
 import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
+import { estimateVolumeLiters } from '@/lib/constants';
 
 const DATE_RANGES = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days'] as const;
 type DateRange = typeof DATE_RANGES[number];
@@ -56,6 +57,7 @@ const Reports = () => {
   const { tanks: rawTanks, serverTimeOffset } = useTanks();
   const { logs: rawLogs, addLog } = useLogs();
   const { currentUser } = useAuth();
+  const { config } = useConfig();
 
   // Throttle high-frequency updates from Firebase to stabilize chart drawings and heavy table pagination
   const allTanks = useThrottledValue(rawTanks, 1500);
@@ -136,10 +138,10 @@ const Reports = () => {
   const phCategory = useMemo(() => {
     if (!selectedTank) return { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' };
     const ph = processedTank.phLevel ?? 7.0;
-    if (ph < 6.5) return { label: 'Acidic', color: 'text-danger bg-danger/10 border-danger/20' };
-    if (ph > 8.5) return { label: 'Alkaline', color: 'text-warning bg-warning/10 border-warning/20' };
+    if (ph < config.minPh) return { label: 'Acidic', color: 'text-danger bg-danger/10 border-danger/20' };
+    if (ph > config.maxPh) return { label: 'Alkaline', color: 'text-warning bg-warning/10 border-warning/20' };
     return { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' };
-  }, [processedTank.phLevel, selectedTank]);
+  }, [processedTank.phLevel, selectedTank, config.minPh, config.maxPh]);
 
   // Calculate dynamic active alert count
   const activeAlerts = useMemo(() => {
@@ -279,10 +281,12 @@ const Reports = () => {
     const rangeData = [];
     const now = new Date();
     
-    // Group active logs
-    const pumpLogs = logs.filter(l => 
-      l.action === 'Pump Controller' && 
-      (l.details.includes('Activating') || l.details.includes('ON'))
+    // A pump run is logged by the controller when it actually starts the pump:
+    // automatically at the low threshold, or after accepting a manual ON command.
+    // Refused commands and dashboard requests (PUMP_ON) are not counted.
+    const pumpLogs = logs.filter(l =>
+      l.action === 'Pump Controller' &&
+      (l.details.startsWith('Pump started automatically') || l.details.startsWith('Manual pump ON command accepted'))
     );
     
     for (let i = days; i >= 0; i--) {
@@ -402,7 +406,7 @@ const Reports = () => {
       const csvRows = telemetryData.map(d => {
         const lvl = d.waterLevel !== null ? String(d.waterLevel) : 'N/A';
         const ph = d.phLevel !== null ? String(d.phLevel) : 'N/A';
-        const estVolume = d.waterLevel !== null ? Math.round(d.waterLevel * 50) : 'N/A';
+        const estVolume = d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel) : 'N/A';
         return `${d.date},${lvl},${d.height},${ph},${estVolume},${d.sampleCount}`;
       }).join('\n');
       
@@ -431,6 +435,12 @@ const Reports = () => {
     selectedTank: selectedTank as Tank,
     summaryMetrics,
     telemetryData,
+    thresholds: {
+      lowLevel: config.lowLevelThreshold,
+      overflow: config.overflowThreshold,
+      minPh: config.minPh,
+      maxPh: config.maxPh,
+    },
   };
 
   const handleExportExcel = async () => {
@@ -635,7 +645,7 @@ const Reports = () => {
                 </h2>
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Height: {(processedTank?.waterHeight ?? 0).toFixed(2)}m</span>
-                  <span>Volume: {Math.round((processedTank?.waterLevel ?? 0) * 50).toLocaleString()}L</span>
+                  <span>Volume: {estimateVolumeLiters(processedTank?.waterLevel ?? 0).toLocaleString()} L</span>
                 </div>
               </div>
 
@@ -676,8 +686,8 @@ const Reports = () => {
                   {(processedTank?.phLevel ?? 7.0).toFixed(1)}
                 </h2>
                 <div className="flex justify-between text-xs text-muted-foreground font-medium">
-                  <span>Threshold min: 6.5</span>
-                  <span>max: 8.5</span>
+                  <span>Threshold min: {config.minPh}</span>
+                  <span>max: {config.maxPh}</span>
                 </div>
               </div>
 
@@ -699,7 +709,7 @@ const Reports = () => {
                   <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                     <Cpu size={18} />
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Pump System</span>
+                  <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Pump System (Simulation)</span>
                 </div>
                 <span className={`h-2.5 w-2.5 rounded-full ${processedTank?.pumpOn ? 'bg-safe animate-ping' : 'bg-muted-foreground/60'}`} />
               </div>
@@ -713,12 +723,6 @@ const Reports = () => {
                 </p>
               </div>
 
-              <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between text-xs font-medium text-muted-foreground">
-                <span>Flow Rate:</span>
-                <span className={processedTank?.pumpOn ? 'text-safe font-mono font-bold' : 'text-muted-foreground font-mono'}>
-                  {processedTank?.pumpOn ? '250 L/min' : '0 L/min'}
-                </span>
-              </div>
             </motion.div>
 
             {/* CARD 4: DIAGNOSTICS & SYSTEM CARD */}
@@ -823,8 +827,8 @@ const Reports = () => {
                         formatter={(value: any) => [value !== null ? `${value}%` : 'Sensor Fault', 'Water Level']}
                       />
                       <Area type="monotone" dataKey="waterLevel" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#levelGradient)" dot={{ r: 4, fill: '#3b82f6' }} />
-                      <ReferenceLine y={20} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Low Threshold', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
-                      <ReferenceLine y={90} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'High Threshold', fill: '#f59e0b', fontSize: 9, position: 'insideTopLeft' }} />
+                      <ReferenceLine y={config.lowLevelThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Low Threshold', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
+                      <ReferenceLine y={config.overflowThreshold} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'High Threshold', fill: '#f59e0b', fontSize: 9, position: 'insideTopLeft' }} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -867,8 +871,8 @@ const Reports = () => {
                         formatter={(value: any) => [value !== null ? `${value} pH` : 'Sensor Fault', 'pH Value']}
                       />
                       <Line type="monotone" dataKey="phLevel" stroke="#a855f7" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--card))' }} />
-                      <ReferenceLine y={6.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Acidic Limit', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
-                      <ReferenceLine y={8.5} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Alkaline Limit', fill: '#ef4444', fontSize: 9, position: 'insideTopLeft' }} />
+                      <ReferenceLine y={config.minPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Acidic Limit', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
+                      <ReferenceLine y={config.maxPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Alkaline Limit', fill: '#ef4444', fontSize: 9, position: 'insideTopLeft' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1015,14 +1019,14 @@ const Reports = () => {
                         <td className="py-3.5 px-4">
                           {row.phLevel !== null ? (
                             <span className={`px-2 py-0.5 rounded ${
-                              row.phLevel < 6.5 || row.phLevel > 8.5 ? 'bg-danger/10 text-danger' : 'text-purple-500'
+                              row.phLevel < config.minPh || row.phLevel > config.maxPh ? 'bg-danger/10 text-danger' : 'text-purple-500'
                             }`}>{row.phLevel}</span>
                           ) : (
                             <span className="text-muted-foreground italic text-[11px]">Sensor Fault</span>
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-foreground font-bold">
-                          {row.waterLevel !== null ? `${Math.round(row.waterLevel * 50).toLocaleString()} L` : 'N/A'}
+                          {row.waterLevel !== null ? `${estimateVolumeLiters(row.waterLevel).toLocaleString()} L` : 'N/A'}
                         </td>
                       </tr>
                     ))

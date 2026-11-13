@@ -191,7 +191,7 @@ const TankCard = memo(({
           </span>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-muted-foreground">Pump:</span>
+          <span className="text-muted-foreground">Pump (Simulation):</span>
           <div className="flex items-center gap-2">
             {isPlanned ? (
               <span className="text-sm font-medium text-muted-foreground">--</span>

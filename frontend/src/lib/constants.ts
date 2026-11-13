@@ -20,6 +20,17 @@ export const HISTORY_PAGE_SIZE = 200;
 /** Notifications, logs and history samples older than this are purged. */
 export const RETENTION_DAYS = 90;
 
+/**
+ * Capacity of Reservoir Tank No. 1: 16,852.25 US gallons (× 3.785 L/gal).
+ * Used to estimate the stored volume from the level percentage.
+ */
+export const TANK_CAPACITY_LITERS = 63_793;
+
+/** Estimated stored volume in liters for a level percentage (0–100). */
+export function estimateVolumeLiters(levelPercent: number): number {
+  return Math.round((levelPercent / 100) * TANK_CAPACITY_LITERS);
+}
+
 /** Minimum gap between writes of the tank list to the offline cache. */
 export const TANK_CACHE_WRITE_INTERVAL_MS = 5_000;
 
