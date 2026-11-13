@@ -111,7 +111,7 @@ export function useProcessedTankData(tank: Tank) {
   const [rawHeight, setRawHeight] = useState(safeHeight);
   
   // 2. Maintain internal state for stabilized displayed values (initialize with rounded targets)
-  const initialRoundedLevel = Math.round(safeLevel / 5) * 5;
+  const initialRoundedLevel = Math.round(safeLevel);
   const [displayedLevel, setDisplayedLevel] = useState(initialRoundedLevel);
   
   const initialRoundedPh = Math.round(safePh * 10) / 10;
@@ -134,11 +134,13 @@ export function useProcessedTankData(tank: Tank) {
   }, [tank?.waterLevel, tank?.phLevel, tank?.waterHeight]);
 
   // WATER LEVEL STABILIZATION:
-  // Rounds displayed percentages to clean values (91->90, 94->95) using Math.round(level / 5) * 5.
-  // Instantly updates displayed value if change >= 5% to preserve responsiveness to real emptying/filling.
-  // Throttles and debounces tiny fluctuations between 90-92% using a 1000ms delayed stabilization timer.
+  // Shows the exact whole percentage reported by the controller. (It used to round to the
+  // nearest 5%, which made a level near a boundary, e.g. 97-98%, flip between 95 and 100
+  // and hid the sensor's real accuracy.) The controller already sends a new level only when
+  // it changes by 2% or more; here a change of 5% or more is shown at once, and a smaller
+  // change is shown once it has held for 1.2 seconds.
   useEffect(() => {
-    const targetLevel = Math.round(rawLevel / 5) * 5;
+    const targetLevel = Math.round(rawLevel);
     const diff = Math.abs(targetLevel - displayedLevel);
 
     if (levelTimerRef.current) {
