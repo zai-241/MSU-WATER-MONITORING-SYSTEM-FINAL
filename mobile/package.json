@@ -1,0 +1,12 @@
+{
+  "name": "msu-water-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor shell for the MSU Water Monitoring Android app. Dependencies are installed at the repository root; this file lets the Capacitor CLI run from this folder.",
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/push-notifications": "^8.1.3",
+    "@capacitor/splash-screen": "^8.0.1"
+  }
+}

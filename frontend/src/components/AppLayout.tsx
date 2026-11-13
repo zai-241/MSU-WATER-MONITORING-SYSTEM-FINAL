@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Settings, LogOut, Droplet, Menu, X, Clock, ScrollText, Bell, WifiOff } from 'lucide-react';
 import { useClock, useConnectionState } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
 import NotificationCenter from './NotificationCenter';
 import SystemMonitor from './SystemMonitor';
+import { refreshPushRegistration } from '@/utils/push';
 
 const SystemClock = () => {
   const clock = useClock();
@@ -32,6 +33,11 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const isAdmin = currentUser?.role === 'admin';
   const isWorker = currentUser?.role === 'worker';
+
+  // Push tokens rotate: if this device already has push on, re-register quietly (never prompts)
+  useEffect(() => {
+    if (currentUser?.id) refreshPushRegistration(currentUser.id);
+  }, [currentUser?.id]);
 
   const handleLogout = () => { 
     logout(); 

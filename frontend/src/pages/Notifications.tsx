@@ -1,5 +1,12 @@
-import { useState, useMemo } from 'react';
-import { useNotifications, useUserNotificationsState, Notification } from '@/store/useStore';
+import { useState, useMemo, useEffect } from 'react';
+import {
+  useNotificationHistory,
+  useUserNotificationsState,
+  acknowledgeNotification,
+  purgeOldNotifications,
+  Notification,
+} from '@/store/useStore';
+import { RETENTION_DAYS } from '@/lib/constants';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Bell,
@@ -12,12 +19,10 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Filter,
   Clock,
   Sparkles,
   ShieldAlert
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 
@@ -60,7 +65,7 @@ const highlightText = (text: unknown, search: string) => {
     return (
       <span>
         {parts.map((part, index) =>
-          regex.test(part) ? (
+          index % 2 === 1 ? (
             <mark key={index} className="bg-primary/20 text-foreground font-semibold rounded px-0.5">
               {part}
             </mark>
@@ -78,9 +83,10 @@ const highlightText = (text: unknown, search: string) => {
 const ITEMS_PER_PAGE = 15;
 
 const Notifications = () => {
-  const { notifications, acknowledgeNotification, purgeOldNotifications } = useNotifications();
+  // Full history (not the capped live feed): "Load older" widens the window on demand
+  const { notifications, loading, hasMore, loadMore } = useNotificationHistory();
   const { currentUser } = useAuth();
-  const { lastReadAt, markAllAsRead } = useUserNotificationsState(currentUser?.id);
+  const { isUnread, markAllAsRead, markOneRead } = useUserNotificationsState(currentUser?.id);
 
   const isAdmin = currentUser?.role === 'admin';
   const isWorker = currentUser?.role === 'worker';
@@ -88,15 +94,15 @@ const Notifications = () => {
 
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState<'all' | 'danger' | 'warning' | 'info'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'unacknowledged' | 'acknowledged' | 'resolved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'unacknowledged' | 'acknowledged' | 'resolved'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
 
   // Compute unread count per user
   const unreadCount = useMemo(() => {
-    return notifications.filter(n => (lastReadAt > 0 ? n.timestamp > lastReadAt : !n.read)).length;
-  }, [notifications, lastReadAt]);
+    return notifications.filter(isUnread).length;
+  }, [notifications, isUnread]);
 
   const unacknowledgedCount = useMemo(() => {
     return notifications.filter(
@@ -113,7 +119,9 @@ const Notifications = () => {
       }
 
       // 2. Status filter
-      if (statusFilter === 'unacknowledged') {
+      if (statusFilter === 'unread') {
+        if (!isUnread(notif)) return false;
+      } else if (statusFilter === 'unacknowledged') {
         if (notif.acknowledged || notif.resolved || (notif.type !== 'danger' && notif.type !== 'warning')) {
           return false;
         }
@@ -142,7 +150,7 @@ const Notifications = () => {
 
       return true;
     });
-  }, [notifications, severityFilter, statusFilter, search]);
+  }, [notifications, severityFilter, statusFilter, search, isUnread]);
 
   // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / ITEMS_PER_PAGE));
@@ -154,6 +162,11 @@ const Notifications = () => {
   const handlePageChange = (page: number) => {
     setCurrentPage(Math.min(Math.max(1, page), totalPages));
   };
+
+  // Keep the page number valid when filters, purges or new data shrink the list
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const handleMarkAllRead = async () => {
     try {
@@ -174,7 +187,7 @@ const Notifications = () => {
   const handlePurge90Days = async () => {
     setIsPurging(true);
     try {
-      const purged = await purgeOldNotifications(90);
+      const purged = await purgeOldNotifications(RETENTION_DAYS);
       toast.success(
         purged > 0
           ? `Retention cleanup complete: ${purged} notification(s) older than 90 days removed.`
@@ -312,6 +325,16 @@ const Notifications = () => {
               All Status
             </button>
             <button
+              onClick={() => { setStatusFilter('unread'); setCurrentPage(1); }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                statusFilter === 'unread'
+                  ? 'bg-card text-primary shadow-sm'
+                  : 'text-muted-foreground hover:text-primary'
+              }`}
+            >
+              Unread
+            </button>
+            <button
               onClick={() => { setStatusFilter('unacknowledged'); setCurrentPage(1); }}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                 statusFilter === 'unacknowledged'
@@ -347,7 +370,11 @@ const Notifications = () => {
 
       {/* Notifications List */}
       <div className="rounded-xl bg-card border border-border/40 shadow-sm overflow-hidden">
-        {filteredNotifications.length === 0 ? (
+        {loading && notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground text-sm">
+            Loading notification history...
+          </div>
+        ) : filteredNotifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
             <Bell className="h-12 w-12 stroke-[1.2] mb-3 opacity-30" />
             <h3 className="font-semibold text-base text-foreground">No notifications found</h3>
@@ -359,22 +386,18 @@ const Notifications = () => {
           </div>
         ) : (
           <div className="divide-y divide-border/40">
-            <AnimatePresence initial={false}>
               {paginatedNotifications.map((notif) => {
                 const isAlert = notif.type === 'danger' || notif.type === 'warning';
                 const isAcknowledged = !!notif.acknowledged;
                 const isResolved = !!notif.resolved;
-                const isUnread = lastReadAt > 0 ? notif.timestamp > lastReadAt : !notif.read;
+                const unread = isUnread(notif);
 
                 return (
-                  <motion.div
+                  <div
                     key={notif.id}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
+                    onClick={() => { if (unread) markOneRead(notif.id); }}
                     className={`p-4 transition-colors hover:bg-muted/40 ${
-                      isUnread ? 'bg-primary/[0.03]' : ''
+                      unread ? 'bg-primary/[0.03] cursor-pointer' : ''
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -408,7 +431,7 @@ const Notifications = () => {
                                 Tank {notif.tankId}
                               </span>
                             )}
-                            {isUnread && (
+                            {unread && (
                               <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
                                 New
                               </span>
@@ -447,7 +470,7 @@ const Notifications = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleAcknowledge(notif)}
+                            onClick={(e) => { e.stopPropagation(); handleAcknowledge(notif); }}
                             className="h-7 px-2.5 text-xs font-semibold border-amber-500/40 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400 gap-1"
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -456,10 +479,9 @@ const Notifications = () => {
                         )}
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })}
-            </AnimatePresence>
           </div>
         )}
 
@@ -495,6 +517,15 @@ const Notifications = () => {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Older history is fetched on demand so the page opens fast */}
+        {hasMore && (
+          <div className="flex items-center justify-center px-4 py-3 border-t border-border/40 bg-muted/10">
+            <Button variant="outline" size="sm" onClick={loadMore} disabled={loading} className="text-xs h-8">
+              {loading ? 'Loading...' : `Load older notifications (${notifications.length} loaded)`}
+            </Button>
           </div>
         )}
       </div>

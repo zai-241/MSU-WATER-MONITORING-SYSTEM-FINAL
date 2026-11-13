@@ -21,21 +21,23 @@
  * useStore (real‑time listeners) → React components. This ensures the UI always
  * reflects the latest telemetry while keeping the codebase modular and testable.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { database, auth } from '@/config/firebase';
-import { ref, onValue, set, update, push, remove, runTransaction, query, orderByChild, limitToLast, get } from 'firebase/database';
+import { ref, onValue, set, update, push, remove, runTransaction, query, orderByChild, limitToLast, endAt, get } from 'firebase/database';
+import {
+  CONTROLLER_OFFLINE_THRESHOLD_MS,
+  WORKER_STALE_MS,
+  LIVE_NOTIFICATION_LIMIT,
+  LIVE_LOG_LIMIT,
+  HISTORY_PAGE_SIZE,
+  RETENTION_DAYS,
+  TANK_CACHE_WRITE_INTERVAL_MS,
+  STORAGE_KEYS,
+} from '@/lib/constants';
+import { planRaise, planResolve, archiveOf, type RaisePlan, type RaiseOutcome } from '@/lib/alertEngine';
 
 export type UserRole = 'admin' | 'worker' | 'viewer';
 export type TankStatus = 'safe' | 'warning' | 'danger' | 'offline';
-
-export interface User {
-  id: string;
-  username: string;
-  password?: string;
-  role: UserRole;
-  jobTitle: string;
-  status: 'active' | 'inactive';
-}
 
 export interface Tank {
   id: string;
@@ -96,6 +98,8 @@ export interface SystemConfig {
   offlineThresholdSec?: number;
   repeatIntervalSec?: number;
   soundEnabled?: boolean;
+  /** When false the alert worker stops sending push notifications */
+  pushEnabled?: boolean;
 }
 
 export interface Notification {
@@ -262,37 +266,7 @@ function saveToStorage(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-/**
- * Hook to retrieve Firebase server time offset from '/.info/serverTimeOffset'.
- * Realtime Database measures the difference in milliseconds between the client's clock
- * and Firebase server time.
- * Estimated Server Time = Date.now() + serverTimeOffset
- */
-export function useServerTimeOffset(): number {
-  const [offset, setOffset] = useState<number>(0);
-
-  useEffect(() => {
-    const offsetRef = ref(database, '.info/serverTimeOffset');
-    const unsubscribe = onValue(
-      offsetRef,
-      (snapshot) => {
-        const val = snapshot.val();
-        if (typeof val === 'number') {
-          setOffset(val);
-        }
-      },
-      (error) => {
-        console.error('Error reading serverTimeOffset from database:', error);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  return offset;
-}
-
-export const CONTROLLER_OFFLINE_THRESHOLD_MS = 30000; // 30 seconds
+export { CONTROLLER_OFFLINE_THRESHOLD_MS };
 
 /**
  * Checks whether a tank is a planned expansion tank (IoT hardware not yet installed).
@@ -337,8 +311,8 @@ export async function syncTankOfflineState(
   shouldBeOffline: boolean,
   addLogFn: (log: Omit<Log, 'id' | 'timestamp'>) => void,
   notificationHelpers?: {
-    addNotification?: (notif: Omit<Notification, 'id' | 'timestamp' | 'read'> & { id?: string; acknowledged?: boolean; resolved?: boolean }) => Promise<any>;
-    resolveNotification?: (id: string) => Promise<any>;
+    addNotification?: (notif: Omit<Notification, 'id' | 'timestamp' | 'read'> & { id?: string; acknowledged?: boolean; resolved?: boolean }) => Promise<unknown>;
+    resolveNotification?: (id: string) => Promise<unknown>;
   },
   thresholdSec: number = 30
 ): Promise<boolean> {
@@ -483,21 +457,134 @@ export function sanitizeTank(key: string, raw: any): Tank {
   };
 }
 
-export function useTanks() {
-  const [tanks, setTanks] = useState<Tank[]>(() => loadFromStorage('wm_tanks', DEFAULT_TANKS));
-  const serverTimeOffset = useServerTimeOffset();
+// ---------------------------------------------------------------------------
+// Shared subscriptions (P2)
+//
+// Each database path is listened to once, no matter how many components use the
+// hook. The first component to mount attaches the Firebase listener; the last one
+// to unmount detaches it. Every consumer reads the same parsed value, so parsing,
+// sorting and localStorage writes happen once per update instead of once per hook.
+// ---------------------------------------------------------------------------
 
-  useEffect(() => {
+interface Shared<T> {
+  subscribe: (listener: () => void) => () => void;
+  get: () => T;
+}
+
+function createShared<T>(init: () => T, attach: (emit: (value: T) => void) => (() => void) | void): Shared<T> {
+  let value: T;
+  let hasValue = false;
+  let detach: (() => void) | void;
+  const listeners = new Set<() => void>();
+
+  const get = () => {
+    if (!hasValue) {
+      value = init();
+      hasValue = true;
+    }
+    return value;
+  };
+
+  const emit = (next: T) => {
+    value = next;
+    hasValue = true;
+    listeners.forEach((listener) => listener());
+  };
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    if (listeners.size === 1) {
+      try {
+        detach = attach(emit);
+      } catch (err) {
+        console.error('Error attaching database listener:', err);
+        detach = undefined;
+      }
+    }
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        if (typeof detach === 'function') detach();
+        detach = undefined;
+        hasValue = false; // next mount starts from a fresh initial value
+      }
+    };
+  };
+
+  return { subscribe, get };
+}
+
+function useShared<T>(source: Shared<T>): T {
+  return useSyncExternalStore(source.subscribe, source.get, source.get);
+}
+
+/** True when a real Firebase database instance is available (false under mocked test databases). */
+function dbUsable(): boolean {
+  const db = database as unknown as { _checkNotDeleted?: unknown; app?: unknown } | null;
+  return typeof db?._checkNotDeleted === 'function' || !!db?.app;
+}
+
+// --- Server time -----------------------------------------------------------
+
+let cachedServerOffset = 0;
+
+/** Estimated Firebase server time. Used for every timestamp the web app writes (B18). */
+export function serverNow(): number {
+  return Date.now() + cachedServerOffset;
+}
+
+const serverOffsetSource = createShared<number>(
+  () => cachedServerOffset,
+  (emit) =>
+    onValue(
+      ref(database, '.info/serverTimeOffset'),
+      (snapshot) => {
+        const val = snapshot.val();
+        if (typeof val === 'number') {
+          cachedServerOffset = val;
+          emit(val);
+        }
+      },
+      (error) => console.error('Error reading serverTimeOffset from database:', error)
+    )
+);
+
+/**
+ * Firebase server time offset from '/.info/serverTimeOffset'.
+ * Estimated Server Time = Date.now() + serverTimeOffset
+ */
+export function useServerTimeOffset(): number {
+  return useShared(serverOffsetSource);
+}
+
+// --- Tanks -----------------------------------------------------------------
+
+interface TanksState {
+  tanks: Tank[];
+  /** false until the first snapshot arrives: until then `tanks` is the local cache (B15) */
+  isLive: boolean;
+}
+
+let lastTankCacheWrite = 0;
+
+const tanksSource = createShared<TanksState>(
+  () => ({ tanks: loadFromStorage(STORAGE_KEYS.tanks, DEFAULT_TANKS), isLive: false }),
+  (emit) => {
     const tanksRef = ref(database, 'tanks');
-    const unsubscribe = onValue(
+    return onValue(
       tanksRef,
       (snapshot) => {
         const data = snapshot.val();
         if (data) {
           // Sanitize raw tank telemetry (E1 / R6)
           const tankList = Object.entries(data).map(([key, value]) => sanitizeTank(key, value));
-          setTanks(tankList);
-          saveToStorage('wm_tanks', tankList);
+          emit({ tanks: tankList, isLive: true });
+          // P3: telemetry changes about once a second; the offline cache does not need to
+          const now = Date.now();
+          if (now - lastTankCacheWrite >= TANK_CACHE_WRITE_INTERVAL_MS) {
+            lastTankCacheWrite = now;
+            saveToStorage(STORAGE_KEYS.tanks, tankList);
+          }
         } else {
           // Empty database: create the tank records (name + calibration only, no readings).
           // Rules allow this for admins/workers; for anyone else it is refused and ignored.
@@ -505,265 +592,292 @@ export function useTanks() {
             .catch(() => { /* not permitted for this role */ });
         }
       },
-      (error) => {
-        console.error('Error reading tanks from database:', error);
-      }
+      (error) => console.error('Error reading tanks from database:', error)
     );
+  }
+);
 
-    return () => unsubscribe();
-  }, []);
-
-  const updateTank = (id: string, updates: Partial<Tank>) => {
-    if (!id || id.trim() === '') {
-      return Promise.reject(new Error('Invalid tank ID. Operations cannot be performed on blank identifiers.'));
-    }
-    return update(ref(database, `tanks/${id}`), updates);
-  };
-
-  const addTank = (tank: Pick<Tank, 'id' | 'name'> & Partial<Tank>) => {
-    if (!tank.id || tank.id.trim() === '') {
-      return Promise.reject(new Error('Tank ID is required for registration.'));
-    }
-    const newTank: Tank = {
-      waterLevel: 0,
-      phLevel: 7.0,
-      waterHeight: 0,
-      status: 'safe',
-      pumpOn: false,
-      phSensorOk: true,
-      levelSensorOk: true,
-      levelVmin: 0.25,
-      levelVmax: 3.0,
-      tankHeight: 5.0,
-      levelOffset: 0,
-      phNeutralVoltage: 2.5,
-      phSlope: 0.18,
-      phOffset: 0.0,
-      enabled: true,
-      location: 'Unspecified',
-      assignedWorker: null,
-      controllerOffline: false,
-      ...tank
-    };
-    return set(ref(database, `tanks/${newTank.id}`), newTank);
-  };
-
-  const deleteTank = (id: string) => {
-    if (!id || id.trim() === '') {
-      return Promise.reject(new Error('Invalid tank ID. Deletion cannot be performed on blank identifiers.'));
-    }
-    return remove(ref(database, `tanks/${id}`));
-  };
-
-  return { tanks, updateTank, addTank, deleteTank, serverTimeOffset };
+export function updateTank(id: string, updates: Partial<Tank>) {
+  if (!id || id.trim() === '') {
+    return Promise.reject(new Error('Invalid tank ID. Operations cannot be performed on blank identifiers.'));
+  }
+  return update(ref(database, `tanks/${id}`), updates);
 }
 
-export function useConfig() {
-  const [config, setConfig] = useState<SystemConfig>(() => loadFromStorage('wm_config', DEFAULT_CONFIG));
+export function addTank(tank: Pick<Tank, 'id' | 'name'> & Partial<Tank>) {
+  if (!tank.id || tank.id.trim() === '') {
+    return Promise.reject(new Error('Tank ID is required for registration.'));
+  }
+  const newTank: Tank = {
+    waterLevel: 0,
+    phLevel: 7.0,
+    waterHeight: 0,
+    status: 'safe',
+    pumpOn: false,
+    phSensorOk: true,
+    levelSensorOk: true,
+    levelVmin: 0.25,
+    levelVmax: 3.0,
+    tankHeight: 5.0,
+    levelOffset: 0,
+    phNeutralVoltage: 2.5,
+    phSlope: 0.18,
+    phOffset: 0.0,
+    enabled: true,
+    location: 'Unspecified',
+    assignedWorker: null,
+    controllerOffline: false,
+    ...tank
+  };
+  return set(ref(database, `tanks/${newTank.id}`), newTank);
+}
 
-  useEffect(() => {
+export function deleteTank(id: string) {
+  if (!id || id.trim() === '') {
+    return Promise.reject(new Error('Invalid tank ID. Deletion cannot be performed on blank identifiers.'));
+  }
+  return remove(ref(database, `tanks/${id}`));
+}
+
+export function useTanks() {
+  const { tanks, isLive } = useShared(tanksSource);
+  const serverTimeOffset = useServerTimeOffset();
+  return { tanks, isLive, updateTank, addTank, deleteTank, serverTimeOffset };
+}
+
+// --- Config ----------------------------------------------------------------
+
+const configSource = createShared<SystemConfig>(
+  () => ({ ...DEFAULT_CONFIG, ...loadFromStorage<Partial<SystemConfig>>(STORAGE_KEYS.config, {}) }),
+  (emit) => {
     const configRef = ref(database, 'config');
-    const unsubscribe = onValue(
+    return onValue(
       configRef,
       (snapshot) => {
         const data = snapshot.val();
         if (data) {
-          setConfig(data);
-          saveToStorage('wm_config', data);
+          emit({ ...DEFAULT_CONFIG, ...data });
+          saveToStorage(STORAGE_KEYS.config, data);
         } else {
           Promise.resolve(set(configRef, DEFAULT_CONFIG)).catch(() => { /* only an admin may create the config */ });
         }
       },
-      (error) => {
-        console.error('Error reading config from database:', error);
-      }
+      (error) => console.error('Error reading config from database:', error)
     );
+  }
+);
 
-    return () => unsubscribe();
-  }, []);
+export function updateConfig(updates: Partial<SystemConfig>) {
+  return update(ref(database, 'config'), updates);
+}
 
-  const updateConfig = (updates: Partial<SystemConfig>) => {
-    return update(ref(database, 'config'), updates);
-  };
-
+export function useConfig() {
+  const config = useShared(configSource);
   return { config, updateConfig };
 }
 
-export function useNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+// --- Notifications ---------------------------------------------------------
 
-  useEffect(() => {
-    const notifsRef = ref(database, 'notifications');
-    // R2 / P1: Limit query to the latest 100 entries to optimize bandwidth
-    const notifsQuery = query(notifsRef, orderByChild('timestamp'), limitToLast(100));
-    const unsubscribe = onValue(
-      notifsQuery,
-      (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-          // Convert object to array using database key as fallback ID and sort by timestamp (newest first)
-          const list = Object.entries(data).map(([key, value]: [string, any]) => ({
-            ...value,
-            id: value.id || key,
-          })) as Notification[];
-          list.sort((a, b) => b.timestamp - a.timestamp);
-          setNotifications(list);
-        } else {
-          setNotifications([]);
-        }
-      },
-      (error) => {
-        console.error('Error reading notifications from database:', error);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
+function parseNotifications(data: unknown): Notification[] {
+  if (!data || typeof data !== 'object') return [];
+  const list = Object.entries(data as Record<string, any>).map(([key, value]) => ({
+    ...value,
+    id: value?.id || key,
+    timestamp: typeof value?.timestamp === 'number' && Number.isFinite(value.timestamp) ? value.timestamp : 0,
+  })) as Notification[];
+  list.sort((a, b) => b.timestamp - a.timestamp);
+  return list;
+}
 
-  const addNotification = useCallback(async (notif: Omit<Notification, 'id' | 'timestamp' | 'read'> & { id?: string; acknowledged?: boolean; resolved?: boolean }) => {
-    const notifsRef = ref(database, 'notifications');
+/** Latest notifications: feeds the bell, the alarm sound and the alert monitor. */
+const notificationsSource = createShared<Notification[]>(
+  () => [],
+  (emit) =>
+    onValue(
+      // R2 / P1: only the newest entries are streamed to every page
+      query(ref(database, 'notifications'), orderByChild('timestamp'), limitToLast(LIVE_NOTIFICATION_LIMIT)),
+      (snapshot) => emit(parseNotifications(snapshot.val())),
+      (error) => console.error('Error reading notifications from database:', error)
+    )
+);
 
-    // Event-style notification without a fixed ID: always a new history row
-    if (!notif.id) {
-      const newNotifRef = push(notifsRef);
-      const id = newNotifRef?.key || Date.now().toString();
-      return update(ref(database, `notifications/${id}`), {
-        timestamp: Date.now(),
-        read: false,
-        acknowledged: false,
-        resolved: false,
-        ...notif,
-        id,
-      });
-    }
+export type NewNotification = Omit<Notification, 'id' | 'timestamp' | 'read'> & { id?: string };
+export type { RaiseOutcome };
 
-    // Fixed-ID alert (one live record per tank + condition)
-    const id = notif.id;
-    const liveRef = ref(database, `notifications/${id}`);
-    let existing: Notification | null = null;
-    try {
-      const snap = await get(liveRef);
-      existing = snap?.exists?.() ? (snap.val() as Notification) : null;
-    } catch {
-      existing = null;
-    }
+/**
+ * Writes a notification.
+ *
+ * - Without an `id`, or with `resolved: true`: a plain history row (recovery, info).
+ * - With a fixed `id` (one live record per tank + condition): an atomic raise.
+ *   The database transaction guarantees that when several browsers (or a browser and
+ *   the worker) detect the same condition together, exactly one of them creates the
+ *   alert. An alert that is already active is re-announced, never recreated, and an
+ *   acknowledged one is left untouched (B2). When a new episode starts, the finished
+ *   episode is first copied to its own row so history is never overwritten.
+ */
+export async function addNotification(notif: NewNotification): Promise<RaiseOutcome> {
+  const now = serverNow();
+  const notifsRef = ref(database, 'notifications');
 
-    const isRaise = notif.resolved !== true;
-
-    if (existing && isRaise && !existing.resolved) {
-      // Already acknowledged by an operator: never reopen it from another browser
-      if (existing.acknowledged) return;
-      // Same episode still active: re-announce without rewriting when it started
-      return update(liveRef, { read: false, lastRepeatedAt: Date.now(), message: notif.message });
-    }
-
-    if (existing && isRaise && existing.resolved && existing.timestamp) {
-      // A new episode is starting. Keep the finished one as its own history row.
-      // The archive key is derived from the old record, so several browsers
-      // doing this at once all write the same row.
-      const archiveId = `${id}-${existing.timestamp}`;
-      const { acknowledgedByUid: _uid, ...archived } = existing;
-      try {
-        await set(ref(database, `notifications/${archiveId}`), { ...archived, id: archiveId, read: true });
-      } catch (err) {
-        console.error('Error archiving previous alert episode:', err);
-      }
-    }
-
-    // set() so nothing from an earlier episode (who acknowledged, when it resolved) leaks into the new one
-    return set(liveRef, {
-      timestamp: Date.now(),
+  if (!notif.id || notif.resolved === true) {
+    const id = notif.id || push(notifsRef)?.key || `${now}`;
+    await set(ref(database, `notifications/${id}`), {
+      timestamp: now,
       read: false,
       acknowledged: false,
       resolved: false,
       ...notif,
       id,
     });
-  }, []);
+    return 'created';
+  }
 
-  const resolveNotification = useCallback((id: string) => {
-    return update(ref(database, `notifications/${id}`), {
-      resolved: true,
-      resolvedAt: Date.now(),
-      acknowledged: true, // Resolving stops sound across dashboards
-    });
-  }, []);
+  const id = notif.id;
+  let plan: RaisePlan<Notification> | null = null;
 
-  const markRead = useCallback((id: string) => {
-    return update(ref(database, `notifications/${id}`), { read: true });
-  }, []);
+  const result = await runTransaction(ref(database, `notifications/${id}`), (current: Notification | null) => {
+    plan = planRaise<Notification>(current, { ...notif, id }, now);
+    return plan.next; // undefined aborts: an operator already acknowledged this episode
+  });
 
-  const acknowledgeNotification = useCallback((id: string, username: string, title?: string) => {
-    const acknowledgedAt = Date.now();
-    const logsRef = ref(database, 'logs');
-    const newLogRef = push(logsRef);
-    const logId = newLogRef?.key || Date.now().toString();
-    const newLog: Log = {
-      id: logId,
-      action: 'Alert Acknowledged',
-      details: `Alert "${title || 'System Alert'}" was acknowledged by ${username}.`,
-      performedBy: username,
-      timestamp: acknowledgedAt,
-      logLevel: 'INFO'
-    };
+  const applied = plan as RaisePlan<Notification> | null;
+  if (!result?.committed || !applied) return 'skipped';
 
-    const ackFields: Record<string, unknown> = {
-      [`notifications/${id}/acknowledged`]: true,
-      [`notifications/${id}/acknowledgedBy`]: username,
-      [`notifications/${id}/acknowledgedAt`]: acknowledgedAt,
-    };
-    const uid = auth?.currentUser?.uid;
-    if (uid) ackFields[`notifications/${id}/acknowledgedByUid`] = uid;
-
-    // Single multi-path write: the acknowledgement and its audit log succeed or fail together
-    return update(ref(database), { ...ackFields, [`logs/${logId}`]: newLog });
-  }, []);
-
-  const clearAll = useCallback(() => {
-    return set(ref(database, 'notifications'), null);
-  }, []);
-
-  const purgeOldNotifications = useCallback(async (olderThanDays = 90): Promise<number> => {
-    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-    const notifsRef = ref(database, 'notifications');
-    try {
-      const snap = await get(notifsRef);
-      if (!snap.exists()) return 0;
-      const data = snap.val();
-      const updates: Record<string, null> = {};
-      let count = 0;
-      Object.entries(data).forEach(([key, notif]: [string, any]) => {
-        if (notif.timestamp && notif.timestamp < cutoff) {
-          updates[key] = null;
-          count++;
-        }
-      });
-      if (Object.keys(updates).length > 0) {
-        await update(notifsRef, updates);
+  if (applied.outcome === 'created' && applied.previous) {
+    const archive = archiveOf(id, applied.previous);
+    if (archive) {
+      try {
+        await set(ref(database, `notifications/${archive.id}`), archive.record);
+      } catch (err) {
+        console.error('Error archiving previous alert episode:', err);
       }
-      return count;
-    } catch (err) {
-      console.error('Error purging old notifications:', err);
-      throw err;
     }
-  }, []);
-
-  return { notifications, addNotification, resolveNotification, markRead, clearAll, purgeOldNotifications, acknowledgeNotification };
+  }
+  return applied.outcome;
 }
+
+/**
+ * Marks a live alert as resolved. Returns the alert as it was before resolving, or
+ * null when there was nothing to resolve (missing, or another client got there first).
+ * Callers use that to write the matching "recovered" row exactly once (B3).
+ */
+export async function resolveNotification(id: string): Promise<Notification | null> {
+  const now = serverNow();
+  let before: Notification | null = null;
+  const result = await runTransaction(ref(database, `notifications/${id}`), (current: Notification | null) => {
+    const next = planResolve(current, now);
+    before = next ? current : null;
+    return next;
+  });
+  return result?.committed ? (before as Notification | null) : null;
+}
+
+/** @deprecated Shared read flag. Read state is per user: see useUserNotificationsState. */
+export function markRead(id: string) {
+  return update(ref(database, `notifications/${id}`), { read: true });
+}
+
+export function acknowledgeNotification(id: string, username: string, title?: string) {
+  const acknowledgedAt = serverNow();
+  const logId = push(ref(database, 'logs'))?.key || `${acknowledgedAt}`;
+  const newLog: Log = {
+    id: logId,
+    action: 'Alert Acknowledged',
+    details: `Alert "${title || 'System Alert'}" was acknowledged by ${username}.`,
+    performedBy: username,
+    timestamp: acknowledgedAt,
+    logLevel: 'INFO'
+  };
+
+  const ackFields: Record<string, unknown> = {
+    [`notifications/${id}/acknowledged`]: true,
+    [`notifications/${id}/acknowledgedBy`]: username,
+    [`notifications/${id}/acknowledgedAt`]: acknowledgedAt,
+  };
+  const uid = auth?.currentUser?.uid;
+  if (uid) ackFields[`notifications/${id}/acknowledgedByUid`] = uid;
+
+  // Single multi-path write: the acknowledgement and its audit log succeed or fail together
+  return update(ref(database), { ...ackFields, [`logs/${logId}`]: newLog });
+}
+
+async function purgeOlderThan(path: 'notifications' | 'logs', olderThanDays: number): Promise<number> {
+  const cutoff = serverNow() - olderThanDays * 24 * 60 * 60 * 1000;
+  const targetRef = ref(database, path);
+  // Indexed range query: only the expired rows are downloaded
+  const snap = await get(query(targetRef, orderByChild('timestamp'), endAt(cutoff)));
+  if (!snap.exists()) return 0;
+  const updates: Record<string, null> = {};
+  snap.forEach((child) => {
+    if (child.key) updates[child.key] = null;
+  });
+  const count = Object.keys(updates).length;
+  if (count > 0) await update(targetRef, updates);
+  return count;
+}
+
+export function purgeOldNotifications(olderThanDays = RETENTION_DAYS): Promise<number> {
+  return purgeOlderThan('notifications', olderThanDays);
+}
+
+function clearAllNotifications() {
+  return set(ref(database, 'notifications'), null);
+}
+
+export function useNotifications() {
+  const notifications = useShared(notificationsSource);
+  return {
+    notifications,
+    addNotification,
+    resolveNotification,
+    markRead,
+    clearAll: clearAllNotifications,
+    purgeOldNotifications,
+    acknowledgeNotification,
+  };
+}
+
+/**
+ * Notification history for the history page (R5).
+ * Unlike the live feed it is not capped: "load older" widens the window, so every
+ * stored notification within the retention period can be reached.
+ */
+export function useNotificationHistory(pageSize: number = HISTORY_PAGE_SIZE) {
+  const [limit, setLimit] = useState(pageSize);
+  const [items, setItems] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    const unsubscribe = onValue(
+      query(ref(database, 'notifications'), orderByChild('timestamp'), limitToLast(limit)),
+      (snapshot) => {
+        setItems(parseNotifications(snapshot.val()));
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error reading notification history:', error);
+        setLoading(false);
+      }
+    );
+    return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, [limit]);
+
+  const hasMore = items.length >= limit;
+  const loadMore = useCallback(() => setLimit((current) => current + pageSize), [pageSize]);
+
+  return { notifications: items, loading, hasMore, loadMore };
+}
+
+// --- Logs ------------------------------------------------------------------
 
 export function addSystemLog(log: Omit<Log, 'id' | 'timestamp'>) {
   try {
-    if (typeof (database as any)?._checkNotDeleted !== 'function' && !(database as any)?.app) {
-      return Promise.resolve();
-    }
-    const logsRef = ref(database, 'logs');
-    const newLogRef = push(logsRef);
-    const id = newLogRef?.key || Date.now().toString();
-    const newLog: Log = {
-      ...log,
-      logLevel: log.logLevel || 'INFO',
-      id,
-      timestamp: Date.now()
-    };
+    if (!dbUsable()) return Promise.resolve();
+    const newLogRef = push(ref(database, 'logs'));
+    const timestamp = serverNow();
+    const id = newLogRef?.key || `${timestamp}`;
+    const newLog: Log = { ...log, logLevel: log.logLevel || 'INFO', id, timestamp };
     return set(newLogRef || ref(database, `logs/${id}`), newLog);
   } catch (err) {
     console.error('Failed to add log:', err);
@@ -771,144 +885,146 @@ export function addSystemLog(log: Omit<Log, 'id' | 'timestamp'>) {
   }
 }
 
-export function useLogs() {
-  const [logs, setLogs] = useState<Log[]>([]);
-
-  useEffect(() => {
-    try {
-      if (typeof (database as any)?._checkNotDeleted !== 'function' && !(database as any)?.app) {
-        return;
-      }
-      const logsRef = ref(database, 'logs');
-      // Limit to latest 100 entries using native server-side key ordering to avoid unindexed full downloads
-      const logsQuery = query(logsRef, limitToLast(100));
-      const unsubscribe = onValue(
-        logsQuery,
-        (snapshot) => {
-          const data = snapshot.val();
-          if (data && typeof data === 'object') {
-            const list = Object.entries(data).map(([key, value]: [string, any]) => ({
-              ...value,
-              id: key,
-              timestamp: typeof value?.timestamp === 'number' && Number.isFinite(value.timestamp) ? value.timestamp : Date.now(),
-            })) as Log[];
-            list.sort((a, b) => b.timestamp - a.timestamp);
-            setLogs(list);
-          } else {
-            setLogs([]);
-          }
-        },
-        (error) => {
-          console.error('Error reading logs from database:', error);
+const logsSource = createShared<Log[]>(
+  () => [],
+  (emit) => {
+    if (!dbUsable()) return;
+    // Latest entries by key order (push keys are chronological): no full download
+    return onValue(
+      query(ref(database, 'logs'), limitToLast(LIVE_LOG_LIMIT)),
+      (snapshot) => {
+        const data = snapshot.val();
+        if (data && typeof data === 'object') {
+          const list = Object.entries(data).map(([key, value]: [string, any]) => ({
+            ...value,
+            id: key, // database key: ESP32 "esp32-<millis>" ids repeat after a reboot
+            timestamp: typeof value?.timestamp === 'number' && Number.isFinite(value.timestamp) ? value.timestamp : Date.now(),
+          })) as Log[];
+          list.sort((a, b) => b.timestamp - a.timestamp);
+          emit(list);
+        } else {
+          emit([]);
         }
-      );
-      return () => unsubscribe();
-    } catch (err) {
-      console.error('Error initializing useLogs listener:', err);
-    }
-  }, []);
+      },
+      (error) => console.error('Error reading logs from database:', error)
+    );
+  }
+);
 
-  const addLog = useCallback((log: Omit<Log, 'id' | 'timestamp'>) => {
-    return addSystemLog(log);
-  }, []);
-
-  const clearAll = useCallback(() => {
-    try {
-      return set(ref(database, 'logs'), null);
-    } catch (err) {
-      console.error('Failed to clear logs:', err);
-      return Promise.resolve();
-    }
-  }, []);
-
-  const purgeOldLogs = useCallback(async (olderThanDays = 90): Promise<number> => {
-    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-    const logsRef = ref(database, 'logs');
-    try {
-      const snap = await get(logsRef);
-      if (!snap.exists()) return 0;
-      const data = snap.val();
-      const updates: Record<string, null> = {};
-      let count = 0;
-      Object.entries(data).forEach(([key, item]: [string, any]) => {
-        const ts = Number(item?.timestamp);
-        if (ts && ts < cutoff) {
-          updates[key] = null;
-          count++;
-        }
-      });
-      if (Object.keys(updates).length > 0) {
-        await update(logsRef, updates);
-      }
-      return count;
-    } catch (err) {
-      console.error('Error purging old logs:', err);
-      throw err;
-    }
-  }, []);
-
-  return { logs, addLog, clearAll, purgeOldLogs };
+function clearAllLogs() {
+  try {
+    return set(ref(database, 'logs'), null);
+  } catch (err) {
+    console.error('Failed to clear logs:', err);
+    return Promise.resolve();
+  }
 }
 
+export function purgeOldLogs(olderThanDays = RETENTION_DAYS): Promise<number> {
+  return purgeOlderThan('logs', olderThanDays);
+}
+
+export function useLogs() {
+  const logs = useShared(logsSource);
+  return { logs, addLog: addSystemLog, clearAll: clearAllLogs, purgeOldLogs };
+}
+
+// --- Connection ------------------------------------------------------------
+
+const connectedSource = createShared<boolean>(
+  () => true,
+  (emit) => {
+    if (!dbUsable()) return;
+    return onValue(
+      ref(database, '.info/connected'),
+      (snapshot) => {
+        const val = snapshot.val();
+        if (typeof val === 'boolean') emit(val);
+      },
+      (error) => console.error('Error reading .info/connected:', error)
+    );
+  }
+);
+
 /**
- * Hook to monitor Firebase WebSocket connection state via '/.info/connected' (R2 / E3).
+ * Firebase connection state via '/.info/connected' (R2 / E3).
  * Returns true when connected, false when disconnected or offline.
  */
 export function useConnectionState(): boolean {
-  const [connected, setConnected] = useState<boolean>(true);
-
-  useEffect(() => {
-    try {
-      if (typeof (database as any)?._checkNotDeleted !== 'function' && !(database as any)?.app) {
-        return;
-      }
-      const connectedRef = ref(database, '.info/connected');
-      const unsubscribe = onValue(
-        connectedRef,
-        (snapshot) => {
-          const val = snapshot.val();
-          if (typeof val === 'boolean') {
-            setConnected(val);
-          }
-        },
-        (error) => {
-          console.error('Error reading .info/connected:', error);
-        }
-      );
-      return () => unsubscribe();
-    } catch {
-      // Graceful fallback for mocked test databases
-    }
-  }, []);
-
-  return connected;
+  return useShared(connectedSource);
 }
+
+// --- Server-side alert worker ----------------------------------------------
+
+const workerSource = createShared<number | null>(
+  () => null,
+  (emit) => {
+    if (!dbUsable()) return;
+    return onValue(
+      ref(database, 'system/worker/lastSeen'),
+      (snapshot) => {
+        const val = snapshot.val();
+        emit(typeof val === 'number' ? val : null);
+      },
+      // Not readable (older rules) simply means "no worker": the browser keeps evaluating
+      () => emit(null)
+    );
+  }
+);
 
 /**
- * Hook for per-user notification read timestamp state stored in '/userState/{uid}/notificationsLastReadAt' (R5).
- * Eliminates shared read flags so each operator maintains their own read/unread status.
+ * Reports whether the server-side alert worker (backend/worker) is running.
+ * The worker writes a heartbeat every few seconds. While it is fresh the worker owns
+ * alert evaluation and browsers only display; when it goes stale, browsers take over
+ * again so alerts never silently stop.
  */
-export function useUserNotificationsState(uid?: string) {
-  const [lastReadAt, setLastReadAt] = useState<number>(0);
+export function useWorkerStatus(): { active: boolean; lastSeen: number | null } {
+  const lastSeen = useShared(workerSource);
+  const offset = useServerTimeOffset();
+  const [, setTick] = useState(0);
 
   useEffect(() => {
-    if (!uid) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const active = lastSeen !== null && Date.now() + offset - lastSeen < WORKER_STALE_MS;
+  return { active, lastSeen };
+}
+
+// --- Per-user notification read state (R5) ---------------------------------
+
+interface UserNotificationState {
+  lastReadAt: number;
+  readIds: Record<string, true>;
+}
+
+const EMPTY_READ_STATE: UserNotificationState = { lastReadAt: 0, readIds: {} };
+
+/**
+ * Read/unread is stored per user under '/userState/{uid}', never on the shared
+ * notification record, so one operator reading an alert does not hide it for others.
+ *
+ *   notificationsLastReadAt : everything at or before this time is read ("mark all")
+ *   notificationsReadIds    : individual notifications opened since then
+ */
+export function useUserNotificationsState(uid?: string) {
+  const [state, setState] = useState<UserNotificationState>(EMPTY_READ_STATE);
+
+  useEffect(() => {
+    setState(EMPTY_READ_STATE);
+    if (!uid || !dbUsable()) return;
     try {
-      if (typeof (database as any)?._checkNotDeleted !== 'function' && !(database as any)?.app) {
-        return;
-      }
-      const readRef = ref(database, `userState/${uid}/notificationsLastReadAt`);
       const unsubscribe = onValue(
-        readRef,
+        ref(database, `userState/${uid}`),
         (snapshot) => {
-          const val = snapshot.val();
-          if (typeof val === 'number') {
-            setLastReadAt(val);
-          }
+          const val = snapshot.val() || {};
+          setState({
+            lastReadAt: typeof val.notificationsLastReadAt === 'number' ? val.notificationsLastReadAt : 0,
+            readIds: val.notificationsReadIds && typeof val.notificationsReadIds === 'object' ? val.notificationsReadIds : {},
+          });
         },
-        (error) => {
-          console.error('Error reading user notification state:', error);
-        }
+        (error) => console.error('Error reading user notification state:', error)
       );
       return () => unsubscribe();
     } catch {
@@ -916,27 +1032,38 @@ export function useUserNotificationsState(uid?: string) {
     }
   }, [uid]);
 
+  const isUnread = useCallback(
+    (notif: Pick<Notification, 'id' | 'timestamp'>) => notif.timestamp > state.lastReadAt && !state.readIds[notif.id],
+    [state]
+  );
+
   const markAllAsRead = useCallback(() => {
-    if (!uid) return Promise.resolve();
-    try {
-      if (typeof (database as any)?._checkNotDeleted !== 'function' && !(database as any)?.app) {
-        setLastReadAt(Date.now());
-        return Promise.resolve();
-      }
-      return set(ref(database, `userState/${uid}/notificationsLastReadAt`), Date.now());
-    } catch {
-      setLastReadAt(Date.now());
-      return Promise.resolve();
-    }
+    const now = serverNow();
+    setState({ lastReadAt: now, readIds: {} }); // optimistic
+    if (!uid || !dbUsable()) return Promise.resolve();
+    return update(ref(database, `userState/${uid}`), {
+      notificationsLastReadAt: now,
+      notificationsReadIds: null, // everything older is covered by the timestamp
+    });
   }, [uid]);
 
-  return { lastReadAt, markAllAsRead };
+  const markOneRead = useCallback((id: string) => {
+    if (!id || state.readIds[id]) return Promise.resolve();
+    setState((prev) => ({ ...prev, readIds: { ...prev.readIds, [id]: true } })); // optimistic
+    if (!uid || !dbUsable()) return Promise.resolve();
+    return set(ref(database, `userState/${uid}/notificationsReadIds/${id}`), true);
+  }, [uid, state.readIds]);
+
+  return { lastReadAt: state.lastReadAt, readIds: state.readIds, isUnread, markAllAsRead, markOneRead };
 }
 
+// --- Clock -----------------------------------------------------------------
+
+/** Header clock, in Firebase server time (B17). */
 export function useClock() {
-  const [time, setTime] = useState(new Date());
+  const [time, setTime] = useState(() => new Date(serverNow()));
   useEffect(() => {
-    const interval = setInterval(() => setTime(new Date()), 1000);
+    const interval = setInterval(() => setTime(new Date(serverNow())), 1000);
     return () => clearInterval(interval);
   }, []);
 

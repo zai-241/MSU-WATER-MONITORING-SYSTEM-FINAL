@@ -1,3 +1,4 @@
+import { resolveLoginEmail, isValidEmail } from '@/lib/email';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -65,15 +66,8 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
       return;
     }
     
-    // Fallback: If username has no domain, append '@gmail.com'
-    let resolvedEmail = email.trim();
-    if (resolvedEmail && !resolvedEmail.includes('@')) {
-      resolvedEmail = `${resolvedEmail}@gmail.com`;
-    }
-    
-    // Email basic regex validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(resolvedEmail)) {
+    const resolvedEmail = resolveLoginEmail(email);
+    if (!isValidEmail(resolvedEmail)) {
       setError('Please enter a valid username or email address');
       return;
     }
@@ -118,14 +112,8 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
       return;
     }
 
-    // Fallback: If username has no domain, append '@gmail.com'
-    let resolvedResetEmail = resetEmail.trim();
-    if (resolvedResetEmail && !resolvedResetEmail.includes('@')) {
-      resolvedResetEmail = `${resolvedResetEmail}@gmail.com`;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(resolvedResetEmail)) {
+    const resolvedResetEmail = resolveLoginEmail(resetEmail);
+    if (!isValidEmail(resolvedResetEmail)) {
       setError('Please enter a valid username or email address');
       return;
     }

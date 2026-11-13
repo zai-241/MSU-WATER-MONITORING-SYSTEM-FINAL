@@ -4,12 +4,13 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   sendPasswordResetEmail,
-  createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 import { ref, get, set, update } from 'firebase/database';
 import { auth, firestore, database } from '@/config/firebase';
 import { getUserProfile, UserProfile } from '@/services/authService';
+import { disablePush } from '@/utils/push';
+import { resolveLoginEmail } from '@/lib/email';
 
 export interface AuthContextType {
   currentUser: UserProfile | null;
@@ -168,6 +169,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setLoading(true);
     try {
+      // A signed-out device must stop receiving alerts. This has to happen while
+      // still signed in, because only the owner may edit their own tokens.
+      if (currentUser?.id) {
+        await disablePush(currentUser.id).catch(() => {});
+      }
       await signOut(auth);
       setCurrentUser(null);
     } catch (err: any) {
@@ -183,10 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const resetPassword = async (email: string) => {
     setError(null);
-    let resolvedEmail = email.trim();
-    if (resolvedEmail && !resolvedEmail.includes('@')) {
-      resolvedEmail = `${resolvedEmail}@gmail.com`;
-    }
+    const resolvedEmail = resolveLoginEmail(email);
     try {
       await sendPasswordResetEmail(auth, resolvedEmail);
     } catch (err: any) {

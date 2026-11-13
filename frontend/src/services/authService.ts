@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ref, set, remove, get } from 'firebase/database';
 import { firebaseConfig, firestore, database } from '@/config/firebase';
 
@@ -134,30 +134,6 @@ export async function deleteUserProfile(uid: string): Promise<void> {
     }
   } catch (error) {
     console.error('Error deleting user profile:', error);
-    throw error;
-  }
-}
-
-/**
- * Seed initial default admin profile
- */
-export async function seedInitialAdmin(uid: string, email: string): Promise<UserProfile> {
-  try {
-    const profile: UserProfile = {
-      id: uid,
-      username: 'Administrator',
-      email: email,
-      role: 'admin',
-      jobTitle: 'System Administrator',
-      status: 'active',
-      createdAt: Date.now(),
-    };
-
-    const docRef = doc(firestore, 'users', uid);
-    await setDoc(docRef, profile);
-    return profile;
-  } catch (error) {
-    console.error('Error seeding initial admin profile:', error);
     throw error;
   }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "MSU Water Monitoring & Control System",
+  "short_name": "MSU Water",
+  "description": "Real-time water level and pH monitoring for Mindanao State University reservoirs.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#7B1113",
+  "icons": [
+    { "src": "/msu-logo.png", "sizes": "192x192 512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

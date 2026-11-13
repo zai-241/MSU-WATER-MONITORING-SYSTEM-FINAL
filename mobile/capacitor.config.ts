@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: '../frontend/dist',
   server: {
     url: 'https://msu-water-monitoring-system.web.app',
-    cleartext: true,
+    cleartext: false,
   },
   plugins: {
     SplashScreen: {

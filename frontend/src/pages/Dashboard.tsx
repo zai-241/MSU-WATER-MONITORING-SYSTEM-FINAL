@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import WaterGauge from '@/components/WaterGauge';
 import {
   useTanks,
@@ -7,11 +7,11 @@ import {
   useServerTimeOffset,
   isTankControllerOffline,
   isTankPlanned,
-  syncTankOfflineState,
   Tank,
   SystemConfig,
-  User as UserType
 } from '@/store/useStore';
+import { offlineThresholdMs } from '@/lib/alertEngine';
+import type { UserProfile } from '@/services/authService';
 import { useProcessedTankData } from '@/hooks/useUIStabilization';
 import { WifiOff, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
@@ -42,11 +42,10 @@ export const formatLastSeen = (timestamp?: number, currentServerTime?: number) =
 interface TankCardProps {
   tank: Tank;
   config: SystemConfig;
-  currentUser: UserType | null;
+  currentUser: UserProfile | null;
   isAdmin: boolean;
   onPumpToggle: (tankId: string, tankName: string, newState: boolean) => void;
   assignedWorkerName: string;
-  getStatus: (tank: Tank) => 'safe' | 'warning' | 'danger';
   isOffline: boolean;
   nowServer: number;
 }
@@ -63,7 +62,6 @@ const TankCard = memo(({
   isAdmin,
   onPumpToggle,
   assignedWorkerName,
-  getStatus,
   isOffline,
   nowServer,
 }: TankCardProps) => {
@@ -277,9 +275,9 @@ const TankCard = memo(({
 });
 
 const Dashboard = () => {
-  const { tanks, updateTank } = useTanks();
+  const { tanks, isLive, updateTank } = useTanks();
   const serverTimeOffset = useServerTimeOffset();
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const { config } = useConfig();
   const { currentUser } = useAuth();
   const addLog = addSystemLog;
@@ -287,11 +285,14 @@ const Dashboard = () => {
   // Firestore real-time listener for user profiles to map operator assignments on dashboard
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(firestore, 'users'), (snapshot) => {
-      const list: any[] = [];
+      const list: UserProfile[] = [];
       snapshot.forEach(doc => {
-        list.push({ id: doc.id, ...doc.data() });
+        list.push({ ...(doc.data() as UserProfile), id: doc.id });
       });
       setUsers(list);
+    }, (error) => {
+      // Assignments fall back to "Unknown" rather than leaving the page blank
+      console.error('Error listening to user profiles:', error);
     });
     return () => unsubscribe();
   }, []);
@@ -321,8 +322,10 @@ const Dashboard = () => {
 
   // Compare against Firebase server time (not browser clock)
   const secondsSinceUpdate = lastUpdate ? Math.max(0, Math.floor((nowServer - lastUpdate) / 1000)) : 999;
-  // If no update for > 30 seconds, classify device as Offline
-  const isOnline = secondsSinceUpdate <= 30;
+  // Offline threshold comes from the Admin Panel setting (default 30 s)
+  const offlineMs = offlineThresholdMs(config);
+  const offlineSec = Math.round(offlineMs / 1000);
+  const isOnline = secondsSinceUpdate * 1000 <= offlineMs;
   
   let connectionStatus: 'online' | 'reconnecting' | 'offline' = 'online';
   if (!isOnline) {
@@ -350,15 +353,9 @@ const Dashboard = () => {
     return user ? user.username : 'Unknown';
   };
 
-  const getStatus = (tank: Tank) => {
-    if (tank.waterLevel >= config.overflowThreshold) return 'danger';
-    if (tank.waterLevel >= 80 || tank.phLevel < config.minPh || tank.phLevel > config.maxPh) return 'warning';
-    return 'safe';
-  };
-
   const handlePumpToggle = (tankId: string, tankName: string, newState: boolean) => {
     const targetTank = tanks.find(t => t.id === tankId);
-    if (!targetTank || isTankPlanned(targetTank) || isTankControllerOffline(targetTank, serverTimeOffset)) {
+    if (!targetTank || isTankPlanned(targetTank) || isTankControllerOffline(targetTank, serverTimeOffset, offlineMs)) {
       return; // Cannot toggle pump on planned tanks or when controller is offline
     }
     setPumpConfirm({ tankId, tankName, newState });
@@ -367,7 +364,7 @@ const Dashboard = () => {
   const confirmPumpToggle = () => {
     if (!pumpConfirm) return;
     const targetTank = tanks.find(t => t.id === pumpConfirm.tankId);
-    if (targetTank && isTankControllerOffline(targetTank, serverTimeOffset)) {
+    if (targetTank && isTankControllerOffline(targetTank, serverTimeOffset, offlineMs)) {
       setPumpConfirm(null);
       return;
     }
@@ -384,6 +381,11 @@ const Dashboard = () => {
 
   return (
     <div>
+      {!isLive && (
+        <div data-testid="cached-data-banner" className="mb-4 p-3 rounded-lg bg-muted border border-border text-muted-foreground text-sm font-medium">
+          Loading live readings... Values shown are the last ones saved on this device.
+        </div>
+      )}
       {config.maintenanceMode && (
         <div className="mb-4 p-3 rounded-lg bg-warning/20 border border-warning text-warning text-sm font-medium flex items-center gap-2">
           ⚠️ Maintenance Mode is active — All pumps are disabled and alerts are suppressed.
@@ -422,7 +424,7 @@ const Dashboard = () => {
             </h2>
             <p className="text-xs text-muted-foreground">
               {connectionStatus === 'offline' ? (
-                'System has not reported heartbeat telemetry for over 30 seconds. Controller is offline.'
+                `${activeTank?.name ?? 'The controller'} has not reported for over ${offlineSec} seconds. Controller is offline.`
               ) : (
                 `ESP32 reporting active. Heartbeat received ${formatRelativeTime(secondsSinceUpdate)}.`
               )}
@@ -437,14 +439,14 @@ const Dashboard = () => {
             </span>
           )}
           <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground border border-border">
-            Device ID: ESP32-WROOM-32
+            {activeTank?.name ?? 'No controller'} · ESP32
           </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
         {tanks.map(tank => {
-          const isOffline = isTankControllerOffline(tank, serverTimeOffset);
+          const isOffline = isTankControllerOffline(tank, serverTimeOffset, offlineMs);
           return (
             <TankCard
               key={tank.id}
@@ -454,7 +456,6 @@ const Dashboard = () => {
               isAdmin={isAdmin}
               onPumpToggle={handlePumpToggle}
               assignedWorkerName={getWorkerName(tank.assignedWorker)}
-              getStatus={getStatus}
               isOffline={isOffline}
               nowServer={nowServer}
             />

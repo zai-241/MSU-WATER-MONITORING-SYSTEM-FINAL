@@ -46,21 +46,27 @@
       "tanks": {
         "$tankId": {
           ".write": "root.child('roles').child(auth.uid).val() === 'admin' || root.child('roles').child(auth.uid).val() === 'device'",
-          ".indexOn": ["timestamp"]
+          ".indexOn": [
+            "timestamp"
+          ]
         }
       }
     },
     "logs": {
       ".read": "auth != null",
       ".write": "root.child('roles').child(auth.uid).val() === 'admin'",
-      ".indexOn": ["timestamp"],
+      ".indexOn": [
+        "timestamp"
+      ],
       "$id": {
         ".write": "root.child('roles').child(auth.uid).exists() && (!data.exists() || root.child('roles').child(auth.uid).val() === 'admin')"
       }
     },
     "notifications": {
       ".read": "auth != null",
-      ".indexOn": ["timestamp"],
+      ".indexOn": [
+        "timestamp"
+      ],
       "$notifId": {
         ".write": "root.child('roles').child(auth.uid).exists() && (newData.exists() || root.child('roles').child(auth.uid).val() === 'admin')",
         "acknowledgedByUid": {
@@ -73,6 +79,9 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
+    },
+    "system": {
+      ".read": "auth != null"
     }
   }
 }

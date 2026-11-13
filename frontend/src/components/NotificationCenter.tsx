@@ -15,11 +15,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
 import { alertSound } from '@/utils/alertSound';
 import { toast } from 'sonner';
+import { getPushStatus, enablePush, disablePush, type PushStatus } from '@/utils/push';
 
 const NotificationCenter = () => {
-  const { notifications, markRead, acknowledgeNotification } = useNotifications();
+  const { notifications, acknowledgeNotification } = useNotifications();
   const { currentUser } = useAuth();
-  const { lastReadAt, markAllAsRead } = useUserNotificationsState(currentUser?.id);
+  const { isUnread, markAllAsRead, markOneRead } = useUserNotificationsState(currentUser?.id);
 
   // Audio state
   const [isMuted, setIsMuted] = useState(() => alertSound.isMuted());
@@ -36,9 +37,7 @@ const NotificationCenter = () => {
   }, []);
 
   // Unread count per user
-  const unreadCount = notifications.filter(n =>
-    lastReadAt > 0 ? n.timestamp > lastReadAt : !n.read
-  ).length;
+  const unreadCount = notifications.filter(isUnread).length;
 
   // Warning and critical alerts (type === 'warning' or 'danger') that are not yet acknowledged or resolved
   const unacknowledgedCount = notifications.filter(
@@ -50,7 +49,7 @@ const NotificationCenter = () => {
   const canAcknowledge = isPrivileged;
 
   const handleMarkRead = (id: string) => {
-    markRead(id);
+    markOneRead(id);
   };
 
   const handleAcknowledge = (notif: Notification) => {
@@ -77,6 +76,40 @@ const NotificationCenter = () => {
       // Browser refused to show the prompt
     }
   };
+
+  // R9: push alerts reach this device even when the tab (or the Android app) is closed
+  const [pushStatus, setPushStatus] = useState<PushStatus>('unsupported');
+  const [pushBusy, setPushBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getPushStatus().then((status) => { if (!cancelled) setPushStatus(status); });
+    return () => { cancelled = true; };
+  }, [open, currentUser?.id]);
+
+  const togglePush = async () => {
+    const uid = currentUser?.id;
+    if (!uid || pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (pushStatus === 'enabled') {
+        await disablePush(uid);
+        setPushStatus(await getPushStatus());
+        toast.success('Push alerts turned off on this device.');
+        return;
+      }
+      const result = await enablePush(uid);
+      setPushStatus(result.status);
+      if (desktopSupported) setDesktopPermission(window.Notification.permission);
+      if (result.status === 'enabled') {
+        toast.success('Push alerts enabled on this device.');
+      } else if (result.message) {
+        toast.error(result.message);
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
+  const pushAvailable = pushStatus === 'enabled' || pushStatus === 'available';
 
   const formatDateTime = (timestamp?: number) => {
     if (!timestamp) return '';
@@ -145,7 +178,23 @@ const NotificationCenter = () => {
         <div className="flex items-center justify-between px-4 py-1.5 bg-secondary/30 border-b text-xs text-muted-foreground">
           <span className="text-[11px] font-medium">Alert Audio:</span>
           <div className="flex items-center gap-1.5">
-            {desktopSupported && desktopPermission === 'default' && (
+            {pushAvailable && (
+              <Button
+                variant={pushStatus === 'enabled' ? 'ghost' : 'outline'}
+                size="sm"
+                onClick={togglePush}
+                disabled={pushBusy}
+                data-testid="push-toggle"
+                className={`h-6 px-2 text-[10px] font-semibold gap-1 ${pushStatus === 'enabled' ? 'text-emerald-600' : ''}`}
+                title={pushStatus === 'enabled'
+                  ? 'Push alerts are on for this device. Click to turn them off.'
+                  : 'Get alerts on this device even when this page is closed'}
+              >
+                <Bell className="h-3 w-3" />
+                {pushStatus === 'enabled' ? 'Push On' : 'Enable Push'}
+              </Button>
+            )}
+            {!pushAvailable && desktopSupported && desktopPermission === 'default' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -215,13 +264,13 @@ const NotificationCenter = () => {
               {notifications.map((notif) => {
                 const isAlert = notif.type === 'warning' || notif.type === 'danger';
                 const isAcknowledged = !!notif.acknowledged;
-                const isUnread = lastReadAt > 0 ? notif.timestamp > lastReadAt : !notif.read;
+                const unread = isUnread(notif);
 
                 return (
                   <div
                     key={notif.id}
                     className={`flex flex-col gap-1.5 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
-                      isUnread ? 'bg-primary/5' : ''
+                      unread ? 'bg-primary/5' : ''
                     }`}
                     onClick={() => handleMarkRead(notif.id)}
                   >
@@ -239,7 +288,7 @@ const NotificationCenter = () => {
                         <div className="flex justify-between items-start">
                           <p
                             className={`text-sm font-medium leading-none ${
-                              isUnread ? 'text-primary font-semibold' : ''
+                              unread ? 'text-primary font-semibold' : ''
                             }`}
                           >
                             {notif.title}
@@ -252,7 +301,7 @@ const NotificationCenter = () => {
                           {notif.message}
                         </p>
                       </div>
-                      {isUnread && (
+                      {unread && (
                         <div className="flex items-center justify-center pt-0.5">
                           <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
                         </div>

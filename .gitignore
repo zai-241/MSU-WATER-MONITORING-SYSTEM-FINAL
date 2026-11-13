@@ -27,3 +27,11 @@ dist-ssr
 secrets.h
 esp32_firmware/secrets.h
 backend/firmware/secrets.h
+
+# Alert worker secrets and local env files
+backend/worker/.env
+backend/worker/serviceAccount*.json
+backend/worker/node_modules
+frontend/.env
+frontend/.env.local
+mobile/android/app/google-services.json
