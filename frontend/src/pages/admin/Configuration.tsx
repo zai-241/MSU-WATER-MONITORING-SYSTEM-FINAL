@@ -362,18 +362,14 @@ const Configuration = () => {
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Bell size={18} className="text-primary" /> Notification & Watchdog Settings
         </h3>
-        <div
-          data-testid="alert-service-status"
-          className={`mb-4 rounded-lg border px-3 py-2 text-xs font-medium ${
-            workerStatus.active
-              ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
-              : 'border-warning/40 bg-warning/10 text-foreground'
-          }`}
-        >
-          {workerStatus.active
-            ? 'Alert service: running. Alerts and push notifications work even when no dashboard is open.'
-            : 'Alert service: not running. Alerts are evaluated only while a dashboard is open, and push notifications are not sent.'}
-        </div>
+        {workerStatus.active && (
+          <div
+            data-testid="alert-service-status"
+            className="mb-4 rounded-lg border px-3 py-2 text-xs font-medium border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+          >
+            Alert service: running. Alerts and push notifications work even when no dashboard is open.
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-semibold mb-1">Offline Watchdog Threshold (s)</label>
