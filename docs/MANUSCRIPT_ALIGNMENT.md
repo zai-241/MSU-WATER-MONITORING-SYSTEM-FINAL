@@ -1,168 +1,176 @@
 # Manuscript Alignment Plan
 
-What has to change in this repository so the system matches the latest capstone manuscript.
+What to change in this repository so the system matches the latest capstone manuscript.
 
-| | |
-| :-- | :-- |
-| **Source of truth** | Google Doc *"…Draft_COMMMENT1_raft_02_on_edit_copy_IOT-BASED WATER LEVEL AND QUALITY MONITORING SYSTEM FOR MSU MOTOR POOL, MAIN CAMPUS MARAWI CITY"* (most recently modified doc in Drive, 2026-11-12) |
-| **Compared against** | Branch `claude/adoring-ritchie-n8di3g` at commit `1ae64a5` |
-| **Direction** | The manuscript wins. Code and repo docs change to match it, except where section 4 lists a manuscript error. |
+- **Manuscript:** the Google Doc draft last modified 2026-11-12 (*IoT-Based Water Level and Quality Monitoring System for MSU Motor Pool, Main Campus Marawi City*).
+- **Rule:** the manuscript wins. The code and repo docs change to match it.
+- **Exception:** a few manuscript errors are listed in [Part 3](#part-3--fixes-needed-in-the-manuscript) for the authors to fix.
 
-**How the comparison was done.** Manuscript sections read in full: Abstract, Chapter 1, 3.2, 3.4–3.6.2, 4.1, 4.2.1 summary and 4.2.1.5, 4.3, Chapter 5. Chapter 2, the usability tables (4.2.2) and the appendices were only keyword-searched. Figures are images and were not inspected. On the code side, constants and call sites were read in the firmware, alert engine, worker, routes, Reports and Logs pages; nothing was compiled, flashed, or run.
+## At a glance
 
----
-
-## 1. Summary
-
-| # | Gap | Severity | Section |
-| :- | :-- | :-- | :-- |
-| 1 | System controls a pump; manuscript says it does not | **Blocker** | 2.1 |
-| 2 | System sends background push (FCM) via an always-on worker; manuscript says in-app alerts only | **Blocker** | 2.2 |
-| 3 | Repo docs (`README.md`, `docs/*.md`) describe a "Monitoring & Control" system with pump automation | **Blocker** | 2.3 |
-| 4 | Android `minSdkVersion` is 24; manuscript says Android 8.0 / API 26 | Minor | 2.4 |
-| 5 | Logs page filters by tab group, not by the four severity levels | Minor | 2.5 |
-| 6 | Reports contain pump-activity sections | Follows from #1 | 2.1 |
-| 7 | Automated test count is 77 in the repo, 37 in the manuscript | Manuscript or repo docs | 4 |
-| 8 | Wi-Fi fallback SSID and password are hard-coded in the firmware source | Security, unrelated to the manuscript | 5 |
-
-Everything in section 3 already matches and needs no work.
+| # | What is wrong | Priority |
+| :-: | :-- | :-- |
+| 1 | The system controls a pump. The manuscript says it does not. | High |
+| 2 | The system sends background push notifications. The manuscript says alerts are in-app only. | High |
+| 3 | The repo docs still describe pump control. | High |
+| 4 | Android minimum version is API 24. The manuscript says API 26. | Low |
+| 5 | The Logs page cannot filter by a single severity level. | Low |
+| 6 | Wi-Fi password is hard-coded in the firmware. | Security |
 
 ---
 
-## 2. Changes required in the system
+## Part 1 — Changes to the system
 
-### 2.1 Remove pump control (Blocker)
+### 1. Remove pump control
 
-**Manuscript.** Section 1.4, *Remote Pump Actuation*: the system "does not control, activate, deactivate, or automatically switch the university's physical water pump motors." Recommendation 5.3 #3 lists pump control as future work. Section 3.6.1 says the 5 V relay is "used only for local visual/audible alert indicators and threshold simulation."
+**Manuscript (1.4, 5.3):** the system does not control, activate, or switch pump motors. Pump control is future work. The relay is only a local alert indicator.
 
-**System today.** The firmware starts the relay at the low threshold and stops it at the overflow threshold, and the dashboard has a manual pump switch.
+**System now:** the firmware starts the pump at the low threshold and stops it at the overflow threshold. The dashboard has a manual pump switch.
 
-| Where | What is there now | Action |
+**Firmware** — `backend/firmware/esp32_firmware.ino`
+
+- [ ] Remove `processAutomaticPumpControl()` and the place it is called.
+- [ ] Remove `updateFirebasePumpState()` and the `pumpOn` field in the telemetry payload.
+- [ ] Remove the `pumpControlLock` handling and the pump variables.
+- [ ] Make the relay follow the alert state (on while an alert is active).
+
+**Web app** — `frontend/src/`
+
+- [ ] `pages/Dashboard.tsx`: remove the pump switch, its confirm dialog, and the "Pump Control Lock" banner.
+- [ ] `pages/admin/Configuration.tsx`: remove the Pump Control Lock setting.
+- [ ] `store/useStore.ts`: remove `pumpOn` and `pumpControlLock`.
+- [ ] `pages/admin/TankAssignment.tsx` and `hooks/useTankHistory.ts`: drop `pumpOn`.
+- [ ] `lib/reportExport.ts` and `pages/Reports.tsx`: remove the "Pump Activity" sheet, the PDF pump section, and "Total Pump Cycles".
+- [ ] Reword the Maintenance Mode banner so it no longer mentions pumps.
+- [ ] Update the tests that use `pumpOn`.
+
+**Database**
+
+- [ ] After flashing the new firmware, delete `pumpOn` from tanks and history, and `pumpControlLock` from `/config`.
+
+### 2. Remove background push and the alert worker
+
+**Manuscript (1.4, 5.3):** alerts appear only while the web dashboard or Android app is open. Firebase Cloud Messaging is not used and is listed as future work. Alerts are checked by the ESP32 and by the app itself; there is no server process.
+
+**System now:** an always-on Node worker checks alerts and sends push notifications. The app steps back while the worker is running.
+
+- [ ] Take `backend/worker/` out of the system. Keep it on a separate branch, since it is the future work the manuscript recommends.
+- [ ] Remove `frontend/src/utils/push.ts` and `frontend/public/firebase-messaging-sw.js`.
+- [ ] Remove the push on/off controls from the app.
+- [ ] Remove `@capacitor/push-notifications` from `package.json`, then run `npm run cap:sync`.
+- [ ] `components/SystemMonitor.tsx`: make the app the only alert checker. Remove the "worker is alive" path and `WORKER_STALE_MS`.
+- [ ] `backend/cloud/database.rules.json`: remove `/system` and the push-token part of `/userState`.
+- [ ] Remove the `worker*` scripts from the root `package.json`.
+- [ ] Move `PHASE3_SETUP.md` and `WEB_NOTIFICATION_RECOMMENDATIONS.md` to the same branch as the worker.
+
+**Keep:**
+
+- `lib/alertEngine.ts`. Its 5-second check and 60-second cooldown are exactly what the manuscript describes.
+- App Check. The manuscript does not mention it, and it changes nothing the user sees.
+
+**Check:** the worker also deleted records older than 90 days. History cleanup already runs from the Reports page. Confirm logs and notifications are still cleaned up without the worker.
+
+### 3. Rewrite the repo docs
+
+Files: `README.md`, `docs/SRS.md`, `docs/System_Overview.md`, `docs/Methodology.md`.
+
+- [ ] Use the manuscript title. Drop "& Control".
+- [ ] Delete every pump section, the pump requirements in the SRS (FR-02), and `pumpOn` / `pumpControlLock` in the JSON examples.
+- [ ] Describe the relay as a local alert indicator.
+- [ ] Add the limitations from manuscript section 1.4.
+- [ ] Fix `docs/SRS.md`: Viewers can open the notifications page (read-only).
+- [ ] Update the test count once the code changes are done.
+
+### 4. Android minimum version
+
+- [ ] `mobile/android/variables.gradle`: change `minSdkVersion` from `24` to `26` (Android 8.0).
+
+### 5. Logs page severity filter
+
+**Manuscript (4.1.4):** users filter logs by INFO, WARNING, ERROR, or CRITICAL.
+
+**System now:** `pages/Logs.tsx` has four tabs (All, Alerts, System, Errors) that group severities together.
+
+- [ ] Add a filter with the four severity levels.
+
+### 6. Hard-coded Wi-Fi password
+
+Not a manuscript issue, but it should be fixed. The firmware has a Wi-Fi name and password as fallback values near the top of `esp32_firmware.ino`, and they are in git history.
+
+- [ ] Replace the fallbacks with empty strings.
+- [ ] Change the password on the access point.
+
+---
+
+## Part 2 — Already matching
+
+No work needed here. These were checked against the code.
+
+**Sensor filtering**
+- Sample every 20 ms, process every 200 ms.
+- Median filter of 5 samples, moving average of 10.
+- Sensor fault at ≤ 0.05 V or ≥ 3.25 V for 10 seconds; recovery after 3 seconds.
+- Sudden jumps of 1.5 pH or 15% ignored until confirmed over 15 samples.
+- Deadband of 2% level and 0.15 pH.
+
+**Alerts**
+- Thresholds: 15% low, 95% overflow, pH 6.5–8.5.
+- Alerts clear at 17% and 93%.
+- 5-second persistence check and 60-second cooldown.
+- States: NORMAL, WARNING, CRITICAL, RECOVERED.
+- Low level and pH are "danger"; overflow is "warning".
+- Looping chime that stops on acknowledge.
+
+**Network**
+- Wi-Fi retries after 15, 30, then 60 seconds.
+- 90-second network watchdog.
+- 20 log entries buffered while offline.
+- Duplicate logs suppressed for 5 minutes.
+
+**Data and reports**
+- History saved every 10 minutes and kept for 90 days.
+- Report ranges of 7, 14, and 30 days.
+- Export to PDF, Excel, CSV, and print.
+- Four log severity levels, with keyword search and highlighting.
+- User profiles in Firestore; everything else in Realtime Database.
+
+**Access**
+- Roles: Admin, Worker, Viewer.
+- Reports and Logs for Admin and Worker only; Admin Panel for Admin only.
+- Only Admin and Worker can acknowledge. The name, time, and a log entry are recorded.
+
+---
+
+## Part 3 — Fixes needed in the manuscript
+
+These cannot be solved in code.
+
+| Section | Problem | Fix |
 | :-- | :-- | :-- |
-| `backend/firmware/esp32_firmware.ino:1394` `processAutomaticPumpControl()` and its call at `:1687` | Auto-start at ≤ low threshold, auto-stop at ≥ overflow, 30 s anti-chatter | Remove the function and the call |
-| `esp32_firmware.ino:1627` `digitalWrite(RELAY_PIN, …)` | Relay follows desired pump state | Drive the relay from the alert state instead (on while any alert is CRITICAL/WARNING), matching the "local alert indicator" wording |
-| `esp32_firmware.ino:1362` `updateFirebasePumpState()`, `:1528` `pumpOn` in the telemetry payload, `:1767–1795` and `:1906` `pumpControlLock` handling, `:195–203` pump globals | Pump state synced to `/tanks/{id}/pumpOn`, remote commands honoured | Remove |
-| `frontend/src/pages/Dashboard.tsx:47–213, 300–396` | Pump ON/OFF switch, confirm dialog, `PUMP_ON` / `PUMP_OFF` log entries, "Pump Control Lock" banner | Remove |
-| `frontend/src/pages/admin/Configuration.tsx` | Pump Control Lock setting | Remove |
-| `frontend/src/store/useStore.ts:50, 97, 152–252, 444, 616` | `pumpOn` on `Tank`, `pumpControlLock` on config | Remove the fields |
-| `frontend/src/lib/reportExport.ts:17–38, 104, 153–171, 277, 333–353`, `frontend/src/pages/Reports.tsx`, `frontend/src/hooks/useTankHistory.ts:15, 59` | "Pump Activity" sheet, "Total Pump Cycles" metric, PDF section 3 | Remove. Manuscript 4.1.4 describes reports as water level and pH trend charts and tables only |
-| `frontend/src/pages/admin/TankAssignment.tsx:42` | Writes `pumpOn: false` when disabling a tank | Drop the field |
-| `frontend/src/test/*` (5 files mention pump) | Fixtures and assertions use `pumpOn` | Update fixtures; delete pump-specific cases |
-| RTDB data | Existing `pumpOn` on tanks and history samples, `pumpControlLock` in `/config` | Delete the keys once the new firmware is flashed |
-
-Maintenance Mode stays, but its banner text ("All pumps are disabled…") must lose the pump wording.
-
-### 2.2 Remove background push and the alert worker (Blocker)
-
-**Manuscript.** Section 1.4, *Notification Channels*: alerts appear "only while the web dashboard or Android application is open. The system does not use background push notifications from the operating system, such as Firebase Cloud Messaging." Recommendation 5.3 #7 lists FCM as future work. Sections 3.4.2–3.4.4 say alerts are evaluated by "the ESP32 firmware and the client-side SystemMonitor" — no server process appears in the architecture (3.4.8) or the software list (Table 3-3).
-
-**System today.** Commit `93c0b96` added an always-on Node worker that evaluates alerts, sends FCM pushes, and applies retention; browsers defer to it while its heartbeat is fresh.
-
-| Where | Action |
-| :-- | :-- |
-| `backend/worker/` (whole folder) | Remove from the deployed system. Recommended: move it to a `future/` branch rather than delete it, since it is exactly recommendation 5.3 #7 |
-| `frontend/src/utils/push.ts`, `frontend/public/firebase-messaging-sw.js` | Remove |
-| Push enable/disable UI (search `enablePush`, `getPushStatus`) | Remove |
-| `@capacitor/push-notifications` in `package.json`; `google-services` / FCM entries under `mobile/android` | Remove, then `npm run cap:sync` |
-| `frontend/src/components/SystemMonitor.tsx`, `frontend/src/lib/constants.ts` (`WORKER_STALE_MS`) | Make the browser the only evaluator; delete the "worker is alive, stand down" path |
-| `backend/cloud/database.rules.json` `/system`, `/userState` (push tokens) | Remove the nodes that only the worker or push used |
-| Root `package.json` scripts `worker`, `worker:check`, `worker:install`, `worker:setup` | Remove |
-| `PHASE3_SETUP.md`, `WEB_NOTIFICATION_RECOMMENDATIONS.md` | Move to the same `future/` branch or delete |
-
-**Keep:** the pure state machine in `frontend/src/lib/alertEngine.ts` (5 s persistence, 60 s repeat, NORMAL/WARNING/CRITICAL/RECOVERED) — the manuscript describes exactly this. Retention must still happen without the worker: the admin-triggered 90-day cleanup already in `Reports.tsx:166–200` covers history; confirm notifications and logs have an equivalent client path.
-
-**App Check** (`frontend/src/config/firebase.ts`) is not mentioned in the manuscript. It is a security hardening with no user-visible behaviour, so keeping it does not contradict anything. No action.
-
-### 2.3 Rewrite the repository docs (Blocker)
-
-`README.md`, `docs/SRS.md`, `docs/System_Overview.md` and `docs/Methodology.md` were harmonised with the *old* codebase and now contradict the manuscript.
-
-- Rename "MSU Water Monitoring **& Control** System" to the manuscript title.
-- Delete: README "Automatic Pump Control" and "Automated Pump Protection" sections, the relay row in the hardware table ("220V AC pump power switching"), SRS FR-02 (all of 3.2), the "Offline Operation … pump refill" requirement, the pump column of the role matrix, `pumpOn` / `pumpControlLock` in the JSON examples in `Methodology.md`.
-- Add the limitations from manuscript 1.4 (single-tank hardware pilot, no UPS, in-app alerts only, pH only, no pump actuation).
-- Describe the relay as a local alert indicator.
-- Fix the test count (see section 4).
-- `docs/SRS.md:64` says Viewers cannot view notifications; the app routes Viewers to `/notifications` read-only, which matches the manuscript. Correct the SRS line.
-
-### 2.4 Android minimum version (Minor)
-
-Manuscript Table 3-4 and the README both say Android 8.0 (API 26). `mobile/android/variables.gradle:2` has `minSdkVersion = 24`. Set it to `26`.
-
-### 2.5 Logs page severity filter (Minor)
-
-Manuscript 4.1.4: users "filter diagnostic records … by severity level (INFO, WARNING, ERROR, or CRITICAL)." `frontend/src/pages/Logs.tsx:82` offers four tabs — `all`, `alerts`, `system`, `errors` — which group severities rather than select one. Replace the tabs with (or add) a four-value severity filter. Keyword search with highlighting already matches.
-
-### 2.6 Database entities (Minor, after 2.1 and 2.2)
-
-Manuscript 3.4.7 names six entities: TANKS, USERS, HISTORY_TANKS, LOGS, NOTIFICATIONS, CONFIG. The Realtime Database also has `/roles`, `/userState` and `/system`. After 2.2, `/system` and the push part of `/userState` disappear. `/roles` (used by the security rules, including the `device` role for the ESP32 account) remains and is not in the ERD — either add it to Figure 3.12 or leave it as an implementation detail of USERS.
-
-Extra fields that exist but are not listed in 3.4.7, and are harmless: notifications `acknowledgedByUid`, `resolved`, `lastRepeatedAt`; config `maintenanceMode`, `repeatIntervalSec`, `offlineThresholdSec`.
+| 4.1.3 | Low-level threshold is written as 20%. It is 15% everywhere else. | Change to 15%. |
+| 4.1.4 | Log examples use thresholds that do not exist in the system (20%, 85%, 10%, pH 4.0, pH 10.0). | Rewrite using 15%, 95%, and pH 6.5–8.5. |
+| 3.6.1 and 5.1 | Respondents are "3 engineers + 27 others" in one section and "15 / 10 / 5" in the other. | Use the true breakdown in both. |
+| 4.2.1.5 | Says telemetry was sent every second (86,400 packets). The firmware sends on change or every 10 seconds. | Confirm how the test was run and reword. |
+| 3.4.8 | Says Wi-Fi turns on only when Ethernet fails. The firmware keeps Wi-Fi connected as a standby, as 4.1.1 describes. | Match 4.1.1. |
+| Table 3-3, 3.6.1 | Says 37 automated tests. The repo has 77, and the number will change after Part 1. | Run `npm test` after the changes and use that number. |
+| 4.3.1 | "gllons" | Typo. |
+| 4.3 | Figures 4.1–4.9 are still placeholders. | Take screenshots after Part 1, so no pump switch appears. |
 
 ---
 
-## 3. Already aligned — no change
+## Order of work
 
-| Manuscript claim | Verified in |
-| :-- | :-- |
-| Median filter 5 samples, moving average 10 | `esp32_firmware.ino:208–209` |
-| Sample every 20 ms, process every 200 ms | `:235`, `:263` |
-| Fault at ≤ 0.05 V or ≥ 3.25 V for 10 s; recovery after 3 s | `:1078`, `:1156`, `:306`, `:1131`, `:1231` |
-| Spike rejection: 1.5 pH / 15 % until 15 consecutive samples | `:303–305` |
-| Deadband 2 % level, 0.15 pH | `:211–212` |
-| Thresholds 15 % / 95 %, pH 6.5–8.5 | `:320–323`, worker and app defaults |
-| Clear at 17 % / 93 % (2 % hysteresis) | `alertEngine.ts:23–24` |
-| 5 s persistence, 60 s repeat cooldown | `esp32_firmware.ino:334–336`, `alertEngine.ts:17–19` |
-| Alert states NORMAL / WARNING / CRITICAL / RECOVERED | `alertEngine.ts:28` |
-| Low level and pH = danger, overflow = warning | `alertEngine.ts:10–13` |
-| Wi-Fi retry 15 s → 30 s → 60 s; 90 s network watchdog | `esp32_firmware.ino:1277–1283`, `:273` |
-| 20-entry RAM log buffer; duplicate logs suppressed 5 min | `:478`, `:370` |
-| History snapshot every 10 min; 90-day retention | `:1479`, `constants.ts:21` |
-| Default tank height 5.0 m; remote calibration fields | `:286–292`, `:1817–1830` |
-| Log levels INFO / WARNING / ERROR / CRITICAL; "Network Alert", "Network Recovery", "Sensor Fault" actions | `:358–364`, `:727`, `:1299`, `:1097` |
-| Roles admin / worker / viewer; Reports and Logs for admin + worker; Admin Panel admin-only | `frontend/src/App.tsx:21–25` |
-| Only admin and worker can acknowledge; acknowledgment writes name, time and an "Alert Acknowledged" log | `NotificationCenter.tsx:47–49`, `useStore.ts:785` |
-| Report ranges 7 / 14 / 30 days; hourly averages for 7, daily for 14 and 30 | `Reports.tsx:48, 212–216` |
-| Export to PDF (jsPDF), Excel (ExcelJS), CSV, and browser print | `reportExport.ts:8–10`, `Reports.tsx:397–419` |
-| Looping chime from the Web Audio API | `frontend/src/utils/alertSound.ts` |
-| Firestore holds user profiles only; everything else in RTDB | `backend/cloud/*`, `useStore.ts` |
+1. **Firmware** — sections 1 and 6. Flash and confirm alerts still fire.
+2. **App** — sections 1, 2, 4, 5. Run `npm run typecheck`, `npm run lint`, `npm test`.
+3. **Database** — deploy the new rules and delete the unused keys.
+4. **Repo docs** — section 3.
+5. **Manuscript** — give Part 3 to the authors and take the screenshots.
 
----
+## What was not checked
 
-## 4. Manuscript problems to raise with the authors
-
-These cannot be fixed in code. Either the manuscript is internally inconsistent, or changing the system to match would make it worse.
-
-| Manuscript location | Problem | Suggested fix |
-| :-- | :-- | :-- |
-| 4.1.3, "5-Second Anomaly Persistence" | Gives the low-level alert threshold as "< 20.0 %". Everywhere else it is 15 %. | Change to 15 % |
-| 4.1.4, WARNING and CRITICAL examples | Lists log triggers at < 20 %, > 85 %, pH 6.4 / 8.6, < 10 %, pH < 4.0 / > 10.0. None of these thresholds exist in the firmware or app; only 15 / 95 and 6.5 / 8.5 do. | Rewrite the examples using the real thresholds, or add these tiers to the system (new work, not currently planned) |
-| 3.6.1 vs 5.1 | Respondents are "3 Division Engineers and 27 Water Controllers and Administrative/Support Staff" in one place and "15 Water Controllers, 10 Administrative Staff, 5 Division Engineers" in the other. | Pick the true breakdown |
-| 4.2.1.5 | States telemetry was sent at 1-second intervals, 86,400 packets in 24 h. The firmware writes on a deadband change (at most once per second) or a 10-second heartbeat, so a stable tank produces about 8,640 writes a day. | Confirm how the test build was configured and reword, or state the heartbeat was set to 1 s for the test |
-| 3.4.8 | Says Wi-Fi "activates only if the Ethernet link is disrupted." The firmware joins Wi-Fi at boot and keeps it as a standing backup (`esp32_firmware.ino:2137`), which is what 4.1.1 describes. | Align 3.4.8 with 4.1.1 |
-| Table 3-3, 3.6.1 | "37 automated unit and integration tests." The repo has 77 test cases in 11 files (counted from source, not executed), and the number will change again after 2.1 and 2.2. | Re-run `npm test` after the code changes and put the real number in the manuscript and README |
-| 4.3.1 | "16,852.25 gllons" | Typo |
-| 4.3 | Figures 4.1–4.9 are still "[Insert Image…]" placeholders. | Take the screenshots **after** 2.1 and 2.2 so they show no pump switch and no push prompt |
-
----
-
-## 5. Found in passing
-
-`backend/firmware/esp32_firmware.ino:15–21` hard-codes a real-looking Wi-Fi SSID and password as fallbacks when `secrets.h` is missing. They are in git history. Replace the fallbacks with empty strings (as the Firebase ones already are) and change the access-point password.
-
----
-
-## 6. Suggested order of work
-
-1. **Firmware** — 2.1 firmware rows, section 5. Flash and bench-test that alerts still raise and the relay now follows alert state.
-2. **Web and mobile app** — 2.1 app rows, 2.2, 2.4, 2.5. Run `npm run typecheck`, `npm run lint`, `npm test`, then `npm run cap:sync`.
-3. **Database** — deploy the trimmed rules, delete the orphaned keys (2.1 last row, 2.6).
-4. **Repo docs** — 2.3, using the final test count.
-5. **Manuscript** — hand section 4 to the authors; capture the Chapter 4 screenshots from the aligned build.
-
-## 7. Not verified
-
-- Measured results in Chapter 4 (2.34 s latency, 1.48 s load, ±1.82 %, ±0.16 pH, failover under 3 s). These are field measurements; code can't confirm them.
-- Hardware claims (IP65 enclosure, 4–20 mA sensor with shunt, Cat6 cable, CPE210 configuration).
-- Diagram contents (use case, activity, ERD, architecture, network figures).
-- Chapter 2, section 4.2.2 tables, and Appendices A–D beyond keyword search.
-- Reviewer comments on the Google Doc: the export returned no comment threads, so if "COMMENT1" refers to feedback kept elsewhere, it is not reflected here.
+- The measured results in Chapter 4 (latency, accuracy, uptime, failover time). These are field measurements.
+- Hardware details such as the enclosure, cabling, and bridge setup.
+- The diagrams, which are images.
+- Chapter 2, the usability tables, and the appendices, which were only keyword-searched.
+- Reviewer comments. The Google Doc export contained none.
+- Nothing was compiled, flashed, or run. The test count was read from the source files.
