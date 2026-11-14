@@ -30,9 +30,9 @@ Only the figures that contradict the system are here. Figures 3-1 to 3-3 and 3-7
 | 3-6 HIPO | Alert Service added to the Process Layer; current-to-voltage module in the sensors |
 | 3-8 IPO: Backend Server and Application Logic | Alert service, push, offline detection, retention |
 | 3-9 IPO: Web Dashboard and Mobile Application | Push, acknowledgment location, reports and exports |
-| 3-10 Use Case Diagram | No Edit User / Assign Role; Worker and Viewer use cases; Alert Service actor; no pump toggle |
+| 3-10 Use Case Diagram | No Edit User / Assign Role; Worker and Viewer use cases; Alert Service actor; Set Pump Demo Mode and Switch Pump (Demo Mode) |
 | 3-11 Activity Diagram | Logging in both branches; Alert Service lane |
-| 3-12 ERD | ROLES, USER_STATE, ALERT_SERVICE_HEARTBEAT; missing fields; corrected relationships; no pump fields |
+| 3-12 ERD | ROLES, USER_STATE, ALERT_SERVICE_HEARTBEAT; missing fields; corrected relationships; pump demo fields (TANKS.pumpOn, CONFIG.pumpDemoMode and pumpControlLock) |
 | 3-13 Architectural Design | Alert Service, FCM, real hardware parts |
 | 3-14 Network Design Topology | Wi-Fi standby link, 15–20 m test link, drum test site |
 
@@ -49,7 +49,14 @@ Only the figures that contradict the system are here. Figures 3-1 to 3-3 and 3-7
 | 3-13 Architectural Design | "One Sensor Node per Tank (Tanks 1–4)" group; Cloud-Hosted Alert Service |
 | 3-14 Network Design Topology | Sensor site: one ESP32 node per tank, Tank 1 drum model, Tanks 2–4 planned; Cloud-Hosted Alert Service |
 
-Pump control is out of scope (Chapter 1.4 lists Remote Pump Actuation as a limitation and Chapter 5 as future work), so no figure shows pump switching, the pump lock or pump fields, even though the code still has them.
+**Pump demo (2026-11-14):** there is no physical pump, but the firmware runs the pump logic as a virtual pump and reserves GPIO 32 for a relay, so real pump control can be added later (Chapter 1 limitation, Chapter 5 recommendation). The figures show this as ready for the future:
+
+| Figure | Pump demo content |
+|---|---|
+| 3-8 IPO: Backend | Offline time set by the admin (30 s by default); dashboards show "Alert Service Offline" when the heartbeat stops |
+| 3-10 Use Case | Configure System includes Set Pump Demo Mode; Switch Pump (Demo Mode) extends Monitor Tank Telemetry for the Admin and a Worker on an assigned tank |
+| 3-12 ERD | TANKS.pumpOn; CONFIG.pumpDemoMode and pumpControlLock |
+| 3-13 Architectural Design | Dashed "Relay, GPIO 32 (Future Pump)" box next to the ESP32: reserved, not installed |
 
 ---
 
@@ -99,7 +106,7 @@ Adds an Alert Service lane; telemetry is logged before the decision.
 
 ![Figure 3-12: Entity-Relationship Diagram (ERD)](images/Figure_3-12.png)
 
-Adds ROLES, USER_STATE and ALERT_SERVICE_HEARTBEAT, the missing fields (including each tank's capacityLiters and LOGS.tankId), and TANKS raises NOTIFICATIONS and is the source of LOGS. No pump fields.
+Adds ROLES, USER_STATE and ALERT_SERVICE_HEARTBEAT, the missing fields (including each tank's capacityLiters and LOGS.tankId), and TANKS raises NOTIFICATIONS and is the source of LOGS. Pump demo fields: TANKS.pumpOn, CONFIG.pumpDemoMode and pumpControlLock.
 
 ## Figure 3-13: Architectural Design of the System
 

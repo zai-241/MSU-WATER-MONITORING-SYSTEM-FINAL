@@ -285,7 +285,7 @@ const fig38 = () => ipo([
     ['Push, Repeat &\nResolve Alerts', 'FCM push when the alert\nstarts; re-show every 60 s\nuntil acknowledged;\nresolve after 5 s normal'],
     ['Push & Real-Time\nToast Alerts', 'Push to Web & Android;\ntoast & audible chime\nin open dashboards']],
   [['Controller Update\nTimes', 'lastUpdate of\neach tank'],
-    ['Offline Detection', 'Mark a controller offline\nafter 30 s without\nan update'],
+    ['Offline Detection', 'Mark a controller offline\nafter the set time\n(30 s by default)\nwithout an update'],
     ['Controller Offline\nStatus & Log', 'controllerOffline flag and\nCONTROLLER_OFFLINE\nwarning log']],
   [['User Login\nCredentials', 'Email or username +\npassword, Firebase\nAuth token'],
     ['Auth & RBAC\nVerification', 'Firebase Auth sign-in;\nrole in roles/{uid}\nchecked by security rules'],
@@ -301,7 +301,7 @@ const fig38 = () => ipo([
     ['Active User Registry\nProfile', 'User profile visible in\nAdmin Panel with\nrole-gated access']],
   [['Stored History, Logs\n& Notifications', 'Records with\ntimestamps'],
     ['Retention &\nHeartbeat', 'Delete records older than\n90 days (daily); heartbeat\nwritten every 10 s'],
-    ['Lean Database &\nFail-Safe Alerting', 'Old records removed;\nbrowsers take over alert\nchecks if heartbeat stops']],
+    ['Lean Database &\nFail-Safe Alerting', 'Old records removed;\nif the heartbeat stops,\nbrowsers check alerts &\nshow "Alert Service Offline"']],
 ]);
 
 const fig39 = () => ipo([
@@ -350,6 +350,7 @@ function fig310() {
   uc('sel', 1395, 225, 84, 38, 'Select Tank\n(Tank 1–4)', 'green');
   uc('awc', 1090, 330, 82, 38, 'Assign Water\nController', 'green');
   uc('loc', 860, 345, 74, 36, 'Set Location', 'green');
+  uc('pdm', 640, 372, 84, 36, 'Set Pump\nDemo Mode', 'green');
   uc('mua', 600, 500, 82, 40, 'Manage User\nAccount');
   uc('add', 880, 470, 76, 36, 'Add User\n(with Role)', 'green');
   uc('del', 1130, 520, 70, 34, 'Delete User', 'green');
@@ -365,6 +366,7 @@ function fig310() {
   uc('mtt', 900, 1370, 92, 54, 'Monitor Tank\nTelemetry', 'bright', 19);
   uc('vdd', 1150, 1260, 82, 38, 'View\nDashboard Data', 'green');
   uc('rt', 960, 1500, 98, 44, 'Real-Time In-App /\nToast & Push Alert');
+  uc('pump', 900, 1222, 96, 40, 'Switch Pump\n(Demo Mode)');
   uc('login', 600, 1680, 52, 34, 'Login');
   uc('vc', 880, 1640, 76, 38, 'Validate\nCredentials', 'green');
   uc('cur', 880, 1760, 76, 38, 'Check User\nRole', 'green');
@@ -398,6 +400,8 @@ function fig310() {
 
   for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc']) rel('cfg', id, 'include');
   rel('cal', 'sel', 'include', 1278, 188);
+  rel('cfg', 'pdm', 'include', 568, 296);
+  rel('pump', 'mtt', 'extend', 958, 1296);
   for (const id of ['add', 'del', 'act']) rel(id, 'mua', 'extend');
   rel('gar', 'vrd', 'include'); rel('gar', 'fd', 'include', 960, 760); rel('exp', 'gar', 'extend');
   rel('vd', 'mtt', 'include'); rel('mtt', 'vdd', 'include');
@@ -410,6 +414,7 @@ function fig310() {
     b += `<ellipse cx="${e.cx}" cy="${e.cy}" rx="${e.rx}" ry="${e.ry}" fill="${fill}" stroke="#2B2F36" stroke-width="1.6"/>`;
     b += text(e.cx, e.cy, e.t, { size: e.size, lh: 1.3 });
   }
+  b += text(900, 1166, '[Admin; Worker on assigned tank]', { size: 13, weight: 500 });
   b = rect(378, 25, 1180, H - 50, { fill: 'none', rx: 3, stroke: '#111', sw: 1.6 }) + b;
 
   b += cropCircle(IMG, [139, 404, 62], 139, 340) + text(200, 306, 'Admin', { size: 25 });
@@ -480,7 +485,7 @@ function fig311() {
 // Figure 3-12: ERD (typed tables, crow's foot)
 // ======================================================================
 function fig312() {
-  const W = 2560, H = 2160, ROW = 37.5, HEAD = 70, TW = 610;
+  const W = 2560, H = 2260, ROW = 37.5, HEAD = 70, TW = 610;
   const RT = 'Firebase Realtime Database';
   let b = '', ents = {};
   const ent = (id, x, y, title, sub, rows, fs = false) => {
@@ -507,37 +512,38 @@ function fig312() {
   ent('config', 60, 40, 'CONFIG', `${RT}  /config  (single record)`, [
     ['', 'lowLevelThreshold', 'NUMBER'], ['', 'overflowThreshold', 'NUMBER'], ['', 'minPh', 'NUMBER'], ['', 'maxPh', 'NUMBER'],
     ['', 'maintenanceMode', 'BOOLEAN'], ['', 'offlineThresholdSec', 'NUMBER'], ['', 'repeatIntervalSec', 'NUMBER'],
-    ['', 'soundEnabled', 'BOOLEAN'], ['', 'pushEnabled', 'BOOLEAN']]);
-  ent('tanks', 60, 590, 'TANKS', `${RT}  /tanks/{id}`, [
+    ['', 'soundEnabled', 'BOOLEAN'], ['', 'pushEnabled', 'BOOLEAN'],
+    ['', 'pumpDemoMode', 'BOOLEAN'], ['', 'pumpControlLock', 'BOOLEAN']]);
+  ent('tanks', 60, 630, 'TANKS', `${RT}  /tanks/{id}`, [
     ['PK', 'id', 'STRING'], ['', 'name', 'STRING'], ['', 'location', 'STRING'], ['', 'enabled', 'BOOLEAN'],
     ['FK', 'assignedWorker', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'], ['', 'phLevel', 'NUMBER'],
-    ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'],
+    ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'], ['', 'pumpOn', 'BOOLEAN'],
     ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'levelVmin', 'NUMBER'], ['', 'levelVmax', 'NUMBER'],
     ['', 'tankHeight', 'NUMBER'], ['', 'capacityLiters', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'],
     ['', 'phSlope', 'NUMBER'], ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'], ['', 'firebaseConnected', 'BOOLEAN'],
     ['', 'controllerOffline', 'BOOLEAN'], ['', 'lastUpdate', 'TIMESTAMP']]);
-  ent('hist', 60, 1810, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
+  ent('hist', 60, 1890, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
     ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
     ['', 'phLevel', 'NUMBER'], ['', 'timestamp', 'TIMESTAMP']]);
-  ent('users', 970, 590, 'USERS', 'Cloud Firestore  users/{uid}', [
+  ent('users', 970, 630, 'USERS', 'Cloud Firestore  users/{uid}', [
     ['PK', 'id (Auth UID)', 'STRING'], ['', 'username', 'STRING'], ['', 'email', 'STRING'], ['', 'role', 'STRING'],
     ['', 'jobTitle', 'STRING'], ['', 'status', 'STRING'], ['', 'createdAt', 'TIMESTAMP']], true);
-  ent('logs', 970, 1060, 'LOGS', `${RT}  /logs/{id}`, [
+  ent('logs', 970, 1100, 'LOGS', `${RT}  /logs/{id}`, [
     ['PK', 'id', 'STRING'], ['FK', 'tankId (optional)', 'STRING'], ['', 'action', 'STRING'], ['', 'details', 'STRING'],
     ['', 'performedBy (name)', 'STRING'], ['', 'logLevel', 'STRING'], ['', 'timestamp', 'TIMESTAMP']]);
-  ent('notif', 970, 1480, 'NOTIFICATIONS', `${RT}  /notifications/{id}`, [
+  ent('notif', 970, 1520, 'NOTIFICATIONS', `${RT}  /notifications/{id}`, [
     ['PK', 'id', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'title', 'STRING'], ['', 'message', 'STRING'], ['', 'type', 'STRING'],
     ['', 'timestamp', 'TIMESTAMP'], ['', 'acknowledged', 'BOOLEAN'], ['', 'acknowledgedBy (name)', 'STRING'],
     ['FK', 'acknowledgedByUid', 'STRING'], ['', 'acknowledgedAt', 'TIMESTAMP'], ['', 'resolved', 'BOOLEAN'],
     ['', 'resolvedAt', 'TIMESTAMP'], ['', 'lastRepeatedAt', 'TIMESTAMP']]);
-  ent('roles', 1880, 590, 'ROLES', `${RT}  /roles/{uid}`, [
+  ent('roles', 1880, 630, 'ROLES', `${RT}  /roles/{uid}`, [
     ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
-  ent('ustate', 1880, 860, 'USER_STATE', `${RT}  /userState/{uid}`, [
+  ent('ustate', 1880, 900, 'USER_STATE', `${RT}  /userState/{uid}`, [
     ['PK,FK', 'uid', 'STRING'], ['', 'notificationsLastReadAt', 'TIMESTAMP'], ['', 'notificationsReadIds', 'MAP'], ['', 'fcmTokens', 'MAP']]);
-  ent('worker', 1880, 1240, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
+  ent('worker', 1880, 1280, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
     ['', 'lastSeen', 'TIMESTAMP'], ['', 'startedAt', 'TIMESTAMP']]);
-  b += text(1880 + TW / 2, 590 + HEAD + 2 * ROW + 30, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
-  b += text(1880 + TW / 2, 1240 + HEAD + 2 * ROW + 32, 'Cloud-hosted Alert Service heartbeat (no relationships)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
+  b += text(1880 + TW / 2, 630 + HEAD + 2 * ROW + 30, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
+  b += text(1880 + TW / 2, 1280 + HEAD + 2 * ROW + 32, 'Cloud-hosted Alert Service heartbeat (no relationships)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
 
   // crow's foot ends: p = point on the entity edge, d = unit direction away from the entity
   const end = ([px, py], [dx, dy], kind) => {
@@ -556,17 +562,17 @@ function fig312() {
       end(p0, u(p0, p1), a) + end(q0, u(q0, q1), b2);
   };
   const it = (x, y, t, anchor = 'start') => text(x, y, t, { size: 21, weight: 400, italic: true, anchor, family: ARIAL });
-  const cfgB = 40 + HEAD + 9 * ROW, tnkB = 590 + HEAD + 28 * ROW;
-  b += link([[365, cfgB], [365, 590]], 'one', 'zeroMany') + it(385, (cfgB + 590) / 2, 'governs thresholds of');
-  b += link([[365, tnkB], [365, 1810]], 'one', 'zeroMany') + it(385, (tnkB + 1810) / 2, 'stores 10-minute samples in');
+  const cfgB = 40 + HEAD + 11 * ROW, tnkB = 630 + HEAD + 29 * ROW;
+  b += link([[365, cfgB], [365, 630]], 'one', 'zeroMany') + it(385, (cfgB + 630) / 2, 'governs thresholds of');
+  b += link([[365, tnkB], [365, 1890]], 'one', 'zeroMany') + it(385, (tnkB + 1890) / 2, 'stores 10-minute samples in');
   b += link([[670, rowY('tanks', 4)], [970, rowY('tanks', 4)]], 'zeroMany', 'zeroOne') + it(820, rowY('tanks', 4) - 25, 'is assigned to', 'middle');
   b += link([[670, rowY('notif', 1)], [970, rowY('notif', 1)]], 'one', 'zeroMany') + it(820, rowY('notif', 1) - 25, 'raises', 'middle');
   b += link([[670, rowY('logs', 1)], [970, rowY('logs', 1)]], 'zeroOne', 'zeroMany') + it(820, rowY('logs', 1) - 25, 'is the source of', 'middle');
-  const usrB = 590 + HEAD + 7 * ROW;
-  b += link([[1275, usrB], [1275, 1060]], 'zeroOne', 'zeroMany', true) + it(1295, (usrB + 1060) / 2, 'performs / is recorded in (by name)');
-  b += link([[1580, rowY('users', 6)], [1680, rowY('users', 6)], [1680, rowY('notif', 8)], [1580, rowY('notif', 8)]], 'zeroOne', 'zeroMany') + it(1700, 1400, 'acknowledges');
+  const usrB = 630 + HEAD + 7 * ROW;
+  b += link([[1275, usrB], [1275, 1100]], 'zeroOne', 'zeroMany', true) + it(1295, (usrB + 1100) / 2, 'performs / is recorded in (by name)');
+  b += link([[1580, rowY('users', 6)], [1680, rowY('users', 6)], [1680, rowY('notif', 8)], [1580, rowY('notif', 8)]], 'zeroOne', 'zeroMany') + it(1700, 1440, 'acknowledges');
   b += link([[1580, rowY('users', 0)], [1880, rowY('roles', 0)]], 'one', 'zeroOne') + it(1730, rowY('users', 0) - 25, 'has', 'middle');
-  b += link([[1580, rowY('users', 2)], [1760, rowY('users', 2)], [1760, rowY('ustate', 0)], [1880, rowY('ustate', 0)]], 'one', 'zeroOne') + it(1780, 900, 'has');
+  b += link([[1580, rowY('users', 2)], [1760, rowY('users', 2)], [1760, rowY('ustate', 0)], [1880, rowY('ustate', 0)]], 'one', 'zeroOne') + it(1780, 940, 'has');
 
   // legend
   const lx = 1880, ly = 40;
@@ -631,6 +637,10 @@ function fig313() {
   b += `<rect x="226" y="202" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="270" y="204" width="44" height="18" rx="2" fill="#111"/>`;
   for (let i = 0; i < 4; i++) b += `<rect x="${232 + i * 20}" y="240" width="10" height="16" fill="#E2B33B"/>`;
   b += serverIcon(1112, 136) + bellIcon(1330, 136);
+  // relay output reserved for future pump control (GPIO 32): dashed because it is not installed
+  b += rect(566, 300, 60, 44, { fill: '#FFF', rx: 5, stroke: '#555', sw: 2, dash: '6 4' });
+  b += A([[547, 322], [566, 322]], { dash: '6 4' });
+  b += P(596, 322, 'Relay', 13) + P(596, 372, 'GPIO 32\n(Future\nPump)', 12);
   // one sensor node per tank: the left group is repeated at Tanks 1–4
   b += rect(8, 78, 625, 470, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
   b += P(200, 52, 'One Sensor Node per Tank (Tanks 1–4)', 16);
