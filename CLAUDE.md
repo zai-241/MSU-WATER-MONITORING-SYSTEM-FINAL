@@ -10,7 +10,7 @@ capstone thesis project. This file is the single source of truth for how the par
 |---|---|---|---|
 | Firmware | `backend/firmware/esp32_firmware.ino` | ESP32 reads level (GPIO 35) and pH (GPIO 34), filters, drives the pump relay (GPIO 32), writes to RTDB over HTTPS REST. Ethernet (LAN8720) first, Wi-Fi as backup. | Arduino IDE upload over USB |
 | Database rules | `backend/cloud/database.rules.json`, `firestore.rules` | Role-based access (admin / worker / viewer / device, read from `/roles`) | `npx firebase deploy --only database,firestore` |
-| Alert worker | `backend/worker/src/index.ts` | Always-on Node process: evaluates alerts, offline watchdog, push (FCM), 90-day retention, heartbeat to `/system/worker` | `npm run worker` on an always-on machine (needs `backend/worker/.env`) |
+| Alert worker | `backend/worker/src/index.ts` | Always-on Node process: evaluates alerts, offline watchdog, push (FCM), 90-day retention, heartbeat to `/system/worker` | Render free Web Service, auto-deploys on push to `main` (key as a Render secret file, kept awake by UptimeRobot on `/health`). Locally: `npm run worker` (needs `backend/worker/.env`). Run only one. |
 | Web app | `frontend/` (React 18 + TS + Vite + shadcn/ui) | Dashboard, Admin Panel, Reports, Logs, Notifications | `npm run deploy:hosting` → https://msu-water-monitoring-system.web.app |
 | Android app | `mobile/` (Capacitor 8, `com.watersystem.msu`) | Wrapper around the **hosted** web app (`server.url` in `capacitor.config.ts`) | Sideloaded APK only, no Play Store |
 

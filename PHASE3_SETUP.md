@@ -88,6 +88,20 @@ pm2 save
 
 On Linux or a Raspberry Pi, run `pm2 startup` once and follow the command it prints. On Windows, use the `pm2-windows-startup` package or a Task Scheduler entry that runs `pm2 resurrect` at logon.
 
+### Or host it on Render (free, no PC needed)
+
+The worker can run as a free Render **Web Service**. When Render sets `PORT`, the worker answers `GET /health` (200 while the evaluation loop runs, 503 if it stalls). Locally `PORT` is unset and nothing listens.
+
+1. Render → New → **Web Service** → connect this GitHub repo, branch `main`, region Singapore.
+2. Root Directory: **empty** (the worker imports `frontend/src/lib/alertEngine.ts`).
+3. Build command `npm run worker:install`, start command `npm run worker`, instance type Free.
+4. Environment: `DATABASE_URL`, `APP_URL`, `PUSH_ENABLED=true`, `NODE_VERSION=20`, and `GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/serviceAccount.json`.
+5. Secret File `serviceAccount.json`: paste the whole key file.
+6. Free services sleep after about 15 minutes without traffic, so add an UptimeRobot HTTP monitor on `https://<service>.onrender.com/health` every 5 minutes. It also emails you if the worker goes down.
+7. Stop any local or pm2 worker once Admin Panel shows "Alert service: running" from Render.
+
+Render redeploys on every push to `main`. One always-on free service uses about 744 of the 750 free hours a month, so keep it the only one.
+
 ### Test it
 
 1. Close every dashboard.

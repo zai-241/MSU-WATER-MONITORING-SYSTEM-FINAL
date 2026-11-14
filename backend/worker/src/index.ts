@@ -15,10 +15,15 @@
  * The ESP32 firmware is not involved: the worker only reads what the device
  * already writes to /tanks.
  *
+ * When the PORT environment variable is set (Render and similar hosts), it also
+ * answers HTTP on that port: GET /health returns 200 while the evaluation loop is
+ * alive and 503 if it has stalled, so an uptime pinger can keep it awake and watch it.
+ *
  * Run:  npm start          (needs .env, see .env.example)
  *       npm run check      (verifies credentials and database access, then exits)
  */
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -42,6 +47,7 @@ import {
 
 const TICK_MS = 2000;
 const HEARTBEAT_MS = 10_000;
+const HEALTH_STALE_SEC = 60; // /health reports 503 if no evaluation finished for this long
 const RETENTION_DAYS = 90;
 const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -370,11 +376,26 @@ async function main(): Promise<void> {
   setInterval(beat, HEARTBEAT_MS);
 
   let running = false;
+  let lastLoopAt = Date.now();
   setInterval(() => {
     if (running) return; // never overlap evaluations
     running = true;
-    evaluateAll().catch((err) => log('evaluation failed:', err)).finally(() => { running = false; });
+    evaluateAll()
+      .catch((err) => log('evaluation failed:', err))
+      .finally(() => { running = false; lastLoopAt = Date.now(); });
   }, TICK_MS);
+
+  // Health endpoint, only when a host gives us a port (Render web service).
+  // Locally PORT is unset and nothing listens.
+  const port = Number(process.env.PORT);
+  if (port > 0) {
+    createServer((req, res) => {
+      const ageSec = Math.round((Date.now() - lastLoopAt) / 1000);
+      const healthy = ageSec < HEALTH_STALE_SEC;
+      res.writeHead(healthy ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ status: healthy ? 'ok' : 'stalled', lastLoopSecAgo: ageSec, push: PUSH_ENABLED }));
+    }).listen(port, () => log(`health endpoint listening on port ${port} (GET /health)`));
+  }
 
   setTimeout(runRetention, 60_000);
   setInterval(runRetention, RETENTION_INTERVAL_MS);
