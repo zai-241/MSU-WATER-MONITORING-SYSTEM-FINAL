@@ -3,6 +3,7 @@ import type { Log } from '@/store/useStore';
 import {
   alertStartCategory,
   countAlertStarts,
+  esp32LogTankId,
   isPumpRun,
   logBelongsToTank,
   reportWindowStart,
@@ -70,6 +71,29 @@ describe('Reports log rules', () => {
 
     const config = log('Configuration Updated', 'Updated system thresholds', 'Admin');
     expect(logBelongsToTank(config, tank2)).toBe(true);
+  });
+
+  it('routes ESP32 entries to the tank in their tankId, and entries without one to Tank 1', () => {
+    const tank3 = { id: '3', name: 'Reservoir Tank No. 3' };
+    const tank4 = { id: '4', name: 'Reservoir Tank No. 4' };
+    const tanks = [tank1, tank2, tank3, tank4];
+    const owners = (entry: Log) => tanks.filter(t => logBelongsToTank(entry, t)).map(t => t.id);
+
+    const fromTank3: Log = { ...log('Sensor Fault', 'Water Level Sensor FAULT!'), tankId: '3' };
+    expect(owners(fromTank3)).toEqual(['3']);
+    expect(esp32LogTankId(fromTank3)).toBe('3');
+
+    const fromTank2: Log = { ...log('Low Water Level Alert', 'Water level at 12% [Status: Triggered]'), tankId: '2' };
+    expect(owners(fromTank2)).toEqual(['2']);
+    expect(countAlertStarts([fromTank2].filter(l => logBelongsToTank(l, tank2)))['Low Water Level']).toBe(1);
+    expect(countAlertStarts([fromTank2].filter(l => logBelongsToTank(l, tank1)))['Low Water Level']).toBe(0);
+
+    const explicitTank1: Log = { ...log('Pump Controller', 'Pump started automatically. Water level: 14%'), tankId: '1' };
+    expect(owners(explicitTank1)).toEqual(['1']);
+
+    // Old logs and the Tank 1 firmware send no tankId (or a blank one): they stay with Tank 1
+    expect(owners(log('Network Alert', 'Ethernet connection unexpectedly disconnected'))).toEqual(['1']);
+    expect(owners({ ...log('Network Alert', 'WiFi lost'), tankId: '  ' })).toEqual(['1']);
   });
 
   it('starts the report window at midnight the given number of days ago', () => {

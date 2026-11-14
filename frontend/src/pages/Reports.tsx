@@ -44,7 +44,8 @@ import {
 import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
-import { estimateVolumeLiters } from '@/lib/constants';
+import { estimateVolumeLiters, tankCapacityLiters } from '@/lib/constants';
+import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from '@/lib/reportLogs';
 
@@ -64,15 +65,16 @@ const Reports = () => {
   // Throttle high-frequency updates from Firebase to stabilize chart drawings and heavy table pagination
   const allTanks = useThrottledValue(rawTanks, 1500);
 
-  // Exclude planned expansion tanks from Reports, exports, summary averages, and alert counts
-  const tanks = useMemo(() => allTanks.filter(t => !isTankPlanned(t)), [allTanks]);
+  // Every tank can be picked; planned ones (no controller data yet) are labelled and never auto-selected
+  const tanks = allTanks;
+  const liveTanks = useMemo(() => allTanks.filter(t => !isTankPlanned(t)), [allTanks]);
 
   const [selectedTankId, setSelectedTankId] = useState('');
   const [dateRange, setDateRange] = useState<DateRange>('Last 30 Days');
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [exportingType, setExportingType] = useState<'excel' | 'pdf' | null>(null);
+  const [exportingType, setExportingType] = useState<'excel' | 'pdf' | 'csv' | null>(null);
   const itemsPerPage = 7;
 
   const canExport = currentUser?.role === 'admin' || currentUser?.role === 'worker';
@@ -80,14 +82,14 @@ const Reports = () => {
   // Auto-select reactive hook - falls back gracefully to the first operational tank
   useEffect(() => {
     if (!selectedTankId && tanks.length > 0) {
-      const firstActive = tanks.find(t => t.enabled) || tanks[0];
+      const firstActive = liveTanks.find(t => t.enabled) || liveTanks[0] || tanks[0];
       if (firstActive) {
         setSelectedTankId(firstActive.id);
       }
     } else if (selectedTankId && tanks.length > 0 && !tanks.some(t => t.id === selectedTankId)) {
       setSelectedTankId(tanks[0].id);
     }
-  }, [tanks, selectedTankId]);
+  }, [tanks, liveTanks, selectedTankId]);
 
   const days = useMemo(() => {
     return dateRange === 'Last 7 Days' ? 7 : dateRange === 'Last 14 Days' ? 14 : 30;
@@ -96,6 +98,9 @@ const Reports = () => {
   const selectedTank = useMemo(() => {
     return tanks.find(t => t.id === selectedTankId) || null;
   }, [tanks, selectedTankId]);
+
+  // Capacity the admin set for this tank (used for the estimated volume)
+  const capacityLiters = tankCapacityLiters(selectedTank);
 
   // Every log entry in the selected window (not just the newest 100) that concerns this tank
   const { logs: rangeLogs } = useRangeLogs(days);
@@ -372,7 +377,14 @@ const Reports = () => {
     );
   };
 
-  const handleExport = (type: 'csv' | 'print') => {
+  // Only report success once the file was really saved (or handed to the share sheet in the app)
+  const announceSaved = (result: SaveResult, label: string) => {
+    if (result === 'downloaded') toast.success(`${label} exported successfully!`);
+    else if (result === 'shared') toast.success(`${label} is ready. Choose where to save or share it.`);
+    else toast.info(`${label} export cancelled.`);
+  };
+
+  const handleExport = async (type: 'csv' | 'print') => {
     if (!selectedTank) return;
     
     if (type === 'csv') {
@@ -380,17 +392,21 @@ const Reports = () => {
       const csvRows = telemetryData.map(d => {
         const lvl = d.waterLevel !== null ? String(d.waterLevel) : 'N/A';
         const ph = d.phLevel !== null ? String(d.phLevel) : 'N/A';
-        const estVolume = d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel) : 'N/A';
+        const estVolume = d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel, capacityLiters) : 'N/A';
         return `${d.date},${lvl},${d.height},${ph},${estVolume},${d.sampleCount}`;
       }).join('\n');
       
       const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
-      a.click();
-      toast.success('CSV spreadsheet exported successfully!');
+      const filename = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
+      setExportingType('csv');
+      try {
+        announceSaved(await saveFile(blob, filename), 'CSV spreadsheet');
+      } catch (err) {
+        console.error('Error saving CSV file:', err);
+        toast.error('Failed to save CSV file.');
+      } finally {
+        setExportingType(null);
+      }
     } else {
       toast.info('Preparing document workspace layout for high-quality print...');
       setTimeout(() => {
@@ -430,15 +446,8 @@ const Reports = () => {
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       const dateStr = new Date().toISOString().split('T')[0];
-      a.download = `WaterReport_Tank${selectedTankId}_${dateStr}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      toast.success('Excel workbook (.xlsx) exported successfully!');
+      announceSaved(await saveFile(blob, `WaterReport_Tank${selectedTankId}_${dateStr}.xlsx`), 'Excel workbook (.xlsx)');
     } catch (err) {
       console.error('Error generating Excel file:', err);
       toast.error('Failed to generate Excel file.');
@@ -457,8 +466,8 @@ const Reports = () => {
       const doc = buildPdfDocument(exportData);
 
       const dateStr = new Date().toISOString().split('T')[0];
-      doc.save(`WaterReport_Tank${selectedTankId}_${dateStr}.pdf`);
-      toast.success('PDF document exported successfully!');
+      const blob = doc.output('blob');
+      announceSaved(await saveFile(blob, `WaterReport_Tank${selectedTankId}_${dateStr}.pdf`), 'PDF document');
     } catch (err) {
       console.error('Error generating PDF file:', err);
       toast.error('Failed to generate PDF file.');
@@ -520,7 +529,7 @@ const Reports = () => {
               <option value="">No operational tanks installed</option>
             ) : (
               tanks.map(t => (
-                <option key={t.id} value={t.id}>{t.name} {!t.enabled ? '(Disabled)' : ''}</option>
+                <option key={t.id} value={t.id}>{t.name} {!t.enabled ? '(Disabled)' : isTankPlanned(t) ? '(Planned - no data yet)' : ''}</option>
               ))
             )}
           </select>
@@ -619,7 +628,7 @@ const Reports = () => {
                 </h2>
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Height: {(processedTank?.waterHeight ?? 0).toFixed(2)}m</span>
-                  <span>Volume: {estimateVolumeLiters(processedTank?.waterLevel ?? 0).toLocaleString()} L</span>
+                  <span>Volume: {estimateVolumeLiters(processedTank?.waterLevel ?? 0, capacityLiters).toLocaleString()} L</span>
                 </div>
               </div>
 
@@ -634,7 +643,7 @@ const Reports = () => {
                     style={{ width: `${Math.min(100, Math.max(0, processedTank?.waterLevel ?? 0))}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-muted-foreground block text-right font-medium">Cap: 5,000L Max</span>
+                <span className="text-[10px] text-muted-foreground block text-right font-medium">Cap: {capacityLiters.toLocaleString()} L Max</span>
               </div>
             </motion.div>
 
@@ -1000,7 +1009,7 @@ const Reports = () => {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-foreground font-bold">
-                          {row.waterLevel !== null ? `${estimateVolumeLiters(row.waterLevel).toLocaleString()} L` : 'N/A'}
+                          {row.waterLevel !== null ? `${estimateVolumeLiters(row.waterLevel, capacityLiters).toLocaleString()} L` : 'N/A'}
                         </td>
                       </tr>
                     ))
@@ -1215,8 +1224,9 @@ const Reports = () => {
               {telemetryData.length === 0 ? 'CSV - No data to export' : 'Download CSV Spreadsheet'}
             </button>
 
-            {/* PRINT LAYOUT BUTTON */}
-            <button
+            {/* PRINT LAYOUT BUTTON (hidden in the Android app: its WebView cannot print;
+                print from the PDF viewer after exporting the PDF instead) */}
+            {!isNativeApp() && <button
               disabled={exportingType !== null || telemetryData.length === 0}
               onClick={() => handleExport('print')}
               title={telemetryData.length === 0 ? "No data to export" : "Print layout"}
@@ -1224,7 +1234,7 @@ const Reports = () => {
             >
               <Printer size={15} />
               {telemetryData.length === 0 ? 'Print - No data to export' : 'Print Layout'}
-            </button>
+            </button>}
           </div>
         </div>
       )}

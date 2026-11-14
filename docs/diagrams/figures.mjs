@@ -170,8 +170,8 @@ function fig35() {
   b += arrow([[1060, 1873], [1060, 1935]]);
   b += arrow([[1060, 2045], [1060, 2112]]);
   b += arrow([[1060, 2208], [1060, 2275]]);
-  b += arrow([[1180, 2340], [1225, 2340]]);
-  b += arrow([[1300, 2300], [1300, 2160], [ioR(1060, 360), 2160]]);
+  b += arrow([[1180, 2340], [1208, 2340]]);
+  b += arrow([[1300, 2292], [1300, 2160], [ioR(1060, 360), 2160]]);
   b += arrow([[1060, 2405], [1060, 2462]]);
   b += arrow([[1060, 2538], [1060, 2595]]);
   b += arrow([[1225, 2680], [1290, 2680], [1290, 2568], [1064, 2568]]);
@@ -188,7 +188,7 @@ function fig35() {
   b += lbl(935, 1620, 'Threshold\nBreached');
   b += lbl(668, 1790, 'Transient Noise (< 5 s)');
   b += lbl(1060, 1904, 'Persistent (≥ 5 s)');
-  b += text(1203, 2322, 'No', { size: 15 });
+  b += text(1194, 2314, 'No', { size: 15 });
   b += lbl(1060, 2433, 'Yes') + lbl(1258, 2680, 'No') + lbl(1060, 2793, 'Yes');
   // nodes
   b += term(M, 60, 150, 52, 'Start', { size: 17 });
@@ -201,17 +201,17 @@ function fig35() {
   b += box(1085, 950, 290, 100, 'Transmit via LAN8720\nEthernet & CPE210 P2P\nBridge', { size: 17 });
   b += dec(M, 1170, 220, 150, 'Backup Wi-Fi\nConnected?', { size: 17 });
   b += box(1060, 1170, 280, 86, 'Transmit via 2.4GHz\nWi-Fi Backup', { size: 17 });
-  b += box(330, 1170, 290, 100, 'Buffer Payload in RAM Ring\nBuffer & Reconnect (90s\nWatchdog)', { size: 16 });
+  b += box(330, 1170, 290, 100, 'Buffer Critical Logs in\nRAM (20 Entries) & Reconnect\n(90 s Watchdog)', { size: 16 });
   b += cyl(M, 1400, 360, 150, 'Firebase Realtime\nDatabase Sync\n(History Every 10 min)', { size: 17 });
   b += dec(M, 1620, 240, 165, 'Threshold\nValidation\nCheck?', { size: 17 });
   b += io(245, 1790, 290, 96, 'Update Web & Mobile\nDashboard', { size: 17 });
   b += dec(1060, 1790, 230, 165, '5-Second\nPersistence\nCheck?', { size: 17 });
-  b += box(1060, 1990, 360, 110, 'Alert Service Raises Alert:\nCRITICAL (Low Level, pH),\nWARNING (Overflow); Log Event', { size: 16 });
+  b += box(1060, 1990, 360, 110, 'Alert Service Raises Alert:\nCRITICAL (Low Level, pH),\nWARNING (Overflow);\nESP32 Logs the Event', { size: 16 });
   b += io(1060, 2160, 360, 96, 'Send Push Notification;\nToast & Audible Chime\non Web & Android', { size: 16 });
   b += dec(1060, 2340, 240, 130, 'Acknowledged?', { size: 17 });
-  b += box(1300, 2340, 150, 80, 'Repeat\nEvery 60 s', { size: 16 });
+  b += box(1300, 2340, 180, 96, 'Re-show Toast &\nChime Every 60 s\n(Push Only at Start)', { size: 14 });
   b += box(1060, 2500, 280, 76, 'Silence Chime &\nLog Acknowledgment', { size: 17 });
-  b += dec(1060, 2680, 330, 170, 'Normal for 5 s?\n(Level ≥ 17% / ≤ 93%,\npH Back in Range)', { size: 16 });
+  b += dec(1060, 2680, 330, 170, 'Normal for 5 s?\n(Level ≥ 17% / ≤ 93%,\npH 6.65–8.35)', { size: 16 });
   b += box(1060, 2860, 260, 76, 'Alert Resolved;\nRecovered Logged', { size: 17 });
   b += term(M, 2860, 270, 72, 'Next Reading Cycle', { size: 17 });
   return svg(W, H, b);
@@ -231,14 +231,14 @@ function fig36() {
   };
   const blockArrow = (y) => `<rect x="726" y="${y}" width="18" height="62" fill="${C.stroke}"/><polygon points="704,${y + 58} 766,${y + 58} 735,${y + 110}" fill="${C.stroke}"/>`;
   let b = '';
-  b += layer(75, 525, 'Input Layer (Perception)', 'ESP32 Edge Node at Reservoir Site');
+  b += layer(75, 525, 'Input Layer (Perception)', 'One ESP32 Edge Node per Reservoir Tank (Tanks 1–4)');
   b += inner(157, 262, 563, 300, 'Sensors', 'Submersible Hydrostatic Level\nSensor (via Current-to-Voltage\nModule) & PH-4502C pH Sensor');
   b += inner(757, 262, 563, 300, 'Processing & Network\nHardware', 'ESP32-WROOM-32\nMicrocontroller + LAN8720 PHY\nEthernet Module');
   b += blockArrow(600);
   b += layer(712, 470, 'Process Layer (Network & Application)', 'Connectivity, Cloud Database, Alert Service & Logic');
   b += inner(115, 900, 405, 245, 'Connectivity', 'TP-Link CPE210 2.4GHz\nP2P Wireless Bridge;\nWi-Fi Standby Link', 32, 26);
   b += inner(532, 900, 405, 245, 'Cloud & Logic', 'Firebase Realtime\nDatabase, Cloud Firestore,\nAuthentication & Logs', 32, 26);
-  b += inner(949, 900, 405, 245, 'Alert Service', 'Node.js Worker: 5-Second\nCheck, Alerts, FCM Push,\nOffline Detection', 32, 26);
+  b += inner(949, 900, 405, 245, 'Alert Service', 'Cloud-Hosted: 5-Second\nCheck, Alerts, FCM Push,\nOffline Detection', 32, 26);
   b += blockArrow(1182);
   b += layer(1294, 470, 'Output Layer (End Users & Devices)', 'Web Dashboard and Mobile Application');
   b += inner(157, 1482, 563, 245, 'End Users', 'Motor Pool Staff, Maintenance\nTechnicians, System\nAdministrators');
@@ -275,14 +275,14 @@ function ipo(rows) {
 }
 
 const fig38 = () => ipo([
-  [['JSON Payload from\nESP32', 'waterLevel, waterHeight,\nphLevel, RSSI, status\n(on change or every 10 s)'],
+  [['JSON Payload from\nEach Tank\'s ESP32', 'waterLevel, waterHeight,\nphLevel, RSSI, status\n(on change or every 10 s)'],
     ['Validate, Parse &\nPersist to RTDB', 'Authenticated HTTPS\nREST write directly to\nRTDB tanks/{id}'],
     ['Stored, Timestamped\nTelemetry Records', 'Live RTDB record per\ntank, lastUpdate\ntimestamp']],
   [['Alert Threshold\nConfiguration', 'Low 15%, Overflow\n95%, pH 6.5–8.5'],
-    ['Alert Service:\n5-Second Check', 'Node.js worker compares\nreadings with the limits;\na breach must last 5 s'],
-    ['Alert Notifications\n& Logs', 'CRITICAL (low level, pH),\nWARNING (overflow) in\n/notifications and /logs']],
+    ['Alert Service:\n5-Second Check', 'Cloud-hosted service checks\neach tank against the\nlimits; a breach must last 5 s'],
+    ['Alert Notifications\n& Logs', 'Alert in /notifications\n(low level, pH: critical;\noverflow: warning);\nESP32 logs it in /logs']],
   [['Device Push\nTokens', 'fcmTokens saved for\neach user in\nuserState/{uid}'],
-    ['Push, Repeat &\nResolve Alerts', 'Send FCM push; repeat\nevery 60 s until acknowledged;\nresolve after 5 s normal'],
+    ['Push, Repeat &\nResolve Alerts', 'FCM push when the alert\nstarts; re-show every 60 s\nuntil acknowledged;\nresolve after 5 s normal'],
     ['Push & Real-Time\nToast Alerts', 'Push to Web & Android;\ntoast & audible chime\nin open dashboards']],
   [['Controller Update\nTimes', 'lastUpdate of\neach tank'],
     ['Offline Detection', 'Mark a controller offline\nafter 30 s without\nan update'],
@@ -293,14 +293,14 @@ const fig38 = () => ipo([
   [['Reports & Historical\nRequests', 'Tank ID, date range\nfilters (7 / 14 / 30 days)'],
     ['Query Logs & Build\nRecharts Datasets', 'Filter RTDB telemetry &\ndiagnostic logs by tank\nand range, build trend\narrays'],
     ['Interactive Analytics\n& Exportable Reports', 'Recharts trend\nvisualizers & exportable\nreports (PDF, Excel,\nCSV)']],
-  [['Admin Calibration\nInput', 'Vmin/Vmax,\ntankHeight, phSlope,\nphOffset'],
-    ['Update Calibration\nParams in RTDB', 'Admin writes parameters\nto tanks/{id} fields'],
-    ['Dynamic Sensor\nCalibration', 'ESP32 applies updated\ncalibration formula on\nnext poll without\nre-flashing']],
+  [['Admin Calibration\n& Capacity Input', 'Vmin/Vmax, tankHeight,\nphSlope, phOffset,\ncapacityLiters (per tank)'],
+    ['Update Calibration\nParams in RTDB', 'Admin selects Tank 1–4\nand writes parameters\nto tanks/{id} fields'],
+    ['Dynamic Sensor\nCalibration', 'ESP32 applies updated\ncalibration on next poll;\ncapacity sets the\nvolume estimate']],
   [['User Registry\nManagement', 'User details\nand role'],
     ['Register Auth &\nFirestore Profile', 'Firebase Auth user\ncreation; profile in\nusers/{uid}, role in\nroles/{uid}'],
     ['Active User Registry\nProfile', 'User profile visible in\nAdmin Panel with\nrole-gated access']],
   [['Stored History, Logs\n& Notifications', 'Records with\ntimestamps'],
-    ['Retention &\nHeartbeat', 'Delete records older than\n90 days (daily); heartbeat\nevery 10 s to /system/worker'],
+    ['Retention &\nHeartbeat', 'Delete records older than\n90 days (daily); heartbeat\nwritten every 10 s'],
     ['Lean Database &\nFail-Safe Alerting', 'Old records removed;\nbrowsers take over alert\nchecks if heartbeat stops']],
 ]);
 
@@ -317,13 +317,13 @@ const fig39 = () => ipo([
   [['Push notifications\n(FCM)', 'Sent by the Alert\nService when an\nalert starts'],
     ['Register device &\nshow notification', 'Device token saved in\nuserState/{uid};\ntap opens the alert'],
     ['Alerts even when the\napp is closed', 'System notification on\nWeb & Android']],
-  [['Reports request &\ndate range filter', 'Tank selection, 7 / 14 /\n30-day range'],
+  [['Reports request &\ndate range filter', 'Tank selection (Tanks 1–4),\n7 / 14 / 30-day range'],
     ['Query RTDB telemetry,\nbuild chart datasets', 'Recharts time-series\ncharts, hourly/daily\naggregation'],
     ['Trend charts &\nexportable reports', 'PDF / Excel / CSV\nfrom the Reports page']],
-  [['Audit log search &\nlevel filter', 'Keyword query,\nINFO/WARNING/ERROR/\nCRITICAL'],
+  [['Audit log search &\ncategory filter', 'Keyword query; tabs\nAll / Alerts / System /\nErrors'],
     ['Filter logs/ node,\nhighlight matches', 'Regex-safe highlight, sort\nby timestamp desc'],
     ['Filtered audit log with\nhighlighted terms', 'Paginated list, clear-all\nfor admin role only']],
-  [['Admin configuration\n& settings input', 'Thresholds,\ncalibration,\nmaintenance mode\ntoggle'],
+  [['Admin configuration\n& settings input', 'Thresholds; calibration\n& capacity of the\nselected tank (1–4);\nmaintenance mode'],
     ['Validate input, write\nto config/ & tanks/', 'updateConfig /\nupdateTank RTDB write,\ntoast confirm'],
     ['Updated system\nconfig & calibration\nsettings', 'Changes apply live,\nESP32 picks up on poll']],
   [['User management', 'New user, role\n(admin/worker/viewer)'],
@@ -346,7 +346,8 @@ function fig310() {
   uc('cfg', 600, 210, 78, 40, 'Configure\nSystem');
   uc('setph', 860, 75, 82, 38, 'Set pH Level\nThreshold', 'green');
   uc('setwl', 1090, 120, 82, 38, 'Set Water\nLevel Threshold', 'green');
-  uc('cal', 1150, 225, 78, 38, 'Calibrate\nSensors', 'green');
+  uc('cal', 1150, 225, 96, 40, 'Calibrate Sensors\n& Set Capacity', 'green');
+  uc('sel', 1395, 225, 84, 38, 'Select Tank\n(Tank 1–4)', 'green');
   uc('awc', 1090, 330, 82, 38, 'Assign Water\nController', 'green');
   uc('loc', 860, 345, 74, 36, 'Set Location', 'green');
   uc('mua', 600, 500, 82, 40, 'Manage User\nAccount');
@@ -396,6 +397,7 @@ function fig310() {
   for (const id of ['ra', 'spn', 'dco']) assoc(...svc, id);
 
   for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc']) rel('cfg', id, 'include');
+  rel('cal', 'sel', 'include', 1278, 188);
   for (const id of ['add', 'del', 'act']) rel(id, 'mua', 'extend');
   rel('gar', 'vrd', 'include'); rel('gar', 'fd', 'include', 960, 760); rel('exp', 'gar', 'extend');
   rel('vd', 'mtt', 'include'); rel('mtt', 'vdd', 'include');
@@ -413,7 +415,7 @@ function fig310() {
   b += cropCircle(IMG, [139, 404, 62], 139, 340) + text(200, 306, 'Admin', { size: 25 });
   b += cropCircle(IMG, [139, 900, 62], 139, 838) + text(200, 806, 'Worker', { size: 25 });
   b += cropCircle(IMG, [139, 1420, 59], 141, 1363) + text(200, 1330, 'Viewer', { size: 25 });
-  b += cropCircle(IMG, [1710, 1030, 70], 1646, 1110) + text(1716, 1080, 'IoT Sensors', { size: 25 });
+  b += cropCircle(IMG, [1710, 1030, 70], 1646, 1110) + text(1716, 1062, 'IoT Sensors\n(Tanks 1–4)', { size: 23 });
   // Alert Service actor: blue disc with a server glyph
   const [sx, sy] = [1716, 1640];
   b += `<circle cx="${sx}" cy="${sy}" r="68" fill="#6FAEDC"/>`;
@@ -511,8 +513,8 @@ function fig312() {
     ['FK', 'assignedWorker', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'], ['', 'phLevel', 'NUMBER'],
     ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'],
     ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'levelVmin', 'NUMBER'], ['', 'levelVmax', 'NUMBER'],
-    ['', 'tankHeight', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'], ['', 'phSlope', 'NUMBER'],
-    ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'],
+    ['', 'tankHeight', 'NUMBER'], ['', 'capacityLiters', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'],
+    ['', 'phSlope', 'NUMBER'], ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'], ['', 'firebaseConnected', 'BOOLEAN'],
     ['', 'controllerOffline', 'BOOLEAN'], ['', 'lastUpdate', 'TIMESTAMP']]);
   ent('hist', 60, 1810, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
     ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
@@ -521,8 +523,8 @@ function fig312() {
     ['PK', 'id (Auth UID)', 'STRING'], ['', 'username', 'STRING'], ['', 'email', 'STRING'], ['', 'role', 'STRING'],
     ['', 'jobTitle', 'STRING'], ['', 'status', 'STRING'], ['', 'createdAt', 'TIMESTAMP']], true);
   ent('logs', 970, 1060, 'LOGS', `${RT}  /logs/{id}`, [
-    ['PK', 'id', 'STRING'], ['', 'action', 'STRING'], ['', 'details', 'STRING'], ['', 'performedBy (name)', 'STRING'],
-    ['', 'logLevel', 'STRING'], ['', 'timestamp', 'TIMESTAMP']]);
+    ['PK', 'id', 'STRING'], ['FK', 'tankId (optional)', 'STRING'], ['', 'action', 'STRING'], ['', 'details', 'STRING'],
+    ['', 'performedBy (name)', 'STRING'], ['', 'logLevel', 'STRING'], ['', 'timestamp', 'TIMESTAMP']]);
   ent('notif', 970, 1480, 'NOTIFICATIONS', `${RT}  /notifications/{id}`, [
     ['PK', 'id', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'title', 'STRING'], ['', 'message', 'STRING'], ['', 'type', 'STRING'],
     ['', 'timestamp', 'TIMESTAMP'], ['', 'acknowledged', 'BOOLEAN'], ['', 'acknowledgedBy (name)', 'STRING'],
@@ -532,10 +534,10 @@ function fig312() {
     ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
   ent('ustate', 1880, 860, 'USER_STATE', `${RT}  /userState/{uid}`, [
     ['PK,FK', 'uid', 'STRING'], ['', 'notificationsLastReadAt', 'TIMESTAMP'], ['', 'notificationsReadIds', 'MAP'], ['', 'fcmTokens', 'MAP']]);
-  ent('worker', 1880, 1240, 'SYSTEM_WORKER', `${RT}  /system/worker`, [
+  ent('worker', 1880, 1240, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
     ['', 'lastSeen', 'TIMESTAMP'], ['', 'startedAt', 'TIMESTAMP']]);
-  b += text(1880 + TW / 2, 590 + HEAD + 2 * ROW + 30, 'role = admin, worker, viewer or device', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
-  b += text(1880 + TW / 2, 1240 + HEAD + 2 * ROW + 32, 'Alert service heartbeat (no relationships)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
+  b += text(1880 + TW / 2, 590 + HEAD + 2 * ROW + 30, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
+  b += text(1880 + TW / 2, 1240 + HEAD + 2 * ROW + 32, 'Cloud-hosted Alert Service heartbeat (no relationships)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
 
   // crow's foot ends: p = point on the entity edge, d = unit direction away from the entity
   const end = ([px, py], [dx, dy], kind) => {
@@ -554,15 +556,16 @@ function fig312() {
       end(p0, u(p0, p1), a) + end(q0, u(q0, q1), b2);
   };
   const it = (x, y, t, anchor = 'start') => text(x, y, t, { size: 21, weight: 400, italic: true, anchor, family: ARIAL });
-  const cfgB = 40 + HEAD + 9 * ROW, tnkB = 590 + HEAD + 26 * ROW;
+  const cfgB = 40 + HEAD + 9 * ROW, tnkB = 590 + HEAD + 28 * ROW;
   b += link([[365, cfgB], [365, 590]], 'one', 'zeroMany') + it(385, (cfgB + 590) / 2, 'governs thresholds of');
   b += link([[365, tnkB], [365, 1810]], 'one', 'zeroMany') + it(385, (tnkB + 1810) / 2, 'stores 10-minute samples in');
   b += link([[670, rowY('tanks', 4)], [970, rowY('tanks', 4)]], 'zeroMany', 'zeroOne') + it(820, rowY('tanks', 4) - 25, 'is assigned to', 'middle');
   b += link([[670, rowY('notif', 1)], [970, rowY('notif', 1)]], 'one', 'zeroMany') + it(820, rowY('notif', 1) - 25, 'raises', 'middle');
+  b += link([[670, rowY('logs', 1)], [970, rowY('logs', 1)]], 'zeroOne', 'zeroMany') + it(820, rowY('logs', 1) - 25, 'is the source of', 'middle');
   const usrB = 590 + HEAD + 7 * ROW;
   b += link([[1275, usrB], [1275, 1060]], 'zeroOne', 'zeroMany', true) + it(1295, (usrB + 1060) / 2, 'performs / is recorded in (by name)');
   b += link([[1580, rowY('users', 6)], [1680, rowY('users', 6)], [1680, rowY('notif', 8)], [1580, rowY('notif', 8)]], 'zeroOne', 'zeroMany') + it(1700, 1400, 'acknowledges');
-  b += link([[1580, rowY('users', 0)], [1880, rowY('roles', 0)]], 'one', 'one') + it(1730, rowY('users', 0) - 25, 'has', 'middle');
+  b += link([[1580, rowY('users', 0)], [1880, rowY('roles', 0)]], 'one', 'zeroOne') + it(1730, rowY('users', 0) - 25, 'has', 'middle');
   b += link([[1580, rowY('users', 2)], [1760, rowY('users', 2)], [1760, rowY('ustate', 0)], [1880, rowY('ustate', 0)]], 'one', 'zeroOne') + it(1780, 900, 'has');
 
   // legend
@@ -628,6 +631,9 @@ function fig313() {
   b += `<rect x="226" y="202" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="270" y="204" width="44" height="18" rx="2" fill="#111"/>`;
   for (let i = 0; i < 4; i++) b += `<rect x="${232 + i * 20}" y="240" width="10" height="16" fill="#E2B33B"/>`;
   b += serverIcon(1112, 136) + bellIcon(1330, 136);
+  // one sensor node per tank: the left group is repeated at Tanks 1–4
+  b += rect(8, 78, 625, 470, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
+  b += P(200, 52, 'One Sensor Node per Tank (Tanks 1–4)', 16);
   // labels
   b += P(100, 130, 'Hydrostatic Water\nLevel Sensor\n(4–20 mA)', 16);
   b += P(270, 296, 'Current-to-Voltage\nModule', 16);
@@ -639,7 +645,7 @@ function fig313() {
   b += P(860, 460, 'Internet Connection\n(Wireless Router)', 16);
   b += lbl(666, 520, 'Standby: 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', { size: 15, family: POPPINS, weight: 500 });
   b += P(1112, 460, 'Firebase Cloud\nService', 16);
-  b += P(1112, 52, 'Alert Service\n(Node.js Worker)', 16);
+  b += P(1112, 52, 'Cloud-Hosted\nAlert Service', 16);
   b += P(1330, 52, 'Firebase Cloud\nMessaging (FCM)', 16);
   b += lbl(1420, 262, 'Push', { size: 15, family: POPPINS, weight: 500 });
   b += P(1505, 460, 'Web & Mobile\nDashboard Client', 16);
@@ -655,14 +661,14 @@ function fig314() {
   const P = (x, y, t, size = 16, weight = 600) => text(x, y, t, { size, family: POPPINS, weight, lh: 1.3 });
   let b = crop(NET, [0, 0, 1430, 518], 0, 0);
   // relabel: test site, link distance, standby link
-  b += `<rect x="96" y="446" width="300" height="70" fill="#FFF"/>` + P(246, 480, 'Sensor Site (Drum Model of\nReservoir Tank No. 1)', 22, 600);
+  b += `<rect x="56" y="438" width="380" height="100" fill="#FFF"/>` + P(246, 486, 'Sensor Site: One ESP32 Node per\nTank (Tank 1: Drum Model of\nReservoir Tank No. 1; Tanks 2–4 Planned)', 17, 600);
   b += `<rect x="462" y="212" width="134" height="46" fill="#FFF"/>` + P(529, 235, '2.4GHz P2P Link\n(15–20 m in Testing)', 12, 600);
   b += `<rect x="232" y="401" width="592" height="26" fill="#FFF"/>` + P(528, 414, 'Standby Link: Built-in 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', 15, 600);
   // alert service beside Firebase
   b += arrow([[1518, 82], [1398, 82]], { sw: 2.5, color: '#000', start: true });
   b += P(1458, 66, 'Internet', 12, 600);
   b += serverIcon(1580, 82, 52);
-  b += P(1580, 175, 'Alert Service\n(Node.js Worker)', 16);
+  b += P(1580, 175, 'Cloud-Hosted\nAlert Service', 16);
   return svg(W, H, b, imageDef(NET, 'old-3-14-network.png', 1430, 523));
 }
 

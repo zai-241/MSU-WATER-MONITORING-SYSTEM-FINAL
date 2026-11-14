@@ -42,6 +42,7 @@ const calibrationSchema = z.object({
   levelVmin: z.number().min(0, 'Vmin must be >= 0'),
   levelVmax: z.number().min(0, 'Vmax must be >= 0'),
   tankHeight: z.number().positive('Tank height must be greater than 0 meters'),
+  capacityLiters: z.number({ invalid_type_error: 'Tank capacity must be a number' }).positive('Tank capacity must be greater than 0 liters'),
   levelOffset: z.number(),
   phNeutralVoltage: z.number().positive('pH neutral voltage must be greater than 0V'),
   phSlope: z.number().positive('pH slope sensitivity must be greater than 0'),
@@ -50,6 +51,9 @@ const calibrationSchema = z.object({
   message: 'Vmin (empty tank voltage) must be strictly less than Vmax (full tank voltage)',
   path: ['levelVmin'],
 });
+
+/** Tanks whose sensor calibration can be edited here (Tank 1 live, Tanks 2–4 planned) */
+const CALIBRATION_TANK_IDS = ['1', '2', '3', '4'] as const;
 
 const Configuration = () => {
   const { config, updateConfig } = useConfig();
@@ -60,15 +64,20 @@ const Configuration = () => {
   
   // Local state to prevent database spamming on keystrokes
   const [localConfig, setLocalConfig] = useState<SystemConfig | null>(null);
-  const [localTank1, setLocalTank1] = useState<Partial<Tank> | null>(null);
+  const [localTank, setLocalTank] = useState<Partial<Tank> | null>(null);
   const [isConfigDirty, setIsConfigDirty] = useState(false);
-  const [isTank1Dirty, setIsTank1Dirty] = useState(false);
+  const [isTankDirty, setIsTankDirty] = useState(false);
   
   const [controlConfirm, setControlConfirm] = useState<{ key: 'maintenanceMode' | 'pumpControlLock'; label: string; newState: boolean } | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const tank1 = tanks.find(t => t.id === '1');
+  // Tank whose calibration the form shows, and a tank the user picked while the form had unsaved edits
+  const [selectedTankId, setSelectedTankId] = useState<string>(CALIBRATION_TANK_IDS[0]);
+  const [pendingTankId, setPendingTankId] = useState<string | null>(null);
+
+  const selectedTank = tanks.find(t => t.id === selectedTankId);
+  const selectedTankLabel = `Tank ${selectedTankId}`;
 
   // Initialize and synchronize local states when database loads (B8: don't overwrite if form is dirty)
   useEffect(() => {
@@ -78,10 +87,26 @@ const Configuration = () => {
   }, [config, isConfigDirty]);
 
   useEffect(() => {
-    if (tank1 && (!localTank1 || !isTank1Dirty)) {
-      setLocalTank1(tank1);
+    if (selectedTank && (!localTank || !isTankDirty || localTank.id !== selectedTank.id)) {
+      setLocalTank(selectedTank);
     }
-  }, [tank1, isTank1Dirty]);
+  }, [selectedTank, isTankDirty]);
+
+  const switchTank = (tankId: string) => {
+    setSelectedTankId(tankId);
+    setIsTankDirty(false);
+    setLocalTank(tanks.find(t => t.id === tankId) ?? null);
+    setPendingTankId(null);
+  };
+
+  const handleSelectTank = (tankId: string) => {
+    if (tankId === selectedTankId) return;
+    if (isTankDirty) {
+      setPendingTankId(tankId); // ask before discarding unsaved calibration edits
+      return;
+    }
+    switchTank(tankId);
+  };
 
   const handleToggle = (key: 'maintenanceMode' | 'pumpControlLock', label: string) => {
     if (!localConfig) return;
@@ -161,16 +186,17 @@ const Configuration = () => {
         });
       }
 
-      if (localTank1) {
+      if (localTank) {
         // B9: Send only calibration fields to avoid overwriting live telemetry / pump commands
         const calibrationUpdates: Partial<Tank> = {
-          levelVmin: Number(localTank1.levelVmin),
-          levelVmax: Number(localTank1.levelVmax),
-          tankHeight: Number(localTank1.tankHeight),
-          levelOffset: Number(localTank1.levelOffset),
-          phNeutralVoltage: Number(localTank1.phNeutralVoltage),
-          phSlope: Number(localTank1.phSlope),
-          phOffset: Number(localTank1.phOffset),
+          levelVmin: Number(localTank.levelVmin),
+          levelVmax: Number(localTank.levelVmax),
+          tankHeight: Number(localTank.tankHeight),
+          capacityLiters: Number(localTank.capacityLiters),
+          levelOffset: Number(localTank.levelOffset),
+          phNeutralVoltage: Number(localTank.phNeutralVoltage),
+          phSlope: Number(localTank.phSlope),
+          phOffset: Number(localTank.phOffset),
         };
 
         const calibValidation = calibrationSchema.safeParse(calibrationUpdates);
@@ -181,23 +207,24 @@ const Configuration = () => {
         }
 
         // Log which calibration values changed, like the threshold changes above
-        type CalibrationKey = 'levelVmin' | 'levelVmax' | 'tankHeight' | 'levelOffset' | 'phNeutralVoltage' | 'phSlope' | 'phOffset';
+        type CalibrationKey = 'levelVmin' | 'levelVmax' | 'tankHeight' | 'capacityLiters' | 'levelOffset' | 'phNeutralVoltage' | 'phSlope' | 'phOffset';
         const calibrationLabels: Record<CalibrationKey, string> = {
           levelVmin: 'Level Vmin', levelVmax: 'Level Vmax', tankHeight: 'Tank Height',
+          capacityLiters: 'Tank Capacity (L)',
           levelOffset: 'Level Offset', phNeutralVoltage: 'pH Neutral Voltage',
           phSlope: 'pH Slope', phOffset: 'pH Offset',
         };
         const calibrationChanges = (Object.keys(calibrationLabels) as CalibrationKey[])
-          .filter(key => tank1?.[key] !== calibrationUpdates[key])
-          .map(key => `${calibrationLabels[key]} (${tank1?.[key] ?? 'unset'} -> ${calibrationUpdates[key]})`);
+          .filter(key => selectedTank?.[key] !== calibrationUpdates[key])
+          .map(key => `${calibrationLabels[key]} (${selectedTank?.[key] ?? 'unset'} -> ${calibrationUpdates[key]})`);
 
-        await updateTank('1', calibrationUpdates);
-        setIsTank1Dirty(false);
+        await updateTank(selectedTankId, calibrationUpdates);
+        setIsTankDirty(false);
 
         if (calibrationChanges.length > 0) {
           addLog({
             action: 'Calibration Updated',
-            details: `Updated sensor calibration for ${tank1?.name ?? 'Tank 1'}: ${calibrationChanges.join(', ')}`,
+            details: `Updated sensor calibration for ${selectedTank?.name ?? selectedTankLabel}: ${calibrationChanges.join(', ')}`,
             performedBy: currentUser?.username || 'Administrator',
             logLevel: 'INFO'
           });
@@ -276,22 +303,43 @@ const Configuration = () => {
       </div>
 
       <div className="rounded-xl bg-card p-6 shadow-sm border border-border">
+        <div role="tablist" aria-label="Tank to calibrate" className="mb-4 flex flex-wrap gap-2">
+          {CALIBRATION_TANK_IDS.map(id => {
+            const active = id === selectedTankId;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => handleSelectTank(id)}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition ${
+                  active
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground hover:bg-secondary'
+                }`}
+              >
+                Tank {id}
+              </button>
+            );
+          })}
+        </div>
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Settings size={18} className="text-primary" /> Sensor Calibration & Offsets (Tank 1)
+          <Settings size={18} className="text-primary" /> Sensor Calibration & Offsets ({selectedTankLabel})
         </h3>
-        
-        {localTank1 ? (
+
+        {localTank ? (
           <div className="space-y-6">
             <div>
               <h4 className="font-semibold mb-3 text-sm text-muted-foreground uppercase tracking-wider">Water Level Sensor Calibration</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-xs font-semibold mb-1">Vmin (Empty Tank Voltage)</label>
                   <input
                     type="number"
                     step="0.01"
-                    value={localTank1.levelVmin ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, levelVmin: e.target.value as any }); }}
+                    value={localTank.levelVmin ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmin: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 0% full</p>
@@ -301,8 +349,8 @@ const Configuration = () => {
                   <input
                     type="number"
                     step="0.01"
-                    value={localTank1.levelVmax ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, levelVmax: e.target.value as any }); }}
+                    value={localTank.levelVmax ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmax: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 100% full</p>
@@ -312,19 +360,31 @@ const Configuration = () => {
                   <input
                     type="number"
                     step="0.1"
-                    value={localTank1.tankHeight ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, tankHeight: e.target.value as any }); }}
+                    value={localTank.tankHeight ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, tankHeight: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Height of reservoir in meters</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Tank Capacity (L)</label>
+                  <input
+                    type="number"
+                    step="1"
+                    min={1}
+                    value={localTank.capacityLiters ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, capacityLiters: e.target.value as any }); }}
+                    className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Full volume, used for the estimated volume</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold mb-1">Reading Offset (%)</label>
                   <input
                     type="number"
                     step="1"
-                    value={localTank1.levelOffset ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, levelOffset: e.target.value as any }); }}
+                    value={localTank.levelOffset ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelOffset: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- %)</p>
@@ -340,8 +400,8 @@ const Configuration = () => {
                   <input
                     type="number"
                     step="0.01"
-                    value={localTank1.phNeutralVoltage ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, phNeutralVoltage: e.target.value as any }); }}
+                    value={localTank.phNeutralVoltage ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phNeutralVoltage: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage at pH 7.00 (typically 2.5V)</p>
@@ -351,8 +411,8 @@ const Configuration = () => {
                   <input
                     type="number"
                     step="0.001"
-                    value={localTank1.phSlope ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, phSlope: e.target.value as any }); }}
+                    value={localTank.phSlope ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phSlope: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage step per pH unit (default 0.18)</p>
@@ -362,8 +422,8 @@ const Configuration = () => {
                   <input
                     type="number"
                     step="0.01"
-                    value={localTank1.phOffset ?? ''}
-                    onChange={e => { setIsTank1Dirty(true); setLocalTank1({ ...localTank1, phOffset: e.target.value as any }); }}
+                    value={localTank.phOffset ?? ''}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phOffset: e.target.value as any }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- pH)</p>
@@ -372,7 +432,7 @@ const Configuration = () => {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Tank 1 calibration data is loading...</p>
+          <p className="text-sm text-muted-foreground">{selectedTankLabel} calibration data is loading...</p>
         )}
       </div>
 
@@ -513,8 +573,8 @@ const Configuration = () => {
                 <p>📊 <strong>Water Level Thresholds:</strong> Low: {localConfig.lowLevelThreshold}% | Overflow: {localConfig.overflowThreshold}%</p>
                 <p>🧪 <strong>pH Safety Range:</strong> Min: {localConfig.minPh} | Max: {localConfig.maxPh}</p>
                 <p>🔔 <strong>Watchdog & Sound:</strong> Offline: {localConfig.offlineThresholdSec ?? 30}s | Repeat: {localConfig.repeatIntervalSec ?? 60}s | Audio: {localConfig.soundEnabled !== false ? 'Enabled' : 'Disabled'}</p>
-                {localTank1 && (
-                  <p>⚙️ <strong>Sensor Calibrations:</strong> Vmin: {localTank1.levelVmin}V | Vmax: {localTank1.levelVmax}V | Height: {localTank1.tankHeight}m</p>
+                {localTank && (
+                  <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {localTank.levelVmin}V | Vmax: {localTank.levelVmax}V | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L</p>
                 )}
               </div>
               <p className="text-xs text-danger font-medium">
@@ -543,6 +603,23 @@ const Configuration = () => {
                 ) : (
                   'Confirm & Apply'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingTankId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div role="alertdialog" aria-labelledby="discard-calibration-title" className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 border border-border/40 space-y-4 animate-in zoom-in-95 duration-200">
+            <h4 id="discard-calibration-title" className="text-lg font-semibold">Discard unsaved changes?</h4>
+            <p className="text-sm text-muted-foreground">
+              The calibration changes for {selectedTankLabel} have not been saved. Switch to Tank {pendingTankId} and discard them?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setPendingTankId(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground">Keep Editing</button>
+              <button onClick={() => switchTank(pendingTankId)} className="flex-1 rounded-lg bg-danger px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 transition">
+                Discard Changes
               </button>
             </div>
           </div>

@@ -259,23 +259,22 @@ describe('Part A: Planned Expansion Tanks Logic & UI', () => {
     });
   });
 
-  describe('3. Reports & Analytics Exclusion', () => {
-    it('excludes planned tanks from the Reports reservoir selector and analytics', async () => {
+  describe('3. Reports Reservoir Selector', () => {
+    it('lists all four tanks, labels planned ones, and selects the live tank first', async () => {
       render(<Reports />);
 
-      // Tank 1 (live) and Tank 4 (offline) should be present
-      expect(screen.getAllByText(/Reservoir Tank 1/i).length).toBeGreaterThan(0);
-      expect(screen.getByRole('option', { name: /Reservoir Tank 4/i })).toBeInTheDocument();
-
-      // Planned tanks 2 and 3 should NOT appear as options in the dropdown
       const selects = screen.getAllByRole('combobox');
-      const reservoirSelect = selects[0];
-      const options = Array.from(reservoirSelect.querySelectorAll('option')).map(o => o.textContent);
-      
-      expect(options.some(t => t?.includes('Reservoir Tank 1'))).toBe(true);
-      expect(options.some(t => t?.includes('Reservoir Tank 4'))).toBe(true);
-      expect(options.some(t => t?.includes('Reservoir Tank 2'))).toBe(false);
-      expect(options.some(t => t?.includes('Reservoir Tank 3'))).toBe(false);
+      const reservoirSelect = selects[0] as HTMLSelectElement;
+      const options = Array.from(reservoirSelect.querySelectorAll('option')).map(o => o.textContent ?? '');
+
+      expect(options).toHaveLength(4);
+      expect(options.find(t => t.includes('Reservoir Tank 1'))).not.toMatch(/Planned/);
+      expect(options.find(t => t.includes('Reservoir Tank 2'))).toMatch(/Planned/);
+      expect(options.find(t => t.includes('Reservoir Tank 3'))).toMatch(/Planned/);
+      expect(options.find(t => t.includes('Reservoir Tank 4'))).not.toMatch(/Planned/);
+
+      // Default selection is the first live tank, never a planned one
+      await waitFor(() => expect(reservoirSelect.value).toBe('1'));
     });
   });
 

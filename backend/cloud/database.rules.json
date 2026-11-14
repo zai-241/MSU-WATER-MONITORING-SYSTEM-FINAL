@@ -35,6 +35,9 @@
         "waterLevel": {
           ".validate": "!newData.exists() || newData.isNumber()"
         },
+        "capacityLiters": {
+          ".validate": "!newData.exists() || (newData.isNumber() && newData.val() > 0)"
+        },
         "controllerOffline": {
           ".write": "root.child('roles').child(auth.uid).exists()",
           ".validate": "newData.isBoolean()"
@@ -59,7 +62,10 @@
         "timestamp"
       ],
       "$id": {
-        ".write": "root.child('roles').child(auth.uid).exists() && (!data.exists() || root.child('roles').child(auth.uid).val() === 'admin')"
+        ".write": "root.child('roles').child(auth.uid).exists() && (!data.exists() || root.child('roles').child(auth.uid).val() === 'admin')",
+        "tankId": {
+          ".validate": "newData.isString()"
+        }
       }
     },
     "notifications": {

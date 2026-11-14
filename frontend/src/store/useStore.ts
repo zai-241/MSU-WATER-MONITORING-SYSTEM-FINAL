@@ -33,6 +33,8 @@ import {
   RETENTION_DAYS,
   TANK_CACHE_WRITE_INTERVAL_MS,
   STORAGE_KEYS,
+  DEFAULT_TANK_CAPACITY_LITERS,
+  tankCapacityLiters,
 } from '@/lib/constants';
 import { planRaise, planResolve, archiveOf, type RaisePlan, type RaiseOutcome } from '@/lib/alertEngine';
 
@@ -60,6 +62,8 @@ export interface Tank {
   levelVmax: number;
   /** Physical height of the tank (meters) */
   tankHeight: number;
+  /** Tank capacity in liters, set by an admin (used for the estimated volume) */
+  capacityLiters?: number;
   /** User‑defined offset applied to the calculated water level */
   levelOffset: number;
   /** Voltage reading corresponding to neutral pH (7.0) */
@@ -138,6 +142,8 @@ export interface Notification {
     timestamp: number;
     /** Severity level of the log entry */
     logLevel?: 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+    /** Tank the entry belongs to (sent by the Tank 2–4 controllers; Tank 1 and old logs omit it) */
+    tankId?: string;
   }
 
 const DEFAULT_TANKS: Tank[] = [
@@ -154,6 +160,7 @@ const DEFAULT_TANKS: Tank[] = [
     levelVmin: 0.25,
     levelVmax: 3.0,
     tankHeight: 5.0,
+    capacityLiters: DEFAULT_TANK_CAPACITY_LITERS,
     levelOffset: 0,
     phNeutralVoltage: 2.5,
     phSlope: 0.18,
@@ -179,6 +186,7 @@ const DEFAULT_TANKS: Tank[] = [
     levelVmin: 0.25,
     levelVmax: 3.0,
     tankHeight: 5.0,
+    capacityLiters: DEFAULT_TANK_CAPACITY_LITERS,
     levelOffset: 0,
     phNeutralVoltage: 2.5,
     phSlope: 0.18,
@@ -204,6 +212,7 @@ const DEFAULT_TANKS: Tank[] = [
     levelVmin: 0.25,
     levelVmax: 3.0,
     tankHeight: 5.0,
+    capacityLiters: DEFAULT_TANK_CAPACITY_LITERS,
     levelOffset: 0,
     phNeutralVoltage: 2.5,
     phSlope: 0.18,
@@ -229,6 +238,7 @@ const DEFAULT_TANKS: Tank[] = [
     levelVmin: 0.25,
     levelVmax: 3.0,
     tankHeight: 5.0,
+    capacityLiters: DEFAULT_TANK_CAPACITY_LITERS,
     levelOffset: 0,
     phNeutralVoltage: 2.5,
     phSlope: 0.18,
@@ -448,6 +458,7 @@ export function sanitizeTank(key: string, raw: any): Tank {
     levelVmin: isNumber(raw?.levelVmin) ? raw.levelVmin : 0.25,
     levelVmax: isNumber(raw?.levelVmax) ? raw.levelVmax : 3.0,
     tankHeight: isNumber(raw?.tankHeight) ? raw.tankHeight : 5.0,
+    capacityLiters: tankCapacityLiters(raw),
     levelOffset: isNumber(raw?.levelOffset) ? raw.levelOffset : 0,
     phNeutralVoltage: isNumber(raw?.phNeutralVoltage) ? raw.phNeutralVoltage : 2.5,
     phSlope: isNumber(raw?.phSlope) ? raw.phSlope : 0.18,
@@ -579,6 +590,7 @@ const tanksSource = createShared<TanksState>(
           // Sanitize raw tank telemetry (E1 / R6)
           const tankList = Object.entries(data).map(([key, value]) => sanitizeTank(key, value));
           emit({ tanks: tankList, isLive: true });
+          addMissingDefaultTanks(Object.keys(data));
           // P3: telemetry changes about once a second; the offline cache does not need to
           const now = Date.now();
           if (now - lastTankCacheWrite >= TANK_CACHE_WRITE_INTERVAL_MS) {
@@ -619,6 +631,7 @@ export function addTank(tank: Pick<Tank, 'id' | 'name'> & Partial<Tank>) {
     levelVmin: 0.25,
     levelVmax: 3.0,
     tankHeight: 5.0,
+    capacityLiters: DEFAULT_TANK_CAPACITY_LITERS,
     levelOffset: 0,
     phNeutralVoltage: 2.5,
     phSlope: 0.18,
@@ -630,6 +643,28 @@ export function addTank(tank: Pick<Tank, 'id' | 'name'> & Partial<Tank>) {
     ...tank
   };
   return set(ref(database, `tanks/${newTank.id}`), newTank);
+}
+
+/** Default tank IDs this client already tried to create, so a refused write is not retried on every snapshot */
+const attemptedDefaultTankIds = new Set<string>();
+
+/**
+ * Creates any of the default tanks (1–4) that are missing from the database, through addTank.
+ * Tanks that already exist are never written. Rules allow this for admins/workers; for
+ * anyone else the write is refused and ignored.
+ */
+export function addMissingDefaultTanks(existingIds: string[]) {
+  const existing = new Set(existingIds);
+  for (const tank of DEFAULT_TANKS) {
+    if (existing.has(tank.id) || attemptedDefaultTankIds.has(tank.id)) continue;
+    attemptedDefaultTankIds.add(tank.id);
+    Promise.resolve(addTank({ ...tank })).catch(() => { /* not permitted for this role */ });
+  }
+}
+
+/** Test helper: forget which default tanks were already attempted */
+export function resetDefaultTankSeeding() {
+  attemptedDefaultTankIds.clear();
 }
 
 export function deleteTank(id: string) {
