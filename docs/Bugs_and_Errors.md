@@ -15,7 +15,7 @@ references are `file:line` in the current code. After a group, run `npm test` an
 
 | Group | Topic | Items | Priority |
 |---|---|---|---|
-| 1 | Remove the pump simulation | 5 | High |
+| 1 | Pump: virtual pump + Pump Demo Mode | 5 | **Done** (2026-11-14) |
 | 2 | Security and access | 2 | High |
 | 3 | Tanks 1–4 consistency | 2 | **Done** (2026-11-14) |
 | 4 | Reports correctness | 2 | **Done** (2026-11-14) |
@@ -26,32 +26,35 @@ references are `file:line` in the current code. After a group, run `npm test` an
 
 ---
 
-## Group 1: Remove the pump simulation (High)
+## Group 1: Pump: virtual pump and Pump Demo Mode (Done 2026-11-14)
 
-The thesis says the system has **no** pump control (Chapter 1.4 limitation, Chapter 5 recommendation), but the
-pump simulation is still live in the app and the firmware still drives the relay. If a relay is wired, a real pump
-could switch. Screenshots and exports shown to the panel would also show pump features.
+**Decision (changed from "remove"):** the pump is kept so it can be shown to the panel, but as a clearly labelled
+demo with **no physical pump**. The ESP32 runs its real pump logic with a *virtual pump*; no pin is switched. An admin
+switch, **Pump Demo Mode** (on by default), shows or hides every pump feature. With it off, the app matches the thesis
+(monitoring only) and the controller keeps the virtual pump off.
 
-- [ ] **1.1 Dashboard pump switch.** "Pump (Simulation)" toggle on each tank card (`frontend/src/pages/Dashboard.tsx:194`);
-  confirm dialog that writes `pumpOn` and logs `PUMP_ON` / `PUMP_OFF` (`Dashboard.tsx:300`, `361`, `374`).
-  *Fix:* remove the toggle, the dialog and `handlePumpToggle`.
-- [ ] **1.2 Pump Control Lock and maintenance text.** "Pump Control Lock" switch (`frontend/src/pages/admin/Configuration.tsx:542–547`)
-  and the maintenance text "Disables all pump controls…" (`Configuration.tsx:529`).
-  *Fix:* remove the lock switch; reword maintenance mode to "Suppresses alerts system-wide".
-- [ ] **1.3 Reports pump sections.** "Pump System (Simulation)" card (`frontend/src/pages/Reports.tsx:695`),
-  "Pump Activity Logs Histogram" (`Reports.tsx:869`), "Total Pump Cycles" (`Reports.tsx:1117`), and the pump-run
-  calculation that feeds them.
-  *Fix:* remove the card, chart and counter.
-- [ ] **1.4 Excel and PDF pump sections.** "Total Pump Cycles" rows (`frontend/src/lib/reportExport.ts:107`, `280`) and the
-  "Pump Activity" sheet (`reportExport.ts:157–180`) plus the PDF pump section.
-  *Fix:* remove them; update `reportsHistory.test.tsx` if it checks them.
-- [ ] **1.5 Firmware pump logic and relay.** `RELAY_PIN 32` (`backend/firmware/esp32_firmware.ino:121`), automatic and manual
-  pump control, `digitalWrite(RELAY_PIN, …)` (`:1640`), `pumpOn` written to the tank (`:1386`) and to history samples.
-  Same code in `backend/firmware/tank2/`, `tank3/`, `tank4/`.
-  *Fix:* remove the pump logic (or keep the relay pin permanently LOW) in all four sketches; re-compile each.
+- [x] **1.1 Dashboard pump switch.** Labelled "Pump (Demo)" with a note that no physical pump is connected; shown only
+  while Pump Demo Mode is on (`Dashboard.tsx`). The Pump Control Lock banner also shows only in demo mode, and the
+  maintenance banner mentions the demo pump only then.
+- [x] **1.2 Pump Control Lock and maintenance text.** New **Pump Demo Mode** switch in Admin Panel → Configuration →
+  System Controls (`config/pumpDemoMode`; a missing value counts as on, `isPumpDemoOn()` in `useStore.ts`). The
+  Pump Control Lock appears only in demo mode; maintenance mode reads "Suppresses alerts system-wide (and stops the
+  demo pump)".
+- [x] **1.3 Reports pump sections.** The pump card, the demo pump histogram and "Demo Pump Cycles" appear only in demo
+  mode (`Reports.tsx`).
+- [x] **1.4 Excel and PDF pump sections.** Labelled "Demo Pump…"; left out when demo mode is off (`includePump` in
+  `reportExport.ts`; the PDF alarm section is renumbered).
+- [x] **1.5 Firmware pump logic and relay.** All four sketches: `PUMP_RELAY_ENABLED 0` keeps GPIO 32 unused (no
+  `pinMode`/`digitalWrite`), so nothing physical can switch; the pump logic still runs and reports `pumpOn`. The
+  sketches read `pumpDemoMode` from `/config`: when it is off, the virtual pump is stopped (logged) and dashboard pump
+  commands are refused. To drive a real relay later, set `PUMP_RELAY_ENABLED` to 1 and flash again.
 
-*Check when done:* search the code for `pump` (case-insensitive); only comments or the `pumpOn` field in old data
-should remain.
+*To show it to the panel:* keep Pump Demo Mode on, lower the level below the low threshold (the virtual pump starts
+and a "Pump started automatically" log appears), turn on maintenance mode (it stops and commands are refused), then
+switch Pump Demo Mode off to show the monitoring-only system the thesis describes. Tests: `pumpDemoMode.test.tsx`.
+
+**Still to do by hand:** flash the updated firmware to the Tank 1 ESP32, deploy the web app, and (with your adviser)
+decide whether Chapter 1.4 / Chapter 5 should mention the demo mode.
 
 ## Group 2: Security and access (High)
 

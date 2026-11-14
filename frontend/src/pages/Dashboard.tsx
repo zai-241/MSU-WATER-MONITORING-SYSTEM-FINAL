@@ -9,6 +9,7 @@ import {
   isTankPlanned,
   Tank,
   SystemConfig,
+  isPumpDemoOn,
 } from '@/store/useStore';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import type { UserProfile } from '@/services/authService';
@@ -170,8 +171,9 @@ const TankCard = memo(({
             )}
           </span>
         </div>
+        {isPumpDemoOn(config) && (
         <div className="flex justify-between items-center">
-          <span className="text-muted-foreground">Pump (Simulation):</span>
+          <span className="text-muted-foreground" title="Demo pump: the controller runs the pump logic, but no physical pump is connected">Pump (Demo):</span>
           <div className="flex items-center gap-2">
             {isPlanned ? (
               <span className="text-sm font-medium text-muted-foreground">--</span>
@@ -196,6 +198,7 @@ const TankCard = memo(({
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );
@@ -250,6 +253,7 @@ const TankCard = memo(({
   if (prevProps.config.maxPh !== nextProps.config.maxPh) return false;
   if (prevProps.config.maintenanceMode !== nextProps.config.maintenanceMode) return false;
   if (prevProps.config.pumpControlLock !== nextProps.config.pumpControlLock) return false;
+  if (isPumpDemoOn(prevProps.config) !== isPumpDemoOn(nextProps.config)) return false;
 
   return true; // Values are visually identical; suppress rendering update
 });
@@ -368,10 +372,10 @@ const Dashboard = () => {
       )}
       {config.maintenanceMode && (
         <div className="mb-4 p-3 rounded-lg bg-warning/20 border border-warning text-warning text-sm font-medium flex items-center gap-2">
-          ⚠️ Maintenance Mode is active — All pumps are disabled and alerts are suppressed.
+          ⚠️ Maintenance Mode is active — Alerts are suppressed{isPumpDemoOn(config) ? ' and the demo pump is stopped' : ''}.
         </div>
       )}
-      {config.pumpControlLock && !config.maintenanceMode && (
+      {isPumpDemoOn(config) && config.pumpControlLock && !config.maintenanceMode && (
         <div className="mb-4 p-3 rounded-lg bg-danger/20 border border-danger text-danger text-sm font-medium flex items-center gap-2">
           🔒 Pump Control Lock is active — Worker pump controls are locked.
         </div>
@@ -443,13 +447,16 @@ const Dashboard = () => {
         })}
       </div>
 
-      {pumpConfirm && (
+      {pumpConfirm && isPumpDemoOn(config) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50">
           <div className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 space-y-4">
             <h4 className="text-lg font-semibold text-foreground">Confirm Pump Toggle</h4>
             <div className="text-sm text-muted-foreground space-y-3">
               <p>
                 Are you sure you want to turn <span className="font-semibold text-foreground">{pumpConfirm.newState ? 'ON' : 'OFF'}</span> the pump for <span className="font-semibold text-foreground">{pumpConfirm.tankName}</span>?
+              </p>
+              <p className="text-xs">
+                Demo pump: the controller runs its pump logic and reports the result, but no physical pump is connected.
               </p>
             </div>
             <div className="flex gap-3">

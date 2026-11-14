@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTanks, useConfig, useWorkerStatus, addSystemLog, SystemConfig, Tank } from '@/store/useStore';
+import { useTanks, useConfig, useWorkerStatus, addSystemLog, isPumpDemoOn, SystemConfig, Tank } from '@/store/useStore';
 import { Power, Settings, Loader2, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
@@ -57,6 +57,8 @@ const calibrationSchema = z.object({
 /** Tanks whose sensor calibration can be edited here (Tank 1 live, Tanks 2–4 planned) */
 const CALIBRATION_TANK_IDS = SUPPORTED_TANK_IDS;
 
+type ControlKey = 'maintenanceMode' | 'pumpControlLock' | 'pumpDemoMode';
+
 /** Form state: while typing, number fields hold the raw text; saving converts them with Number(). */
 type Editable<T> = { [K in keyof T]: T[K] | string };
 
@@ -73,7 +75,7 @@ const Configuration = () => {
   const [isConfigDirty, setIsConfigDirty] = useState(false);
   const [isTankDirty, setIsTankDirty] = useState(false);
   
-  const [controlConfirm, setControlConfirm] = useState<{ key: 'maintenanceMode' | 'pumpControlLock'; label: string; newState: boolean } | null>(null);
+  const [controlConfirm, setControlConfirm] = useState<{ key: ControlKey; label: string; newState: boolean } | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -117,9 +119,11 @@ const Configuration = () => {
     switchTank(tankId);
   };
 
-  const handleToggle = (key: 'maintenanceMode' | 'pumpControlLock', label: string) => {
+  const handleToggle = (key: ControlKey, label: string) => {
     if (!localConfig) return;
-    setControlConfirm({ key, label, newState: !localConfig[key] });
+    // pumpDemoMode counts as on when it was never set
+    const current = key === 'pumpDemoMode' ? isPumpDemoOn(localConfig as SystemConfig) : localConfig[key] === true;
+    setControlConfirm({ key, label, newState: !current });
   };
 
   const confirmToggle = async () => {
@@ -531,13 +535,28 @@ const Configuration = () => {
       <div className="rounded-xl bg-card p-6 shadow-sm">
         <h3 className="text-lg font-semibold mb-4">System Controls</h3>
         <div className="space-y-4">
+          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border ${isPumpDemoOn(localConfig as SystemConfig) ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+            <div className="flex items-center gap-3">
+              <Power size={18} className={isPumpDemoOn(localConfig as SystemConfig) ? 'text-primary' : 'text-muted-foreground'} />
+              <div>
+                <p className="font-medium text-sm">Pump Demo Mode</p>
+                <p className="text-xs text-muted-foreground">Shows the pump controls with a virtual pump: the controller runs its pump logic, but no physical pump is connected</p>
+                {!isPumpDemoOn(localConfig as SystemConfig) && <p className="text-xs text-muted-foreground font-medium mt-1">Off: pump controls are hidden and the controller keeps the virtual pump off</p>}
+              </div>
+            </div>
+            <button onClick={() => handleToggle('pumpDemoMode', 'Pump Demo Mode')}
+              aria-label="Pump Demo Mode"
+              className={`relative h-6 w-11 rounded-full transition-colors shrink-0 self-end sm:self-auto ${isPumpDemoOn(localConfig as SystemConfig) ? 'bg-primary' : 'bg-muted'}`}>
+              <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${isPumpDemoOn(localConfig as SystemConfig) ? 'translate-x-5' : ''}`} />
+            </button>
+          </div>
           <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border ${localConfig.maintenanceMode ? 'border-warning bg-warning/5' : 'border-border'}`}>
             <div className="flex items-center gap-3">
               <Settings size={18} className={localConfig.maintenanceMode ? 'text-warning' : 'text-muted-foreground'} />
               <div>
                 <p className="font-medium text-sm">Maintenance Mode</p>
-                <p className="text-xs text-muted-foreground">Disables all pump controls and suppresses alerts system-wide</p>
-                {localConfig.maintenanceMode && <p className="text-xs text-warning font-medium mt-1">⚠️ Currently active — all pumps are locked</p>}
+                <p className="text-xs text-muted-foreground">{isPumpDemoOn(localConfig as SystemConfig) ? 'Suppresses alerts system-wide and stops the demo pump' : 'Suppresses alerts system-wide'}</p>
+                {localConfig.maintenanceMode && <p className="text-xs text-warning font-medium mt-1">⚠️ Currently active — alerts are suppressed{isPumpDemoOn(localConfig as SystemConfig) ? ' and the demo pump is locked' : ''}</p>}
               </div>
             </div>
             <button onClick={() => handleToggle('maintenanceMode', 'Maintenance Mode')}
@@ -545,6 +564,7 @@ const Configuration = () => {
               <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${localConfig.maintenanceMode ? 'translate-x-5' : ''}`} />
             </button>
           </div>
+          {isPumpDemoOn(localConfig as SystemConfig) && (
           <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border ${localConfig.pumpControlLock ? 'border-danger bg-danger/5' : 'border-border'}`}>
             <div className="flex items-center gap-3">
               <Power size={18} className={localConfig.pumpControlLock ? 'text-danger' : 'text-muted-foreground'} />
@@ -559,6 +579,7 @@ const Configuration = () => {
               <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${localConfig.pumpControlLock ? 'translate-x-5' : ''}`} />
             </button>
           </div>
+          )}
         </div>
       </div>
 
@@ -641,8 +662,10 @@ const Configuration = () => {
           <div className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 border border-border/40 space-y-4 animate-in zoom-in-95 duration-200">
             <h4 className="text-lg font-semibold">{controlConfirm.newState ? 'Enable' : 'Disable'} {controlConfirm.label}</h4>
             <p className="text-sm text-muted-foreground">
-              {controlConfirm.key === 'maintenanceMode' && controlConfirm.newState && 'This will disable all pump controls and suppress all alerts system-wide. No one will be able to toggle pumps.'}
-              {controlConfirm.key === 'maintenanceMode' && !controlConfirm.newState && 'This will restore normal operations. Pump controls and alerts will be re-enabled.'}
+              {controlConfirm.key === 'maintenanceMode' && controlConfirm.newState && 'This will suppress all alerts system-wide and stop the demo pump. No one will be able to toggle it.'}
+              {controlConfirm.key === 'maintenanceMode' && !controlConfirm.newState && 'This will restore normal operations. Alerts (and the demo pump controls) will be re-enabled.'}
+              {controlConfirm.key === 'pumpDemoMode' && controlConfirm.newState && 'This will show the pump controls on every dashboard, in Reports and in exports. The controller runs its pump logic with a virtual pump; no physical pump is switched.'}
+              {controlConfirm.key === 'pumpDemoMode' && !controlConfirm.newState && 'This will hide all pump controls, reports and export sections. The controller keeps the virtual pump off and refuses pump commands.'}
               {controlConfirm.key === 'pumpControlLock' && controlConfirm.newState && 'This will lock all pump controls for workers. Only admins will be able to toggle pumps.'}
               {controlConfirm.key === 'pumpControlLock' && !controlConfirm.newState && 'This will unlock pump controls. Assigned workers will be able to toggle their tank pumps again.'}
             </p>

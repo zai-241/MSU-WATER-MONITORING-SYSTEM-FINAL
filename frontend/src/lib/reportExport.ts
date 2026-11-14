@@ -40,12 +40,15 @@ export interface ReportExportData {
   selectedTank: Tank;
   summaryMetrics: ReportSummaryMetrics | null;
   telemetryData: GroupedTelemetryPoint[];
+  /** Include the demo pump rows, sheet and section (pump demo mode on). Defaults to true. */
+  includePump?: boolean;
   /** Configured alert thresholds, shown as the benchmarks in the summary */
   thresholds: { lowLevel: number; overflow: number; minPh: number; maxPh: number };
 }
 
 export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJS.Workbook> {
   const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData, thresholds } = data;
+  const includePump = data.includePump !== false;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = currentUser?.username || 'MSU Water Monitoring System';
@@ -104,7 +107,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
     ['Average pH Level', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', `Safe: ${thresholds.minPh} - ${thresholds.maxPh}`],
     ['Minimum pH Level', summaryMetrics?.minPh !== null && summaryMetrics?.minPh !== undefined ? `${summaryMetrics.minPh}` : 'N/A', 'Observed Low'],
     ['Maximum pH Level', summaryMetrics?.maxPh !== null && summaryMetrics?.maxPh !== undefined ? `${summaryMetrics.maxPh}` : 'N/A', 'Observed High'],
-    ['Total Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns ?? 0, 'Activation Count in Window'],
+    ...(includePump ? [['Demo Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns ?? 0, 'Virtual pump: no physical pump connected']] : []),
     ['Total System Alarms / Alerts', summaryMetrics?.alertsRegistered ?? 0, 'Registered Incidents'],
   ];
 
@@ -153,30 +156,32 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
     });
   });
 
-  // 3. PUMP ACTIVITY SHEET
-  const pumpSheet = workbook.addWorksheet('Pump Activity', {
-    views: [{ showGridLines: true }]
-  });
-  pumpSheet.columns = [
-    { header: 'Date', key: 'date', width: 20 },
-    { header: 'Activation Cycles', key: 'activations', width: 22 },
-    { header: 'Operational Status', key: 'status', width: 22 },
-  ];
-
-  const pumpHeader = pumpSheet.getRow(1);
-  pumpHeader.eachCell((cell) => {
-    cell.fill = navyFill;
-    cell.font = headerFont;
-    cell.alignment = { horizontal: 'center' };
-  });
-
-  pumpActivityData.forEach(item => {
-    pumpSheet.addRow({
-      date: item.date,
-      activations: item.activations,
-      status: item.activations > 0 ? 'Active' : 'Idle',
+  if (includePump) {
+    // 3. PUMP ACTIVITY SHEET
+    const pumpSheet = workbook.addWorksheet('Demo Pump Activity', {
+      views: [{ showGridLines: true }]
     });
-  });
+    pumpSheet.columns = [
+      { header: 'Date', key: 'date', width: 20 },
+      { header: 'Activation Cycles', key: 'activations', width: 22 },
+      { header: 'Operational Status', key: 'status', width: 22 },
+    ];
+
+    const pumpHeader = pumpSheet.getRow(1);
+    pumpHeader.eachCell((cell) => {
+      cell.fill = navyFill;
+      cell.font = headerFont;
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    pumpActivityData.forEach(item => {
+      pumpSheet.addRow({
+        date: item.date,
+        activations: item.activations,
+        status: item.activations > 0 ? 'Active' : 'Idle',
+      });
+    });
+  }
 
   // 4. ALERT LOGS SHEET
   const alertSheet = workbook.addWorksheet('Alert Logs', {
@@ -235,6 +240,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
 
 export function buildPdfDocument(data: ReportExportData): jsPDF {
   const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData, thresholds } = data;
+  const includePump = data.includePump !== false;
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const primaryColor: [number, number, number] = [30, 58, 138];
@@ -277,7 +283,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
     ['Water Level Range', summaryMetrics ? `${summaryMetrics.minLevel}% - ${summaryMetrics.maxLevel}%` : 'N/A', 'Observed extremes'],
     ['Average pH Value', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', `Safe range: ${thresholds.minPh} - ${thresholds.maxPh}`],
     ['pH Value Range', summaryMetrics ? `${summaryMetrics.minPh} - ${summaryMetrics.maxPh}` : 'N/A', 'Observed extremes'],
-    ['Total Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns !== undefined ? `${summaryMetrics.totalPumpRuns} cycles` : '0 cycles', 'Logged activations'],
+    ...(includePump ? [['Demo Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns !== undefined ? `${summaryMetrics.totalPumpRuns} cycles` : '0 cycles', 'Virtual pump: no physical pump connected']] : []),
     ['Total Alarms & Incidents', summaryMetrics?.alertsRegistered !== undefined ? `${summaryMetrics.alertsRegistered}` : '0', 'System warnings'],
   ];
 
@@ -333,34 +339,36 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
 
   currentY = (doc as DocWithTable).lastAutoTable.finalY + 10;
 
-  // 3. PUMP ACTIVITY TABLE
-  if (currentY > 230) {
-    doc.addPage();
-    currentY = 20;
+  if (includePump) {
+    // 3. PUMP ACTIVITY TABLE
+    if (currentY > 230) {
+      doc.addPage();
+      currentY = 20;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...primaryColor);
+    doc.text('3. Demo Pump Activity (virtual pump, no physical pump connected)', 14, currentY);
+
+    const pumpRows = pumpActivityData.map(p => [
+      p.date,
+      `${p.activations} cycles`,
+      p.activations > 0 ? 'Active' : 'Idle',
+    ]);
+
+    autoTable(doc, {
+      startY: currentY + 3,
+      head: [['Date', 'Activation Cycles', 'Operational Status']],
+      body: pumpRows,
+      theme: 'striped',
+      headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8.5, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      margin: { left: 14, right: 14 },
+    });
+
+    currentY = (doc as DocWithTable).lastAutoTable.finalY + 10;
   }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...primaryColor);
-  doc.text('3. Pump Operational Activity', 14, currentY);
-
-  const pumpRows = pumpActivityData.map(p => [
-    p.date,
-    `${p.activations} cycles`,
-    p.activations > 0 ? 'Active' : 'Idle',
-  ]);
-
-  autoTable(doc, {
-    startY: currentY + 3,
-    head: [['Date', 'Activation Cycles', 'Operational Status']],
-    body: pumpRows,
-    theme: 'striped',
-    headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8.5, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
-    margin: { left: 14, right: 14 },
-  });
-
-  currentY = (doc as DocWithTable).lastAutoTable.finalY + 10;
 
   // 4. ALARM & INCIDENT LOGS TABLE
   if (currentY > 230) {
@@ -371,7 +379,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...primaryColor);
-  doc.text('4. System Alarms & Incident Logs', 14, currentY);
+  doc.text(`${includePump ? 4 : 3}. System Alarms & Incident Logs`, 14, currentY);
 
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const relevantLogs = logs.filter(l => {

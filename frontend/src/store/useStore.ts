@@ -106,7 +106,16 @@ export interface SystemConfig {
   soundEnabled?: boolean;
   /** When false the alert worker stops sending push notifications */
   pushEnabled?: boolean;
+  /**
+   * Pump demo mode (virtual pump, no physical pump connected). On unless an admin turns it off:
+   * a missing value counts as on. Off hides every pump control and makes the ESP32 keep the pump off.
+   */
+  pumpDemoMode?: boolean;
 }
+
+/** True while the pump demo is on (the default; only an explicit false turns it off). */
+export const isPumpDemoOn = (config: Pick<SystemConfig, 'pumpDemoMode'> | null | undefined): boolean =>
+  config?.pumpDemoMode !== false;
 
 export interface Notification {
   id: string;
@@ -265,6 +274,7 @@ const DEFAULT_CONFIG: SystemConfig = {
   offlineThresholdSec: 30,
   repeatIntervalSec: 60,
   soundEnabled: true,
+  pumpDemoMode: true,
 };
 
 function loadFromStorage<T>(key: string, fallback: T): T {

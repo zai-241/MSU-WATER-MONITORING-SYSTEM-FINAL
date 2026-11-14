@@ -118,6 +118,11 @@ bool isNetworkConnected() { return ethConnected || wifiConnected; }
 // ==========================================
 // Sensor & Actuator Pin Definitions
 // ==========================================
+// Virtual pump: the pump logic below still decides ON/OFF (automatic start below the low
+// threshold, stop at overflow, dashboard commands, maintenance and lock refusals) and reports
+// pumpOn, but no pin is switched because this prototype has no relay or pump connected.
+// To drive a real relay on GPIO 32, set PUMP_RELAY_ENABLED to 1 and flash again.
+#define PUMP_RELAY_ENABLED 0
 #define RELAY_PIN 32
 #define PH_SENSOR_PIN 34
 #define LEVEL_SENSOR_PIN 35
@@ -322,6 +327,9 @@ float minPh = 6.5;
 float maxPh = 8.5;
 bool maintenanceMode = false;
 bool pumpControlLock = false;
+// Pump demo mode (config/pumpDemoMode, on unless an admin turns it off): when off, the
+// virtual pump stays OFF and every pump command is refused.
+bool pumpDemoMode = true;
 
 SystemAlert lowLevelAlert = {"Low Water Level", STATE_NORMAL, 0, 0, 0, false};
 SystemAlert highLevelAlert = {"High Water Level", STATE_NORMAL, 0, 0, 0, false};
@@ -1419,6 +1427,21 @@ void processAutomaticPumpControl() {
     return;
   }
 
+  // Rule 0: with pump demo mode off the pump stays OFF (no automatic starts).
+  if (!pumpDemoMode) {
+    if (currentPumpState) {
+      currentPumpState = false;
+      lastPumpStopTime = now;
+      logSystemEvent("Pump Controller",
+                     "Pump stopped automatically. Water level: " +
+                         String(levelPercent) +
+                         "%. Reason: Pump demo mode turned off.",
+                     LEVEL_INFO);
+      updateFirebasePumpState(false);
+    }
+    return;
+  }
+
   // Rule 1: maintenanceMode forces the pump OFF and blocks automatic starts.
   if (maintenanceMode) {
     if (currentPumpState) {
@@ -1635,10 +1658,12 @@ void sensorTask(void *pvParameters) {
       updateAlertState(phAlert, isPhAbnormal,
                        "Unsafe pH level detected: " + String(phV, 2));
 
-      // Drive relay directly with no network dependency
+      // Drive relay directly with no network dependency (virtual pump: no pin unless enabled)
       bool desiredPumpState = currentPumpState;
       if (desiredPumpState != lastActualPumpState) {
+#if PUMP_RELAY_ENABLED
         digitalWrite(RELAY_PIN, desiredPumpState ? HIGH : LOW);
+#endif
         lastActualPumpState = desiredPumpState;
       }
     }
@@ -1757,7 +1782,16 @@ void networkTask(void *pvParameters) {
                 lvlPct = 0;
               }
 
-              if (lvlOk && lvlPct >= 0 && lvlPct >= (int)overflowThreshold) {
+              if (!pumpDemoMode) {
+                DEBUG_PRINTLN("[Pump] Manual ON command refused: Pump demo "
+                              "mode is off.");
+                logSystemEvent("Pump Controller",
+                               "Manual pump ON command refused: Pump demo mode "
+                               "is off.",
+                               LEVEL_WARNING);
+                updateFirebasePumpState(false);
+                currentPumpState = false;
+              } else if (lvlOk && lvlPct >= 0 && lvlPct >= (int)overflowThreshold) {
                 DEBUG_PRINTLN(
                     "[Pump] Manual ON command refused: Water level is "
                     "at or above overflowThreshold.");
@@ -1919,6 +1953,9 @@ void networkTask(void *pvParameters) {
           }
           if (hasKeyInJson(configPayload, "pumpControlLock")) {
             pumpControlLock = getBoolFromJson(configPayload, "pumpControlLock");
+          }
+          if (hasKeyInJson(configPayload, "pumpDemoMode")) {
+            pumpDemoMode = getBoolFromJson(configPayload, "pumpDemoMode");
           }
         } else {
           if (configResponseCode <= 0) {
@@ -2123,8 +2160,10 @@ void setup() {
   Serial.println(
       "Starting ESP32 Water Monitor System (FreeRTOS dual-core mode)...");
 
+#if PUMP_RELAY_ENABLED
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
+#endif
 
   commandClient.setInsecure();
   commandClientConfigured = true;

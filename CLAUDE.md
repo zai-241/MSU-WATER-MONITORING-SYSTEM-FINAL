@@ -9,7 +9,7 @@ capstone thesis project. This file is the single source of truth for how the par
 
 | Part | Where | What it does | How it ships |
 |---|---|---|---|
-| Firmware | `backend/firmware/esp32_firmware.ino` (Tank 1); `backend/firmware/tank2/`, `tank3/`, `tank4/` (same sketch, `TANK_ID` 2–4) | ESP32 reads level (GPIO 35) and pH (GPIO 34), filters, drives the pump relay (GPIO 32), writes to RTDB over HTTPS REST. Ethernet (LAN8720) first, Wi-Fi as backup. | Arduino IDE upload over USB |
+| Firmware | `backend/firmware/esp32_firmware.ino` (Tank 1); `backend/firmware/tank2/`, `tank3/`, `tank4/` (same sketch, `TANK_ID` 2–4) | ESP32 reads level (GPIO 35) and pH (GPIO 34), filters, runs a **virtual pump** (pump logic without a relay: `PUMP_RELAY_ENABLED 0`, GPIO 32 unused), writes to RTDB over HTTPS REST. Ethernet (LAN8720) first, Wi-Fi as backup. | Arduino IDE upload over USB |
 | Database rules | `backend/cloud/database.rules.json`, `firestore.rules` | Role-based access (admin / worker / viewer / device, read from `/roles`) | `npx firebase deploy --only database,firestore` |
 | Alert worker | `backend/worker/src/index.ts` | Always-on Node process: evaluates alerts, offline watchdog, push (FCM), 90-day retention, heartbeat to `/system/worker` | Render free Web Service, auto-deploys on push to `main` (key as a Render secret file, kept awake by UptimeRobot on `/health`). Locally: `npm run worker` (needs `backend/worker/.env`). Run only one. |
 | Web app | `frontend/` (React 18 + TS + Vite + shadcn/ui) | Dashboard, Admin Panel, Reports, Logs, Notifications | `npm run deploy:hosting` → https://msu-water-monitoring-system.web.app |
@@ -29,13 +29,14 @@ Firestore /users/{uid} → profiles; RTDB /roles/{uid} → what each account may
 ```
 
 The pump decision runs on the ESP32, not in the cloud. The web app only sends commands and config.
+There is no physical pump: the ESP32 drives a virtual pump (no pin), shown only while Pump Demo Mode is on.
 
 ## Database paths (RTDB)
 
 | Path | Written by | Contents |
 |---|---|---|
 | `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin) |
-| `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), maintenance mode, locks |
+| `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), maintenance mode, locks, `pumpDemoMode` (Pump Demo Mode; missing = on: shows the pump UI and lets the ESP32 run the virtual pump) |
 | `/history/tanks/{id}` | ESP32 | One sample every 10 min |
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1 |
 | `/notifications` | Worker (or browsers while the worker is down) | Alerts with acknowledgment |
