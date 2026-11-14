@@ -64,23 +64,30 @@ should remain.
 
 ## Group 3: Tanks 1–4 consistency (Medium)
 
-- [ ] **3.1 A fifth tank can be added.** Tank Assignment only checks that the ID is new
+- [x] **3.1 A fifth tank can be added.** Tank Assignment only checks that the ID is new
   (`frontend/src/pages/admin/TankAssignment.tsx:56`), but calibration is fixed to Tanks 1–4
   (`Configuration.tsx:56`) and there is firmware only for 1–4.
   *Fix:* allow IDs 1–4 only (or extend the Configuration selector to every registered tank).
-- [ ] **3.2 A deleted Tank 1–4 comes back.** On every page load an admin or worker browser recreates any missing
+  *Done:* `SUPPORTED_TANK_IDS` in `constants.ts`. "Register New Tank" offers only the missing IDs 1–4 (greyed out when all
+  four exist), and `addTank` rejects other IDs. Configuration uses the same list.
+- [x] **3.2 A deleted Tank 1–4 comes back.** On every page load an admin or worker browser recreates any missing
   Tank 1–4 (`frontend/src/store/useStore.ts:593`, `addMissingDefaultTanks`).
   *Fix:* disable "Delete" for Tanks 1–4, or seed only once (for example a `/config/tanksSeeded` flag).
+  *Done:* Delete is locked for Tanks 1–4 (tooltip says to use Disable), and `deleteTank` rejects them. A stray tank
+  with another ID can still be deleted. Tests in `defaultTanks.test.ts`.
 
 ## Group 4: Reports correctness (Medium)
 
-- [ ] **4.1 Fixed colour cut-offs.** Reports colours a level red below 20% and amber above 90%
+- [x] **4.1 Fixed colour cut-offs.** Reports colours a level red below 20% and amber above 90%
   (`frontend/src/pages/Reports.tsx:619–620`, `639–640`, `995`), but the configured thresholds are 15% and 95%.
   A tank at 18% shows red in Reports with no alert.
   *Fix:* use `config.lowLevelThreshold` and `config.overflowThreshold`.
-- [ ] **4.2 Offline status ignores the admin setting.** Reports always uses the 30-second default
+  *Done:* the level dot, the level bar and the history table use the configured thresholds with the alert engine's
+  comparisons (`<` low, `>` overflow). The history table now also marks overflow rows amber.
+- [x] **4.2 Offline status ignores the admin setting.** Reports always uses the 30-second default
   (`Reports.tsx:139`, `713`); the Dashboard uses the admin's offline threshold (`Dashboard.tsx:449`).
   *Fix:* pass `offlineThresholdMs(config)` as the Dashboard does.
+  *Done:* both calls now pass `offlineThresholdMs(config)`.
 
 ## Group 5: Settings and alerting (Low–Medium)
 

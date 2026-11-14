@@ -4,6 +4,7 @@ import { Power, Settings, Loader2, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
+import { SUPPORTED_TANK_IDS } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
 
 // Validation schemas (E2 / R8)
@@ -53,7 +54,7 @@ const calibrationSchema = z.object({
 });
 
 /** Tanks whose sensor calibration can be edited here (Tank 1 live, Tanks 2–4 planned) */
-const CALIBRATION_TANK_IDS = ['1', '2', '3', '4'] as const;
+const CALIBRATION_TANK_IDS = SUPPORTED_TANK_IDS;
 
 const Configuration = () => {
   const { config, updateConfig } = useConfig();

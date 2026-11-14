@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
 import { estimateVolumeLiters, tankCapacityLiters } from '@/lib/constants';
+import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from '@/lib/reportLogs';
@@ -61,6 +62,11 @@ const Reports = () => {
   const { addLog } = useLogs();
   const { currentUser } = useAuth();
   const { config } = useConfig();
+  // Same offline rule as the Dashboard: the admin's threshold, not the 30 s default
+  const offlineMs = offlineThresholdMs(config);
+  // Same level cut-offs as the alert engine (low: level < threshold, overflow: level > threshold)
+  const isLevelLow = (level: number) => level < config.lowLevelThreshold;
+  const isLevelHigh = (level: number) => level > config.overflowThreshold;
 
   // Throttle high-frequency updates from Firebase to stabilize chart drawings and heavy table pagination
   const allTanks = useThrottledValue(rawTanks, 1500);
@@ -136,7 +142,7 @@ const Reports = () => {
   // Determine RSSI strength label and color
   const rssiDetails = useMemo(() => {
     if (!selectedTank) return { label: 'Syncing', color: 'text-muted-foreground', pct: 0 };
-    if (isTankControllerOffline(selectedTank, serverTimeOffset)) {
+    if (isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs)) {
       return { label: 'Offline', color: 'text-amber-500', pct: 0 };
     }
     const rssi = processedTank.rssi ?? -999;
@@ -145,7 +151,7 @@ const Reports = () => {
     if (rssi >= -75) return { label: 'Good', color: 'text-safe/80', pct: 75 };
     if (rssi >= -85) return { label: 'Fair', color: 'text-warning', pct: 45 };
     return { label: 'Poor', color: 'text-danger', pct: 20 };
-  }, [processedTank.rssi, selectedTank, serverTimeOffset]);
+  }, [processedTank.rssi, selectedTank, serverTimeOffset, offlineMs]);
 
   // Determine pH Chemical Category
   const phCategory = useMemo(() => {
@@ -616,8 +622,8 @@ const Reports = () => {
                   <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Water Level</span>
                 </div>
                 <span className={`h-2.5 w-2.5 rounded-full ${
-                  processedTank.waterLevel < 20 ? 'bg-danger animate-ping' :
-                  processedTank.waterLevel > 90 ? 'bg-warning animate-pulse' :
+                  isLevelLow(processedTank.waterLevel) ? 'bg-danger animate-ping' :
+                  isLevelHigh(processedTank.waterLevel) ? 'bg-warning animate-pulse' :
                   'bg-safe'
                 }`} />
               </div>
@@ -636,8 +642,8 @@ const Reports = () => {
                 <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all duration-500 ${
-                      (processedTank?.waterLevel ?? 0) < 20 ? 'bg-danger' :
-                      (processedTank?.waterLevel ?? 0) > 90 ? 'bg-warning' :
+                      isLevelLow(processedTank?.waterLevel ?? 0) ? 'bg-danger' :
+                      isLevelHigh(processedTank?.waterLevel ?? 0) ? 'bg-warning' :
                       'bg-blue-500'
                     }`}
                     style={{ width: `${Math.min(100, Math.max(0, processedTank?.waterLevel ?? 0))}%` }}
@@ -710,7 +716,7 @@ const Reports = () => {
 
             {/* CARD 4: DIAGNOSTICS & SYSTEM CARD */}
             {(() => {
-              const isTankOffline = selectedTank ? isTankControllerOffline(selectedTank, serverTimeOffset) : false;
+              const isTankOffline = selectedTank ? isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs) : false;
               return (
                 <motion.div 
                   whileHover={{ y: -3 }}
@@ -992,7 +998,9 @@ const Reports = () => {
                         <td className="py-3.5 px-4 text-foreground font-bold">
                           {row.waterLevel !== null ? (
                             <span className={`px-2 py-0.5 rounded ${
-                              row.waterLevel < 20 ? 'bg-danger/10 text-danger' : 'text-blue-500'
+                              isLevelLow(row.waterLevel) ? 'bg-danger/10 text-danger' :
+                              isLevelHigh(row.waterLevel) ? 'bg-warning/10 text-warning' :
+                              'text-blue-500'
                             }`}>{row.waterLevel}%</span>
                           ) : (
                             <span className="text-muted-foreground italic text-[11px]">Sensor Fault</span>

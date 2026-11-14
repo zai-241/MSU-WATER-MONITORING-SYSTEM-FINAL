@@ -46,7 +46,9 @@ The pump decision runs on the ESP32, not in the cloud. The web app only sends co
 Tanks 2 to 4 exist in the UI as "Planned - IoT not yet installed" until their controller reports (no `lastUpdate`).
 Only Tank 1 has hardware. Their firmware is ready in `backend/firmware/tank2-4/`; each needs its own device account
 (Admin Panel → Device Accounts) and `secrets.h`. The web app creates any missing tank 1–4 record (never overwrites one),
-and the Admin Panel calibration form has a Tank 1–4 selector. The four-tank limit is not enforced in code.
+and the Admin Panel calibration form has a Tank 1–4 selector. The four-tank limit is enforced in the web app
+(`SUPPORTED_TANK_IDS` in `constants.ts`): Tank Assignment registers only IDs 1–4, and Tanks 1–4 cannot be deleted
+(disable them instead). The database rules do not enforce it.
 
 ## Shared logic: change it in one place
 
