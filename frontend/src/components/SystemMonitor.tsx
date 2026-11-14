@@ -10,13 +10,15 @@ import {
   isTankControllerOffline,
   syncTankOfflineState,
 } from '@/store/useStore';
-import { evaluateTank, createTankTrackers, offlineThresholdMs, type TankTrackers } from '@/lib/alertEngine';
+import { evaluateTank, createTankTrackers, offlineThresholdMs, ALERT_SERVICE_OFFLINE_ID, type TankTrackers } from '@/lib/alertEngine';
 import { toast } from 'sonner';
 import { alertSound } from '@/utils/alertSound';
 
 const APP_TITLE = 'MSU Water Monitoring';
 /** How often the browser re-checks timers (5 s validation, offline watchdog) when it is the evaluator. */
 const EVALUATION_TICK_MS = 2000;
+/** The Alert Service must be gone this long before users are told (restarts and redeploys stay quiet). */
+const SERVICE_DOWN_GRACE_MS = 60_000;
 
 /**
  * SystemMonitor
@@ -35,11 +37,13 @@ const SystemMonitor = () => {
   const { tanks, serverTimeOffset } = useTanks();
   const { config } = useConfig();
   const { notifications, addNotification, resolveNotification } = useNotifications();
-  const { active: workerActive } = useWorkerStatus();
+  const { active: workerActive, loaded: workerLoaded } = useWorkerStatus();
 
   const trackers = useRef<Record<string, TankTrackers>>({});
   const inFlightOffline = useRef<Set<string>>(new Set());
   const announced = useRef<Map<string, number>>(new Map());
+  const serviceDownSince = useRef<number | null>(null);
+  const serviceNoticeRaised = useRef(false);
   const mountedAt = useRef<number>(serverNow());
   const [tick, setTick] = useState(0);
 
@@ -179,6 +183,38 @@ const SystemMonitor = () => {
       });
     });
   }, [tanks, config, notifications, workerActive, tick, serverTimeOffset, addNotification, resolveNotification]);
+
+  // 6. Tell users when the Alert Service stops: it cannot announce its own outage, and push
+  //    notifications pause until it is back. Raised once per outage by this browser after
+  //    SERVICE_DOWN_GRACE_MS (so a restart or redeploy stays quiet; the database transaction keeps
+  //    several browsers to one record) and resolved when the heartbeat returns.
+  useEffect(() => {
+    if (!workerLoaded) return;
+    const existing = notifications.find(n => n.id === ALERT_SERVICE_OFFLINE_ID);
+    const open = !!existing && !existing.resolved;
+    if (!workerActive) {
+      const now = Date.now();
+      serviceDownSince.current ??= now;
+      if (open || config?.maintenanceMode || serviceNoticeRaised.current) return;
+      if (now - serviceDownSince.current < SERVICE_DOWN_GRACE_MS) return;
+      serviceNoticeRaised.current = true;
+      Promise.resolve(addNotification({
+        id: ALERT_SERVICE_OFFLINE_ID,
+        title: 'Alert Service Offline',
+        message: 'The cloud-hosted Alert Service stopped sending its heartbeat. Open dashboards keep checking alerts, but push notifications are paused until it is back.',
+        type: 'warning',
+        acknowledged: false,
+        resolved: false,
+      })).catch((err) => console.error('Error raising Alert Service notice:', err));
+    } else {
+      serviceDownSince.current = null;
+      serviceNoticeRaised.current = false;
+      if (open) {
+        Promise.resolve(resolveNotification(ALERT_SERVICE_OFFLINE_ID))
+          .catch((err) => console.error('Error resolving Alert Service notice:', err));
+      }
+    }
+  }, [workerActive, workerLoaded, notifications, tick, config?.maintenanceMode, addNotification, resolveNotification]);
 
   return null;
 };

@@ -14,7 +14,7 @@ import NotFound from "./pages/NotFound";
 const App = () => (
   <AuthProvider>
     <TooltipProvider>
-      <Sonner />
+      <Sonner richColors />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage onLogin={() => {}} />} />

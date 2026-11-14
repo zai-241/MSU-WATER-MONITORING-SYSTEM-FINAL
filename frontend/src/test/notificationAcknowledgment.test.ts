@@ -66,12 +66,12 @@ describe('NotificationCenter Alert Acknowledgment', () => {
       markRead: mockMarkRead,
       clearAll: mockClearAll,
       acknowledgeNotification: mockAcknowledgeNotification,
-    });
+    } as unknown as ReturnType<typeof storeModule.useNotifications>);
   });
 
   it('renders "Unacknowledged" count badge on the notification bell', () => {
     vi.spyOn(authHooks, 'useAuth').mockReturnValue({
-      currentUser: { id: '1', username: 'adminUser', role: 'admin', jobTitle: 'Admin', status: 'active' },
+      currentUser: { id: '1', username: 'adminUser', email: 'adminUser@example.com', role: 'admin', jobTitle: 'Admin', status: 'active', createdAt: 0 },
       loading: false,
       error: null,
       login: vi.fn(),
@@ -90,7 +90,7 @@ describe('NotificationCenter Alert Acknowledgment', () => {
 
   it('allows admin and worker to see and click the Acknowledge button', () => {
     vi.spyOn(authHooks, 'useAuth').mockReturnValue({
-      currentUser: { id: '2', username: 'workerBob', role: 'worker', jobTitle: 'Operator', status: 'active' },
+      currentUser: { id: '2', username: 'workerBob', email: 'workerBob@example.com', role: 'worker', jobTitle: 'Operator', status: 'active', createdAt: 0 },
       loading: false,
       error: null,
       login: vi.fn(),
@@ -115,7 +115,7 @@ describe('NotificationCenter Alert Acknowledgment', () => {
 
   it('restricts viewers from seeing the Acknowledge button while displaying the status', () => {
     vi.spyOn(authHooks, 'useAuth').mockReturnValue({
-      currentUser: { id: '3', username: 'viewerAlice', role: 'viewer', jobTitle: 'Auditor', status: 'active' },
+      currentUser: { id: '3', username: 'viewerAlice', email: 'viewerAlice@example.com', role: 'viewer', jobTitle: 'Auditor', status: 'active', createdAt: 0 },
       loading: false,
       error: null,
       login: vi.fn(),
@@ -138,7 +138,7 @@ describe('NotificationCenter Alert Acknowledgment', () => {
 
   it('shows "Acknowledged by <name> at <time>" instead of button on acknowledged alerts', () => {
     vi.spyOn(authHooks, 'useAuth').mockReturnValue({
-      currentUser: { id: '1', username: 'adminUser', role: 'admin', jobTitle: 'Admin', status: 'active' },
+      currentUser: { id: '1', username: 'adminUser', email: 'adminUser@example.com', role: 'admin', jobTitle: 'Admin', status: 'active', createdAt: 0 },
       loading: false,
       error: null,
       login: vi.fn(),
@@ -158,7 +158,7 @@ describe('NotificationCenter Alert Acknowledgment', () => {
 
   it('does not display acknowledgment UI on info notifications', () => {
     vi.spyOn(authHooks, 'useAuth').mockReturnValue({
-      currentUser: { id: '1', username: 'adminUser', role: 'admin', jobTitle: 'Admin', status: 'active' },
+      currentUser: { id: '1', username: 'adminUser', email: 'adminUser@example.com', role: 'admin', jobTitle: 'Admin', status: 'active', createdAt: 0 },
       loading: false,
       error: null,
       login: vi.fn(),

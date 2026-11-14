@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 /**
  * Firebase Cloud Messaging service worker.
  *
