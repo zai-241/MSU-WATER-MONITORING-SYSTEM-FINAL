@@ -4,6 +4,7 @@ import { Power, Settings, Loader2, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
+import { SUPPORTED_TANK_IDS } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
 import { errorMessage } from '@/lib/utils';
 
@@ -54,7 +55,7 @@ const calibrationSchema = z.object({
 });
 
 /** Tanks whose sensor calibration can be edited here (Tank 1 live, Tanks 2–4 planned) */
-const CALIBRATION_TANK_IDS = ['1', '2', '3', '4'] as const;
+const CALIBRATION_TANK_IDS = SUPPORTED_TANK_IDS;
 
 /** Form state: while typing, number fields hold the raw text; saving converts them with Number(). */
 type Editable<T> = { [K in keyof T]: T[K] | string };

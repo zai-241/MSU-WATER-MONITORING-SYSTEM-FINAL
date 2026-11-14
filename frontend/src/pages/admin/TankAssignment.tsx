@@ -4,6 +4,7 @@ import { Trash2, Power, Loader2, Plus, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import type { UserProfile } from '@/services/authService';
 import { errorMessage } from '@/lib/utils';
+import { SUPPORTED_TANK_IDS, isSupportedTankId } from '@/lib/constants';
 
 interface TankAssignmentProps {
   users: UserProfile[];
@@ -13,6 +14,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
   const { tanks, updateTank, addTank, deleteTank } = useTanks();
   // Include only active worker accounts in the operators listing
   const workers = users.filter(u => u.role === 'worker' && u.status === 'active');
+  // Only Tanks 1–4 can be registered, and only the ones missing from the database
+  const freeTankIds = SUPPORTED_TANK_IDS.filter(id => !tanks.some(t => t.id === id));
 
   // Modal and Form States for CRUD
   const [showAddTank, setShowAddTank] = useState(false);
@@ -51,6 +54,11 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
   const handleAddTankSubmit = async () => {
     if (!newTankData.id || !newTankData.name) {
       setAddTankError('Please fill in both Tank ID and Name.');
+      return;
+    }
+
+    if (!isSupportedTankId(newTankData.id)) {
+      setAddTankError(`Only Tanks ${SUPPORTED_TANK_IDS.join(', ')} are supported.`);
       return;
     }
 
@@ -121,7 +129,16 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
         <h3 className="text-lg font-semibold flex items-center gap-2">
           <Power size={18} /> Tank Assignment & Management
         </h3>
-        <button onClick={() => setShowAddTank(true)} className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">
+        <button
+          onClick={() => {
+            setNewTankData({ id: freeTankIds[0] ?? '', name: freeTankIds[0] ? `Reservoir Tank ${freeTankIds[0]}` : '', location: '' });
+            setAddTankError('');
+            setShowAddTank(true);
+          }}
+          disabled={freeTankIds.length === 0}
+          title={freeTankIds.length === 0 ? `All supported tanks (${SUPPORTED_TANK_IDS.join(', ')}) are registered` : undefined}
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
           <Plus size={14} /> Register New Tank
         </button>
       </div>
@@ -190,8 +207,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
                       <Edit size={14} />
                     </button>
 
-                    {/* Disable deletion for tank 1 (esp32 default target) */}
-                    {tank.id !== '1' ? (
+                    {/* Tanks 1–4 cannot be deleted (the app recreates them); disable them instead */}
+                    {!isSupportedTankId(tank.id) ? (
                       <button
                         onClick={() => setDeletingTank(tank)}
                         className="rounded-lg border border-danger/30 p-1.5 text-danger hover:bg-danger/5"
@@ -200,7 +217,7 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
                         <Trash2 size={14} />
                       </button>
                     ) : (
-                      <div className="p-1.5 text-muted-foreground opacity-30 cursor-not-allowed border border-border rounded" title="Telemetry Primary (Locked)">
+                      <div className="p-1.5 text-muted-foreground opacity-30 cursor-not-allowed border border-border rounded" title="System tank: cannot be deleted. Use Disable instead.">
                         <Trash2 size={14} />
                       </div>
                     )}
@@ -222,25 +239,26 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
             
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank ID (Numeric, e.g. 5)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 5"
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank ID (Tanks 1–4 only)</label>
+                <select
                   value={newTankData.id}
                   onChange={e => {
-                    const val = e.target.value.replace(/\D/g, ''); // Numeric only
-                    setNewTankData({ ...newTankData, id: val });
+                    setNewTankData({ ...newTankData, id: e.target.value });
                     setAddTankError('');
                   }}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                />
+                >
+                  {freeTankIds.map(id => (
+                    <option key={id} value={id}>Tank {id}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Reservoir Tank 5"
+                  placeholder="e.g. Reservoir Tank 2"
                   value={newTankData.name}
                   onChange={e => {
                     setNewTankData({ ...newTankData, name: e.target.value });

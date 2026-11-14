@@ -5,6 +5,7 @@ type Listener = (snap: { val: () => unknown; exists: () => boolean }) => void;
 const listeners = new Map<string, Listener[]>();
 const mockSet = vi.fn().mockResolvedValue(undefined);
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
+const mockRemove = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('firebase/database', () => ({
   ref: (_db: unknown, path?: string) => ({ _path: path ?? '' }),
@@ -20,13 +21,13 @@ vi.mock('firebase/database', () => ({
   set: (...args: unknown[]) => mockSet(...args),
   update: (...args: unknown[]) => mockUpdate(...args),
   push: vi.fn(() => ({ key: 'k1' })),
-  remove: vi.fn(),
+  remove: (...args: unknown[]) => mockRemove(...args),
   runTransaction: vi.fn(),
 }));
 
 vi.mock('@/config/firebase', () => ({ database: { app: {} }, firestore: {}, auth: {} }));
 
-import { useTanks, resetDefaultTankSeeding } from '@/store/useStore';
+import { useTanks, resetDefaultTankSeeding, addTank, deleteTank } from '@/store/useStore';
 
 const emitTanks = (value: unknown) =>
   act(() => { (listeners.get('tanks') ?? []).forEach(cb => cb({ val: () => value, exists: () => value !== null })); });
@@ -69,5 +70,21 @@ describe('Default tanks 1–4', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(result.current.tanks.map(t => t.id)).toEqual(['1', '2', '3', '4']);
     unmount();
+  });
+
+  it('registers only Tanks 1–4', async () => {
+    await expect(addTank({ id: '5', name: 'Tank 5' })).rejects.toThrow(/Only Tanks 1, 2, 3, 4/);
+    expect(mockSet).not.toHaveBeenCalled();
+    await expect(addTank({ id: '2', name: 'Reservoir Tank 2' })).resolves.toBeUndefined();
+    expect(mockSet).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to delete Tanks 1–4 but can remove a stray tank', async () => {
+    for (const id of ['1', '2', '3', '4']) {
+      await expect(deleteTank(id)).rejects.toThrow(/cannot be deleted/);
+    }
+    expect(mockRemove).not.toHaveBeenCalled();
+    await deleteTank('5');
+    expect(mockRemove).toHaveBeenCalledTimes(1);
   });
 });

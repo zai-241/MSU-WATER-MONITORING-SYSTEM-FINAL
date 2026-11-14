@@ -21,6 +21,16 @@ export const HISTORY_PAGE_SIZE = 200;
 export const RETENTION_DAYS = 90;
 
 /**
+ * The tanks the system supports: Reservoir Tanks 1–4 (firmware exists only for these).
+ * Registration accepts only these IDs, and they cannot be deleted (the app recreates a missing one).
+ */
+export const SUPPORTED_TANK_IDS = ['1', '2', '3', '4'] as const;
+
+export function isSupportedTankId(id: string): boolean {
+  return (SUPPORTED_TANK_IDS as readonly string[]).includes(id);
+}
+
+/**
  * Capacity a tank gets until an admin sets its own (Tank 1 holds 200 L).
  * Each tank stores its capacity in /tanks/{id}/capacityLiters.
  */
