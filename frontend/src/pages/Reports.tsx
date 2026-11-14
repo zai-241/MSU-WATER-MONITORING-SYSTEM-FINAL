@@ -43,7 +43,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
-import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
+// exceljs and jsPDF are large: reportExport is loaded only when an export button is clicked (see handleExport*)
+const loadReportExport = () => import('@/lib/reportExport');
 import { estimateVolumeLiters, tankCapacityLiters } from '@/lib/constants';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
@@ -440,6 +441,7 @@ const Reports = () => {
     }
     setExportingType('excel');
     try {
+      const { buildExcelWorkbook } = await loadReportExport();
       const workbook = await buildExcelWorkbook(exportData);
 
       const buffer = await workbook.xlsx.writeBuffer();
@@ -463,6 +465,7 @@ const Reports = () => {
     }
     setExportingType('pdf');
     try {
+      const { buildPdfDocument } = await loadReportExport();
       const doc = buildPdfDocument(exportData);
 
       const dateStr = new Date().toISOString().split('T')[0];
