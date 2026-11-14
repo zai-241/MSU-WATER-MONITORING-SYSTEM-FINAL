@@ -412,61 +412,63 @@ export async function syncTankOfflineState(
  * Handles null/undefined, firmware -999 uninitialized codes, non-numeric values,
  * and maintains accurate sensor health flags so alert state machines do not produce false alarms.
  */
-export function sanitizeTank(key: string, raw: any): Tank {
-  const isNumber = (v: any): boolean => typeof v === 'number' && Number.isFinite(v);
+export function sanitizeTank(key: string, raw: unknown): Tank {
+  // Database values are untrusted: every field below is checked before it is used
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Tank>;
+  const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
   // Sensor health flags
-  const phSensorOk = raw?.phSensorOk !== false;
-  const levelSensorOk = raw?.levelSensorOk !== false;
+  const phSensorOk = r.phSensorOk !== false;
+  const levelSensorOk = r.levelSensorOk !== false;
 
   // Water level: 0-100%, handling firmware -999 or non-numeric/null
   let waterLevel = 0;
-  if (isNumber(raw?.waterLevel)) {
-    if (raw.waterLevel === -999) {
+  if (isNumber(r.waterLevel)) {
+    if (r.waterLevel === -999) {
       waterLevel = 0;
     } else {
-      waterLevel = Math.max(0, Math.min(100, raw.waterLevel));
+      waterLevel = Math.max(0, Math.min(100, r.waterLevel));
     }
   }
 
   // pH level: 0-14, default 7.0 for uninitialized or invalid
   let phLevel = 7.0;
-  if (isNumber(raw?.phLevel)) {
-    if (raw.phLevel === -999) {
+  if (isNumber(r.phLevel)) {
+    if (r.phLevel === -999) {
       phLevel = 7.0;
     } else {
-      phLevel = Math.max(0, Math.min(14, raw.phLevel));
+      phLevel = Math.max(0, Math.min(14, r.phLevel));
     }
   }
 
   // Water height: >= 0
   let waterHeight = 0;
-  if (isNumber(raw?.waterHeight) && raw.waterHeight >= 0) {
-    waterHeight = raw.waterHeight;
+  if (isNumber(r.waterHeight) && r.waterHeight >= 0) {
+    waterHeight = r.waterHeight;
   }
 
   return {
-    ...raw,
-    id: raw?.id || key,
-    name: raw?.name || `Tank ${key}`,
+    ...r,
+    id: r.id || key,
+    name: r.name || `Tank ${key}`,
     waterLevel,
     phLevel,
     waterHeight,
-    status: raw?.status || 'safe',
-    pumpOn: !!raw?.pumpOn,
-    enabled: raw?.enabled !== false,
+    status: r.status || 'safe',
+    pumpOn: !!r.pumpOn,
+    enabled: r.enabled !== false,
     phSensorOk,
     levelSensorOk,
-    levelVmin: isNumber(raw?.levelVmin) ? raw.levelVmin : 0.25,
-    levelVmax: isNumber(raw?.levelVmax) ? raw.levelVmax : 3.0,
-    tankHeight: isNumber(raw?.tankHeight) ? raw.tankHeight : 5.0,
-    capacityLiters: tankCapacityLiters(raw),
-    levelOffset: isNumber(raw?.levelOffset) ? raw.levelOffset : 0,
-    phNeutralVoltage: isNumber(raw?.phNeutralVoltage) ? raw.phNeutralVoltage : 2.5,
-    phSlope: isNumber(raw?.phSlope) ? raw.phSlope : 0.18,
-    phOffset: isNumber(raw?.phOffset) ? raw.phOffset : 0.0,
-    assignedWorker: raw?.assignedWorker ?? null,
-    controllerOffline: !!raw?.controllerOffline,
+    levelVmin: isNumber(r.levelVmin) ? r.levelVmin : 0.25,
+    levelVmax: isNumber(r.levelVmax) ? r.levelVmax : 3.0,
+    tankHeight: isNumber(r.tankHeight) ? r.tankHeight : 5.0,
+    capacityLiters: tankCapacityLiters(r),
+    levelOffset: isNumber(r.levelOffset) ? r.levelOffset : 0,
+    phNeutralVoltage: isNumber(r.phNeutralVoltage) ? r.phNeutralVoltage : 2.5,
+    phSlope: isNumber(r.phSlope) ? r.phSlope : 0.18,
+    phOffset: isNumber(r.phOffset) ? r.phOffset : 0.0,
+    assignedWorker: r.assignedWorker ?? null,
+    controllerOffline: !!r.controllerOffline,
   };
 }
 
@@ -725,7 +727,7 @@ export function useConfig() {
 
 function parseNotifications(data: unknown): Notification[] {
   if (!data || typeof data !== 'object') return [];
-  const list = Object.entries(data as Record<string, any>).map(([key, value]) => ({
+  const list = Object.entries(data as Record<string, Partial<Notification> | null>).map(([key, value]) => ({
     ...value,
     id: value?.id || key,
     timestamp: typeof value?.timestamp === 'number' && Number.isFinite(value.timestamp) ? value.timestamp : 0,
@@ -940,7 +942,7 @@ const logsSource = createShared<Log[]>(
       (snapshot) => {
         const data = snapshot.val();
         if (data && typeof data === 'object') {
-          const list = Object.entries(data).map(([key, value]: [string, any]) => ({
+          const list = Object.entries(data).map(([key, value]: [string, Partial<Log> | null]) => ({
             ...value,
             id: key, // database key: ESP32 "esp32-<millis>" ids repeat after a reboot
             timestamp: typeof value?.timestamp === 'number' && Number.isFinite(value.timestamp) ? value.timestamp : Date.now(),
@@ -1001,8 +1003,9 @@ export function useConnectionState(): boolean {
 
 // --- Server-side alert worker ----------------------------------------------
 
-const workerSource = createShared<number | null>(
-  () => null,
+// undefined = not read yet; null = no heartbeat (never ran, or it disconnected and removed it)
+const workerSource = createShared<number | null | undefined>(
+  () => undefined,
   (emit) => {
     if (!dbUsable()) return;
     return onValue(
@@ -1023,8 +1026,9 @@ const workerSource = createShared<number | null>(
  * alert evaluation and browsers only display; when it goes stale, browsers take over
  * again so alerts never silently stop.
  */
-export function useWorkerStatus(): { active: boolean; lastSeen: number | null } {
-  const lastSeen = useShared(workerSource);
+export function useWorkerStatus(): { active: boolean; lastSeen: number | null; loaded: boolean } {
+  const raw = useShared(workerSource);
+  const lastSeen = raw ?? null;
   const offset = useServerTimeOffset();
   const [, setTick] = useState(0);
 
@@ -1034,7 +1038,7 @@ export function useWorkerStatus(): { active: boolean; lastSeen: number | null } 
   }, []);
 
   const active = lastSeen !== null && Date.now() + offset - lastSeen < WORKER_STALE_MS;
-  return { active, lastSeen };
+  return { active, lastSeen, loaded: raw !== undefined };
 }
 
 // --- Per-user notification read state (R5) ---------------------------------

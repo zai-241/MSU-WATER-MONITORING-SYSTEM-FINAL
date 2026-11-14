@@ -6,6 +6,7 @@ import { auth } from '@/config/firebase';
 import { setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { Droplet, Eye, EyeOff, Mail, Lock, Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { errorMessage } from '@/lib/utils';
 
 const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
   const { currentUser, loading, login, resetPassword, error: authError, clearError } = useAuth();
@@ -97,9 +98,9 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
 
       toast.success('Successfully logged in!');
       onLogin();
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
-      toast.error(err.message || 'Authentication failed');
+    } catch (err) {
+      setError(errorMessage(err) || 'Authentication failed');
+      toast.error(errorMessage(err) || 'Authentication failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -127,9 +128,9 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
       toast.success('Password reset email sent! Check your inbox.');
       setIsForgotPassword(false);
       setResetEmail('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to send password reset email');
-      toast.error(err.message || 'Failed to send password reset email');
+    } catch (err) {
+      setError(errorMessage(err) || 'Failed to send password reset email');
+      toast.error(errorMessage(err) || 'Failed to send password reset email');
     } finally {
       setIsResetting(false);
     }

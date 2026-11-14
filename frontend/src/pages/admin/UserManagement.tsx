@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import type { UserProfile } from '@/services/authService';
 import { resolveLoginEmail, isValidEmail } from '@/lib/email';
+import { errorMessage } from '@/lib/utils';
 
 export interface NewOperator {
   email: string;
@@ -84,8 +85,8 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
       setNewUser({ username: '', email: '', password: '', jobTitle: 'Operator', role: 'worker' });
       setConfirmUser(null);
       setShowAdd(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to register operator');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to register operator');
     } finally {
       setIsAdding(false);
     }
@@ -96,8 +97,8 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
       await updateUser(userId, { status: newStatus });
       toast.success(`User status successfully updated to ${newStatus}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to change user status');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to change user status');
     }
   };
 
@@ -105,8 +106,8 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
     try {
       await deleteUser(userId);
       toast.success('User account successfully removed');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete user profile');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to delete user profile');
     }
   };
 

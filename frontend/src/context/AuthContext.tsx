@@ -11,6 +11,7 @@ import { auth, firestore, database } from '@/config/firebase';
 import { getUserProfile, UserProfile } from '@/services/authService';
 import { disablePush } from '@/utils/push';
 import { resolveLoginEmail } from '@/lib/email';
+import { errorMessage, errorCode } from '@/lib/utils';
 
 export interface AuthContextType {
   currentUser: UserProfile | null;
@@ -22,6 +23,8 @@ export interface AuthContextType {
   clearError: () => void;
 }
 
+// The context and its provider stay in one file; hot reload simply reloads this file in full.
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -94,15 +97,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setCurrentUser(null);
               setError('Your account has no profile. Contact an administrator.');
             }
-          } catch (err: any) {
+          } catch (err) {
             console.error('Error handling Firestore user snapshot:', err);
-            setError(err.message || 'Error syncing session');
+            setError(errorMessage(err) || 'Error syncing session');
           } finally {
             setLoading(false);
           }
         }, (err) => {
           console.error('Error on Firestore user snapshot subscription:', err);
-          setError(err.message || 'Error syncing session');
+          setError(errorMessage(err) || 'Error syncing session');
           setLoading(false);
         });
 
@@ -145,15 +148,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setCurrentUser(profile);
       return profile;
-    } catch (err: any) {
-      let userFriendlyMsg = err.message;
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+    } catch (err) {
+      let userFriendlyMsg = errorMessage(err);
+      if (errorCode(err) === 'auth/wrong-password' || errorCode(err) === 'auth/invalid-credential' || errorCode(err) === 'auth/user-not-found') {
         userFriendlyMsg = 'Invalid email or password';
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (errorCode(err) === 'auth/invalid-email') {
         userFriendlyMsg = 'Invalid email address format';
-      } else if (err.code === 'auth/user-disabled') {
+      } else if (errorCode(err) === 'auth/user-disabled') {
         userFriendlyMsg = 'Your account has been disabled in the authentication server';
-      } else if (err.code === 'auth/too-many-requests') {
+      } else if (errorCode(err) === 'auth/too-many-requests') {
         userFriendlyMsg = 'Access temporarily blocked due to too many failed login attempts';
       }
       setError(userFriendlyMsg);
@@ -176,9 +179,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       await signOut(auth);
       setCurrentUser(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error signing out:', err);
-      setError(err.message || 'Logout failed');
+      setError(errorMessage(err) || 'Logout failed');
     } finally {
       setLoading(false);
     }
@@ -192,11 +195,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const resolvedEmail = resolveLoginEmail(email);
     try {
       await sendPasswordResetEmail(auth, resolvedEmail);
-    } catch (err: any) {
-      let userFriendlyMsg = err.message;
-      if (err.code === 'auth/user-not-found') {
+    } catch (err) {
+      let userFriendlyMsg = errorMessage(err);
+      if (errorCode(err) === 'auth/user-not-found') {
         userFriendlyMsg = 'No user account registered with this email address';
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (errorCode(err) === 'auth/invalid-email') {
         userFriendlyMsg = 'Invalid email address format';
       }
       setError(userFriendlyMsg);

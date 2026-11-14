@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
 import { SUPPORTED_TANK_IDS } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
+import { errorMessage } from '@/lib/utils';
 
 // Validation schemas (E2 / R8)
 const thresholdSchema = z.object({
@@ -56,6 +57,9 @@ const calibrationSchema = z.object({
 /** Tanks whose sensor calibration can be edited here (Tank 1 live, Tanks 2–4 planned) */
 const CALIBRATION_TANK_IDS = SUPPORTED_TANK_IDS;
 
+/** Form state: while typing, number fields hold the raw text; saving converts them with Number(). */
+type Editable<T> = { [K in keyof T]: T[K] | string };
+
 const Configuration = () => {
   const { config, updateConfig } = useConfig();
   const { tanks, updateTank } = useTanks();
@@ -64,8 +68,8 @@ const Configuration = () => {
   const { currentUser } = useAuth();
   
   // Local state to prevent database spamming on keystrokes
-  const [localConfig, setLocalConfig] = useState<SystemConfig | null>(null);
-  const [localTank, setLocalTank] = useState<Partial<Tank> | null>(null);
+  const [localConfig, setLocalConfig] = useState<Editable<SystemConfig> | null>(null);
+  const [localTank, setLocalTank] = useState<Partial<Editable<Tank>> | null>(null);
   const [isConfigDirty, setIsConfigDirty] = useState(false);
   const [isTankDirty, setIsTankDirty] = useState(false);
   
@@ -85,12 +89,16 @@ const Configuration = () => {
     if (config && (!localConfig || !isConfigDirty)) {
       setLocalConfig(config);
     }
+    // localConfig is only read to see whether the form is empty; it must not re-run this sync
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, isConfigDirty]);
 
   useEffect(() => {
     if (selectedTank && (!localTank || !isTankDirty || localTank.id !== selectedTank.id)) {
       setLocalTank(selectedTank);
     }
+    // localTank is only read to see whether the form is empty or shows another tank
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTank, isTankDirty]);
 
   const switchTank = (tankId: string) => {
@@ -120,8 +128,8 @@ const Configuration = () => {
       await updateConfig({ [controlConfirm.key]: controlConfirm.newState });
       toast.success(`${controlConfirm.label} successfully ${controlConfirm.newState ? 'enabled' : 'disabled'}!`);
       setControlConfirm(null);
-    } catch (err: any) {
-      toast.error(err.message || `Failed to update ${controlConfirm.label}`);
+    } catch (err) {
+      toast.error(errorMessage(err) || `Failed to update ${controlConfirm.label}`);
     }
   };
 
@@ -131,8 +139,9 @@ const Configuration = () => {
     setIsSaving(true);
     try {
       // Clean and parse all inputs before committing to Firebase
-      const parsedConfig = {
-        ...localConfig,
+      // Only the number fields can hold typed text; they are converted below
+      const parsedConfig: SystemConfig = {
+        ...(localConfig as SystemConfig),
         lowLevelThreshold: Number(localConfig.lowLevelThreshold),
         overflowThreshold: Number(localConfig.overflowThreshold),
         minPh: Number(localConfig.minPh),
@@ -234,8 +243,8 @@ const Configuration = () => {
       
       toast.success('System configuration and sensor calibrations saved successfully!');
       setShowSaveConfirm(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save configuration');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to save configuration');
     } finally {
       setIsSaving(false);
     }
@@ -260,7 +269,7 @@ const Configuration = () => {
             <input 
               type="number" 
               value={localConfig.lowLevelThreshold} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, lowLevelThreshold: e.target.value as any }); }}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, lowLevelThreshold: e.target.value }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
             <p className="text-xs text-muted-foreground mt-1">Alert when water level falls below this percentage</p>
@@ -270,7 +279,7 @@ const Configuration = () => {
             <input 
               type="number" 
               value={localConfig.overflowThreshold} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, overflowThreshold: e.target.value as any }); }}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, overflowThreshold: e.target.value }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
             <p className="text-xs text-muted-foreground mt-1">Alert when water level exceeds this percentage</p>
@@ -285,7 +294,7 @@ const Configuration = () => {
               type="number" 
               step="0.1" 
               value={localConfig.minPh} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, minPh: e.target.value as any }); }}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, minPh: e.target.value }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
           </div>
@@ -295,7 +304,7 @@ const Configuration = () => {
               type="number" 
               step="0.1" 
               value={localConfig.maxPh} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, maxPh: e.target.value as any }); }}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, maxPh: e.target.value }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
           </div>
@@ -340,7 +349,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank.levelVmin ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmin: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmin: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 0% full</p>
@@ -351,7 +360,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank.levelVmax ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmax: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmax: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 100% full</p>
@@ -362,7 +371,7 @@ const Configuration = () => {
                     type="number"
                     step="0.1"
                     value={localTank.tankHeight ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, tankHeight: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, tankHeight: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Height of reservoir in meters</p>
@@ -374,7 +383,7 @@ const Configuration = () => {
                     step="1"
                     min={1}
                     value={localTank.capacityLiters ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, capacityLiters: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, capacityLiters: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Full volume, used for the estimated volume</p>
@@ -385,7 +394,7 @@ const Configuration = () => {
                     type="number"
                     step="1"
                     value={localTank.levelOffset ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelOffset: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelOffset: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- %)</p>
@@ -402,7 +411,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank.phNeutralVoltage ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phNeutralVoltage: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phNeutralVoltage: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage at pH 7.00 (typically 2.5V)</p>
@@ -413,7 +422,7 @@ const Configuration = () => {
                     type="number"
                     step="0.001"
                     value={localTank.phSlope ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phSlope: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phSlope: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Voltage step per pH unit (default 0.18)</p>
@@ -424,7 +433,7 @@ const Configuration = () => {
                     type="number"
                     step="0.01"
                     value={localTank.phOffset ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phOffset: e.target.value as any }); }}
+                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, phOffset: e.target.value }); }}
                     className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
                   />
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- pH)</p>
@@ -468,7 +477,7 @@ const Configuration = () => {
             <p className="text-xs text-muted-foreground mt-1">Raise offline alert if controller heartbeats cease for &ge; this time (min: 20s)</p>
           </div>
           <div>
-            <label className="block text-sm font-semibold mb-1">Alert Re-evaluation Interval (s)</label>
+            <label className="block text-sm font-semibold mb-1">Alert Repeat Interval (s)</label>
             <input 
               type="number" 
               min={10}
@@ -476,7 +485,7 @@ const Configuration = () => {
               onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, repeatIntervalSec: Number(e.target.value) }); }}
               className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
             />
-            <p className="text-xs text-muted-foreground mt-1">Interval between alert evaluation passes (min: 10s)</p>
+            <p className="text-xs text-muted-foreground mt-1">How often an unacknowledged alert is shown again (min: 10s)</p>
           </div>
           <div>
             <label className="block text-sm font-semibold mb-1">System-Wide Alert Sound</label>

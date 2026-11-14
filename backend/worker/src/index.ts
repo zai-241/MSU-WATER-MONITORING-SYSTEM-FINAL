@@ -34,6 +34,7 @@ import {
   offlineThresholdMs,
   isControllerOffline,
   alertNotifId,
+  ALERT_SERVICE_OFFLINE_ID,
   planRaise,
   planResolve,
   archiveOf,
@@ -373,6 +374,10 @@ async function main(): Promise<void> {
       heartbeatRef.onDisconnect().remove().then(beat).catch((err) => log('onDisconnect failed:', err));
     }
   });
+  // Back up: close the "Alert Service Offline" notice the dashboards raised while it was down
+  resolveAlert(ALERT_SERVICE_OFFLINE_ID)
+    .then((closed) => { if (closed) log('closed the Alert Service Offline notice'); })
+    .catch((err) => log('could not close the Alert Service Offline notice:', err));
   setInterval(beat, HEARTBEAT_MS);
 
   let running = false;

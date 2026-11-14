@@ -15,8 +15,8 @@ references are `file:line` in the current code. After a group, run `npm test` an
 | 2 | Security and access | 2 | High |
 | 3 | Tanks 1–4 consistency | 2 | Medium |
 | 4 | Reports correctness | 2 | Medium |
-| 5 | Settings and alerting | 3 | Low–Medium |
-| 6 | Type-check and lint errors | 6 | Low |
+| 5 | Settings and alerting | 3 | **Done** (2026-11-14) |
+| 6 | Type-check and lint errors | 6 | **Done** (2026-11-14) |
 | 7 | Build, performance and repo | 4 | Low |
 | 8 | Thesis (paper, not code) | 8 | Before the defense |
 
@@ -89,40 +89,56 @@ should remain.
   *Fix:* pass `offlineThresholdMs(config)` as the Dashboard does.
   *Done:* both calls now pass `offlineThresholdMs(config)`.
 
-## Group 5: Settings and alerting (Low–Medium)
+## Group 5: Settings and alerting (Done 2026-11-14)
 
-- [ ] **5.1 Misleading setting label.** "Alert Re-evaluation Interval (s) — Interval between alert evaluation passes"
+**Done:** all three items. **Thesis follow-up:** the Chapter 5 recommendation "Alert Service Health Notice"
+says the dashboards *only* take over the checks; they now also show an "Alert Service Offline" notice (push
+or email is still not sent). Section 4.1.3 and the Figure 4.9 placeholder describe the toast as a banner with
+an icon; it is now also tinted (light red, amber or green).
+
+- [x] **5.1 Misleading setting label.** "Alert Re-evaluation Interval (s) — Interval between alert evaluation passes"
   (`Configuration.tsx:470`, `478`) actually sets how often an **unacknowledged alert is shown again**; evaluation
   runs every 2 seconds.
-  *Fix:* rename to "Alert Repeat Interval (s)" with "How often an unacknowledged alert is shown again".
-- [ ] **5.2 Nobody is told when the Alert Service stops.** Open dashboards take over the checks and the Admin Panel
+  *Done:* renamed to "Alert Repeat Interval (s)" — "How often an unacknowledged alert is shown again".
+- [x] **5.2 Nobody is told when the Alert Service stops.** Open dashboards take over the checks and the Admin Panel
   shows "Alert service: not running" (`Configuration.tsx:455`), but no push or email is sent. (The thesis lists this
   as a Chapter 5 recommendation.)
-  *Fix (optional):* when a dashboard sees the heartbeat go stale, raise one "Alert Service Offline" notification.
-- [ ] **5.3 Toasts have no colour.** The toast component is mounted without `richColors` (`frontend/src/App.tsx:17`),
+  *Done:* an open dashboard raises one "Alert Service Offline" warning after the heartbeat has been gone for 60 s
+  (restarts and redeploys stay quiet), and resolves it when the heartbeat returns; the Alert Service also closes it
+  when it starts (`SystemMonitor.tsx`, `alertEngine.ts` `ALERT_SERVICE_OFFLINE_ID`, `backend/worker/src/index.ts`;
+  tests in `alertServiceNotice.test.tsx`). Push or email is still not sent while the service is down.
+- [x] **5.3 Toasts have no colour.** The toast component is mounted without `richColors` (`frontend/src/App.tsx:17`),
   so warnings and critical alerts look the same apart from the icon. The thesis now describes it this way.
-  *Fix (optional):* add `richColors` to `<Sonner />`, then update the thesis wording in 4.1.3 and the Figure 4.9 placeholder.
+  *Done:* `richColors` is on and the toast styles no longer override it, so warnings are amber, critical alerts red and
+  recoveries green. The toaster now defaults to the light theme, because the app has no dark mode
+  (`App.tsx`, `components/ui/sonner.tsx`). Checked in the browser.
 
-## Group 6: Type-check and lint errors (Low)
+## Group 6: Type-check and lint errors (Done 2026-11-14)
 
-`npm run typecheck`: 14 errors. `npm run lint`: 83 errors, 14 warnings. None stop the build.
+**Now:** `npm run typecheck` 0 errors (was 14); `npm run lint` 0 errors, 0 warnings (was 83 errors, 14 warnings).
 
-- [ ] **6.1 Type-check: 14 errors in two old test files.** Fake users are missing fields and one mock has the wrong shape:
+- [x] **6.1 Type-check: 14 errors in two old test files.** Fake users are missing fields and one mock has the wrong shape:
   `frontend/src/test/notificationAcknowledgment.test.ts:63, 74, 93, 118, 141, 161` and
   `frontend/src/test/reportsHistory.test.tsx:99, 147, 224, 285, 330, 386, 437, 506`.
-  *Fix:* add the missing fields (`createdAt`, `email`, …) to the fake users; fix the mock return type at line 63 and the cast at line 506.
-- [ ] **6.2 Lint: 78 × `no-explicit-any`.** `reportsHistory.test.tsx` 32, `Configuration.tsx` 14, `offlineController.test.ts` 6,
+  *Done:* fake users have `email` and `createdAt`; the mock and the anchor cast are typed.
+- [x] **6.2 Lint: 78 × `no-explicit-any`.** `reportsHistory.test.tsx` 32, `Configuration.tsx` 14, `offlineController.test.ts` 6,
   `TankAssignment.tsx` 5, `AuthContext.tsx` 4, `useStore.ts` 4, `Reports.tsx` 3, `UserManagement.tsx` 3,
   `alertHistory.test.ts` 2, `DeviceAccounts.tsx` 2, `LoginPage.tsx` 2, `Notifications.tsx` 1.
   Most are `e.target.value as any` in form inputs and `catch (err: any)`.
-  *Fix:* keep form values as strings and convert on save; use `catch (err)` with `err instanceof Error`.
-- [ ] **6.3 Lint: unnecessary escapes.** `frontend/src/pages/Logs.tsx:52` and `frontend/src/pages/Notifications.tsx:61` (`\/` in a regex).
-- [ ] **6.4 Lint: empty interfaces.** `frontend/src/components/ui/command.tsx:24`, `frontend/src/components/ui/textarea.tsx:5`
+  *Done:* the 19 `catch (err: any)` blocks use `errorMessage()` / `errorCode()` (`lib/utils.ts`); the Configuration
+  form state is typed `Editable<…>` (number or typed text); `sanitizeTank` and the notification/log readers take
+  `unknown` / `Partial<…>`; chart formatters take `unknown`. The 40 in test files are allowed by an ESLint override for
+  `frontend/src/test/` (they mock Firebase functions).
+- [x] **6.3 Lint: unnecessary escapes.** `frontend/src/pages/Logs.tsx:52` and `frontend/src/pages/Notifications.tsx:61` (`\/` in a regex).
+- [x] **6.4 Lint: empty interfaces.** `frontend/src/components/ui/command.tsx:24`, `frontend/src/components/ui/textarea.tsx:5`
   (shadcn/ui files; use a `type` alias).
-- [ ] **6.5 Lint: `require()` import.** `frontend/tailwind.config.ts:95`.
-- [ ] **6.6 Lint warnings (14).** 10 × `react-refresh/only-export-components` in UI files; 2 × `react-hooks/exhaustive-deps`
+- [x] **6.5 Lint: `require()` import.** `frontend/tailwind.config.ts:95`.
+- [x] **6.6 Lint warnings (14).** 10 × `react-refresh/only-export-components` in UI files; 2 × `react-hooks/exhaustive-deps`
   in `Configuration.tsx:87`, `93` (intentional: add a comment explaining why); 2 unused `eslint-disable` lines in
   `firebase-messaging-sw.js`.
+  *Done:* shadcn/ui files are exempt from `only-export-components`; the Dashboard time helpers moved to
+  `lib/formatTime.ts`; AuthContext and the two Configuration effects carry a commented disable; the unused
+  directive was removed (the `dist` copy disappears on the next build).
 
 ## Group 7: Build, performance and repo (Low)
 

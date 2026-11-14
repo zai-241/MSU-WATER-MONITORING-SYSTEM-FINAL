@@ -7,7 +7,7 @@ import {
   CONTROLLER_OFFLINE_THRESHOLD_MS,
   Tank
 } from '@/store/useStore';
-import { formatLastSeen, formatRelativeTime } from '@/pages/Dashboard';
+import { formatLastSeen, formatRelativeTime } from '@/lib/formatTime';
 
 const mockRunTransaction = vi.fn();
 const mockRef = vi.fn();

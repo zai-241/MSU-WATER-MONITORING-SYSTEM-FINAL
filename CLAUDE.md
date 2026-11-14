@@ -40,7 +40,7 @@ The pump decision runs on the ESP32, not in the cloud. The web app only sends co
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1 |
 | `/notifications` | Worker (or browsers while the worker is down) | Alerts with acknowledgment |
 | `/userState` | Web app | Per-user read state and settings |
-| `/system` | Worker | Heartbeat (`/system/worker`) |
+| `/system` | Worker | Heartbeat (`/system/worker`). If it is gone for 60 s, an open dashboard raises the `alert-service-offline` notice; the worker resolves it on start |
 | `/roles/{uid}` | Admin | `admin`, `worker`, `viewer` or `device` |
 
 Tanks 2 to 4 exist in the UI as "Planned - IoT not yet installed" until their controller reports (no `lastUpdate`).
