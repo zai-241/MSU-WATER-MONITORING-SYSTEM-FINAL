@@ -142,16 +142,24 @@ an icon; it is now also tinted (light red, amber or green).
 
 ## Group 7: Build, performance and repo (Low)
 
-- [ ] **7.1 One 3.26 MB JavaScript file** (905 KB compressed): slow first load on phones.
+- [x] **7.1 One 3.26 MB JavaScript file** (905 KB compressed): slow first load on phones.
   *Fix:* load pages with `React.lazy`, and split `exceljs`, `jspdf`, `html2canvas` and `recharts` into separate
   chunks (`build.rollupOptions.output.manualChunks` in `frontend/vite.config.ts`).
-- [ ] **7.2 Lint scans the build output.** `eslint.config.js:8` ignores `dist` only at the root, so `frontend/dist` is linted.
+  *Done:* pages after login load on first visit (`App.tsx`, with a one-time reload if a page file from before a
+  deploy is gone). Reports loads `reportExport` (exceljs, jspdf, html2canvas) only when an export button is clicked;
+  recharts goes with the Reports page. React and Firebase have their own chunks. The login screen now loads
+  1.12 MB of JavaScript (290 KB compressed). Vite still warns about chunks over 500 kB: Firebase (746 kB, needed on
+  every page), Reports and the export libraries (both loaded only when used).
+- [x] **7.2 Lint scans the build output.** `eslint.config.js:8` ignores `dist` only at the root, so `frontend/dist` is linted.
   *Fix:* `ignores: ["**/dist"]`.
-- [ ] **7.3 Hosting cache in git.** `.firebase/hosting.*.cache` changes after every deploy.
+  *Done.* Lint now reports 83 errors and 13 warnings (one warning came from `frontend/dist`).
+- [x] **7.3 Hosting cache in git.** `.firebase/hosting.*.cache` changes after every deploy.
   *Fix (team decision):* add `.firebase/` to `.gitignore` and `git rm --cached` the file, or keep committing it after deploys.
-- [ ] **7.4 Alert Service type check fails on this PC.** `backend/worker` dependencies are not installed here, so `tsc`
+  *Done:* `.firebase/` is ignored and the cache files were removed from git (they stay on each PC). No need to commit after a deploy any more.
+- [x] **7.4 Alert Service type check fails on this PC.** `backend/worker` dependencies are not installed here, so `tsc`
   reports `implicit any` at `backend/worker/src/index.ts:370–373`.
   *Fix:* run `npm install` in `backend/worker`, then re-run `npx tsc --noEmit`; it is expected to pass.
+  *Done:* after `npm install` in `backend/worker`, `npx tsc --noEmit` passes with no errors. No code change was needed.
 
 ## Group 8: Thesis (paper, not code; before the defense)
 

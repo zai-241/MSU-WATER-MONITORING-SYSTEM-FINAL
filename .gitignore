@@ -51,3 +51,6 @@ thesis-review/
 # Personal Claude Code settings (each teammate keeps their own)
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Firebase hosting deploy cache (rewritten on every deploy; only speeds up the next deploy from the same PC)
+.firebase/
