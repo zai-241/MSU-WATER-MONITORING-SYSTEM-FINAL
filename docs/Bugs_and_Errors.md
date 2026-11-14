@@ -13,11 +13,11 @@ references are `file:line` in the current code. After a group, run `npm test` an
 |---|---|---|---|
 | 1 | Remove the pump simulation | 5 | High |
 | 2 | Security and access | 2 | High |
-| 3 | Tanks 1–4 consistency | 2 | Medium |
-| 4 | Reports correctness | 2 | Medium |
+| 3 | Tanks 1–4 consistency | 2 | **Done** (2026-11-14) |
+| 4 | Reports correctness | 2 | **Done** (2026-11-14) |
 | 5 | Settings and alerting | 3 | **Done** (2026-11-14) |
 | 6 | Type-check and lint errors | 6 | **Done** (2026-11-14) |
-| 7 | Build, performance and repo | 4 | Low |
+| 7 | Build, performance and repo | 4 | **Done** (2026-11-14) |
 | 8 | Thesis (paper, not code) | 8 | Before the defense |
 
 ---
@@ -62,7 +62,7 @@ should remain.
   *Fix:* allow `worker` to write only the fields it needs (or none, once Group 1 removes pump commands), then
   `npx firebase deploy --only database`. Deploy only while the `/roles` entries exist, or the ESP32 is rejected.
 
-## Group 3: Tanks 1–4 consistency (Medium)
+## Group 3: Tanks 1–4 consistency (Done 2026-11-14)
 
 - [x] **3.1 A fifth tank can be added.** Tank Assignment only checks that the ID is new
   (`frontend/src/pages/admin/TankAssignment.tsx:56`), but calibration is fixed to Tanks 1–4
@@ -76,7 +76,7 @@ should remain.
   *Done:* Delete is locked for Tanks 1–4 (tooltip says to use Disable), and `deleteTank` rejects them. A stray tank
   with another ID can still be deleted. Tests in `defaultTanks.test.ts`.
 
-## Group 4: Reports correctness (Medium)
+## Group 4: Reports correctness (Done 2026-11-14)
 
 - [x] **4.1 Fixed colour cut-offs.** Reports colours a level red below 20% and amber above 90%
   (`frontend/src/pages/Reports.tsx:619–620`, `639–640`, `995`), but the configured thresholds are 15% and 95%.
@@ -140,7 +140,7 @@ an icon; it is now also tinted (light red, amber or green).
   `lib/formatTime.ts`; AuthContext and the two Configuration effects carry a commented disable; the unused
   directive was removed (the `dist` copy disappears on the next build).
 
-## Group 7: Build, performance and repo (Low)
+## Group 7: Build, performance and repo (Done 2026-11-14)
 
 - [x] **7.1 One 3.26 MB JavaScript file** (905 KB compressed): slow first load on phones.
   *Fix:* load pages with `React.lazy`, and split `exceljs`, `jspdf`, `html2canvas` and `recharts` into separate
@@ -152,7 +152,7 @@ an icon; it is now also tinted (light red, amber or green).
   every page), Reports and the export libraries (both loaded only when used).
 - [x] **7.2 Lint scans the build output.** `eslint.config.js:8` ignores `dist` only at the root, so `frontend/dist` is linted.
   *Fix:* `ignores: ["**/dist"]`.
-  *Done.* Lint now reports 83 errors and 13 warnings (one warning came from `frontend/dist`).
+  *Done.* `frontend/dist` is no longer linted. After Groups 6 and 7 were merged, `npm run lint` reports 0 errors and 0 warnings.
 - [x] **7.3 Hosting cache in git.** `.firebase/hosting.*.cache` changes after every deploy.
   *Fix (team decision):* add `.firebase/` to `.gitignore` and `git rm --cached` the file, or keep committing it after deploys.
   *Done:* `.firebase/` is ignored and the cache files were removed from git (they stay on each PC). No need to commit after a deploy any more.
