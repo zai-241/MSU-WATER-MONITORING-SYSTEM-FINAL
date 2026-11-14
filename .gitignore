@@ -47,3 +47,7 @@ mobile/android/keystore.properties
 
 # Thesis review outputs (contain thesis text; keep private)
 thesis-review/
+
+# Personal Claude Code settings (each teammate keeps their own)
+.claude/settings.local.json
+CLAUDE.local.md
