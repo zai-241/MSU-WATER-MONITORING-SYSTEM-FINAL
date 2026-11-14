@@ -80,6 +80,14 @@ npm run worker:check   # verify worker credentials and DB access
 | Cloud setup steps (roles, worker, push, App Check) | `PHASE3_SETUP.md` |
 | Thesis tooling | `.claude/agents/` (thesis-code-checker, proofreader, etc.), `thesis-review/` |
 
+## Keeping this map current (team)
+
+- Whoever changes how the parts fit together updates this file in the same commit.
+- `.githooks/pre-commit` prints a reminder when a commit touches firmware, database rules, the worker,
+  `alertEngine.ts`/`constants.ts`, the Firebase config or `capacitor.config.ts` without touching this file.
+  It only warns. `npm install` turns it on (the `prepare` script sets `core.hooksPath`).
+- Before adviser meetings or the defense, one person checks this map against the code.
+
 ## Rules for changes
 
 - When a change touches a number or behavior described in the thesis (thresholds, intervals, filter

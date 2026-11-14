@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare": "node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\"",
     "dev": "vite --config frontend/vite.config.ts",
     "build": "vite build --config frontend/vite.config.ts",
     "build:dev": "vite build --config frontend/vite.config.ts --mode development",

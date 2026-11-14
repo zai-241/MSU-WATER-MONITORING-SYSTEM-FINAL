@@ -1,0 +1,32 @@
+#!/bin/sh
+# Reminds the committer to update CLAUDE.md (the system map) when a commit
+# changes how the parts of the system fit together.
+# Warning only: the commit always goes through.
+# Installed for everyone by "npm install" (the "prepare" script in package.json).
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+
+# Already updating the map: nothing to remind.
+echo "$staged" | grep -qx 'CLAUDE.md' && exit 0
+
+watched=$(echo "$staged" | grep -E \
+  -e '^backend/firmware/' \
+  -e '^backend/cloud/' \
+  -e '^backend/worker/(src/|package\.json|\.env\.example)' \
+  -e '^frontend/src/lib/(alertEngine|constants)\.ts$' \
+  -e '^frontend/src/config/' \
+  -e '^mobile/capacitor\.config\.ts$' \
+  -e '^firebase\.json$' \
+  -e '^\.firebaserc$')
+
+[ -z "$watched" ] && exit 0
+
+echo ""
+echo "  Reminder: this commit changes system files, but not CLAUDE.md:"
+echo "$watched" | sed 's/^/    /'
+echo ""
+echo "  If it adds or changes a part, a database path, a role, a deploy step"
+echo "  or a number the thesis mentions, update CLAUDE.md too."
+echo "  Small fixes need no update. The commit goes through either way."
+echo ""
+exit 0
