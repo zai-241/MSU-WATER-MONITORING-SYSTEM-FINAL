@@ -12,8 +12,8 @@ const SystemClock = () => {
   const [dateStr, timeStr] = clock.includes(' - ') ? clock.split(' - ') : ['', clock];
 
   return (
-    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground font-mono">
-      <Clock size={14} />
+    <div className="hidden min-[360px]:flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground font-mono whitespace-nowrap">
+      <Clock size={14} className="shrink-0" />
       <span className="hidden md:inline">System Server Clock</span>
       {dateStr && (
         <span className="hidden sm:inline text-[10px] bg-muted px-1.5 py-0.5 rounded border border-border/40 font-semibold">
@@ -96,7 +96,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
       {/* Mobile sidebar */}
       <div className={`fixed left-0 top-0 z-40 flex h-[100dvh] w-52 flex-col bg-sidebar p-3.5 overflow-hidden transform transition-transform lg:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <button onClick={() => setMobileOpen(false)} className="absolute right-3 top-3 text-sidebar-foreground"><X size={20} /></button>
+        <button onClick={() => setMobileOpen(false)} aria-label="Close menu" className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center text-sidebar-foreground"><X size={20} /></button>
         {sidebarContent}
       </div>
 
@@ -115,30 +115,35 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <span>Connection to Realtime Database lost. You are offline — live telemetry and alerts may be stale. Reconnecting...</span>
           </div>
         )}
-        <header className="flex items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setMobileOpen(true)} className="lg:hidden text-foreground hover:opacity-80 transition">
+        <header className="flex items-center justify-between gap-2 px-2 py-2 sm:px-6 sm:py-3">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+            <button onClick={() => setMobileOpen(true)} aria-label="Open menu" className="lg:hidden flex h-11 w-11 shrink-0 items-center justify-center text-foreground hover:opacity-80 transition">
               <Menu size={24} />
             </button>
-            <div className="flex items-center gap-2 text-sm bg-secondary/30 px-3 py-1.5 rounded-lg border border-border/40 animate-in fade-in duration-300">
-              <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs uppercase border border-primary/20">
+            {/* Phones show only the initial; the full name appears from 640px */}
+            <div
+              className="flex min-w-0 items-center gap-2 text-sm bg-secondary/30 p-1.5 sm:px-3 rounded-lg border border-border/40 animate-in fade-in duration-300"
+              title={currentUser?.username || 'Guest'}
+            >
+              <div className="h-6 w-6 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs uppercase border border-primary/20">
                 {(currentUser?.username || 'G').charAt(0)}
               </div>
-              <span className="font-semibold text-foreground text-xs sm:text-sm">
+              <span className="hidden sm:inline truncate max-w-[12rem] font-semibold text-foreground text-sm">
                 {currentUser?.username || 'Guest'}
               </span>
             </div>
           </div>
 
-          <div className="flex justify-end items-center gap-4">
+          <div className="flex shrink-0 justify-end items-center gap-1 sm:gap-3">
             <SystemClock />
 
-            <div className="w-px h-6 bg-border mx-2" />
+            <div className="hidden sm:block w-px h-6 bg-border" />
 
             <NotificationCenter />
           </div>
         </header>
-        <main className="px-4 pb-8 sm:px-6">{children}</main>
+        {/* Extra bottom room on phones so toasts (bottom of the screen) never hide the last controls */}
+        <main className="px-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] sm:px-6 sm:pb-8">{children}</main>
       </div>
 
       {showLogoutConfirm && (
