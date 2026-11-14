@@ -6,6 +6,10 @@ https://msu-water-monitoring-system.web.app). Every code item was re-checked in 
 The app works: 98 tests pass, the build succeeds, and Tank 1 is reporting. The items below are wrong behaviour,
 security gaps, or code-quality problems.
 
+**Status on 2026-11-14 (`main` at `ff14681`):** Groups 3–7 are done. Still open: Groups 1 and 2 (code, High) and
+Group 8 (thesis). `npm test` 103 passed, `npm run typecheck` 0 errors, `npm run lint` 0 errors and 0 warnings.
+Run `npm run deploy:hosting` to put the fixes on the website (and the APK).
+
 **How to use this list:** each group can be done on its own, in any order. Tick the boxes as you go. File
 references are `file:line` in the current code. After a group, run `npm test` and `npm run build`.
 
@@ -64,6 +68,8 @@ should remain.
 
 ## Group 3: Tanks 1–4 consistency (Done 2026-11-14)
 
+**Done:** both items, in the web app only. The database rules still let an admin write any `tanks/{id}`.
+
 - [x] **3.1 A fifth tank can be added.** Tank Assignment only checks that the ID is new
   (`frontend/src/pages/admin/TankAssignment.tsx:56`), but calibration is fixed to Tanks 1–4
   (`Configuration.tsx:56`) and there is firmware only for 1–4.
@@ -77,6 +83,9 @@ should remain.
   with another ID can still be deleted. Tests in `defaultTanks.test.ts`.
 
 ## Group 4: Reports correctness (Done 2026-11-14)
+
+**Done:** both items. **Thesis check:** if the paper says Reports colours a level at 20% or 90%, it now follows the
+configured thresholds (default 15% and 95%).
 
 - [x] **4.1 Fixed colour cut-offs.** Reports colours a level red below 20% and amber above 90%
   (`frontend/src/pages/Reports.tsx:619–620`, `639–640`, `995`), but the configured thresholds are 15% and 95%.
