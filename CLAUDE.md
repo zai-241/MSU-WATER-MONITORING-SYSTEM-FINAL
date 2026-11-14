@@ -10,7 +10,7 @@ capstone thesis project. This file is the single source of truth for how the par
 | Part | Where | What it does | How it ships |
 |---|---|---|---|
 | Firmware | `backend/firmware/esp32_firmware.ino` (Tank 1); `backend/firmware/tank2/`, `tank3/`, `tank4/` (same sketch, `TANK_ID` 2–4) | ESP32 reads level (GPIO 35) and pH (GPIO 34), filters, runs a **virtual pump** (pump logic without a relay: `PUMP_RELAY_ENABLED 0`, GPIO 32 unused), writes to RTDB over HTTPS REST. Ethernet (LAN8720) first, Wi-Fi as backup. | Arduino IDE upload over USB |
-| Database rules | `backend/cloud/database.rules.json`, `firestore.rules` | Role-based access (admin / worker / viewer / device, read from `/roles`) | `npx firebase deploy --only database,firestore` |
+| Database rules | `backend/cloud/database.rules.json`, `firestore.rules` | Role-based access (admin / worker / viewer / device, read from `/roles`). On `tanks/{id}` a worker may write only `pumpOn`, on an assigned tank, while the pump lock is off | `npx firebase deploy --only database,firestore` |
 | Alert worker | `backend/worker/src/index.ts` | Always-on Node process: evaluates alerts, offline watchdog, push (FCM), 90-day retention, heartbeat to `/system/worker` | Render free Web Service, auto-deploys on push to `main` (key as a Render secret file, kept awake by UptimeRobot on `/health`). Locally: `npm run worker` (needs `backend/worker/.env`). Run only one. |
 | Web app | `frontend/` (React 18 + TS + Vite + shadcn/ui) | Dashboard, Admin Panel, Reports, Logs, Notifications | `npm run deploy:hosting` → https://msu-water-monitoring-system.web.app |
 | Android app | `mobile/` (Capacitor 8, `com.watersystem.msu`) | Wrapper around the **hosted** web app (`server.url` in `capacitor.config.ts`) | Sideloaded APK only, no Play Store |
@@ -75,6 +75,7 @@ npm run worker:check   # verify worker credentials and DB access
 
 `backend/firmware/**/secrets.h` (one per tank folder), `backend/worker/.env`, `backend/worker/serviceAccount*.json`,
 `mobile/android/app/google-services.json`, `frontend/.env*`. Templates: `secrets.example.h`, `.env.example`.
+The sketches have no fallback credentials: a build without all five values in `secrets.h` stops with an `#error`.
 
 ## Where things are tracked
 

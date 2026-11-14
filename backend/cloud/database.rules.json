@@ -28,7 +28,11 @@
     "tanks": {
       ".read": "auth != null",
       "$tankId": {
-        ".write": "root.child('roles').child(auth.uid).val() === 'admin' || root.child('roles').child(auth.uid).val() === 'worker' || root.child('roles').child(auth.uid).val() === 'device'",
+        ".write": "root.child('roles').child(auth.uid).val() === 'admin' || root.child('roles').child(auth.uid).val() === 'device'",
+        "pumpOn": {
+          ".write": "root.child('roles').child(auth.uid).val() === 'worker' && data.parent().child('assignedWorker').val() === auth.uid && root.child('config').child('pumpControlLock').val() !== true",
+          ".validate": "newData.isBoolean()"
+        },
         "phLevel": {
           ".validate": "!newData.exists() || newData.isNumber()"
         },

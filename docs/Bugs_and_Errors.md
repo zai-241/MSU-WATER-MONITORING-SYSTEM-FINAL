@@ -6,8 +6,9 @@ https://msu-water-monitoring-system.web.app). Every code item was re-checked in 
 The app works: 98 tests pass, the build succeeds, and Tank 1 is reporting. The items below are wrong behaviour,
 security gaps, or code-quality problems.
 
-**Status on 2026-11-14 (`main` at `ff14681`):** Groups 3–7 are done. Still open: Groups 1 and 2 (code, High) and
-Group 8 (thesis). `npm test` 103 passed, `npm run typecheck` 0 errors, `npm run lint` 0 errors and 0 warnings.
+**Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
+(deploy the database rules, change the router's Wi-Fi password). Group 8 (thesis) is partly done.
+`npm test` 109 passed, `npm run typecheck` 0 errors, `npm run lint` 0 errors and 0 warnings.
 Run `npm run deploy:hosting` to put the fixes on the website (and the APK).
 
 **How to use this list:** each group can be done on its own, in any order. Tick the boxes as you go. File
@@ -16,7 +17,7 @@ references are `file:line` in the current code. After a group, run `npm test` an
 | Group | Topic | Items | Priority |
 |---|---|---|---|
 | 1 | Pump: virtual pump + Pump Demo Mode | 5 | **Done** (2026-11-14) |
-| 2 | Security and access | 2 | High |
+| 2 | Security and access | 2 | **Code done** (2026-11-14); deploy rules + change Wi-Fi password |
 | 3 | Tanks 1–4 consistency | 2 | **Done** (2026-11-14) |
 | 4 | Reports correctness | 2 | **Done** (2026-11-14) |
 | 5 | Settings and alerting | 3 | **Done** (2026-11-14) |
@@ -56,18 +57,31 @@ switch Pump Demo Mode off to show the monitoring-only system the thesis describe
 **Still to do by hand:** flash the updated firmware to the Tank 1 ESP32, deploy the web app, and (with your adviser)
 decide whether Chapter 1.4 / Chapter 5 should mention the demo mode.
 
-## Group 2: Security and access (High)
+## Group 2: Security and access (code done 2026-11-14)
 
-- [ ] **2.1 Wi-Fi password in the code.** A fallback SSID and password are hard-coded in all four sketches
+**Still to do by hand:** (1) change the router's Wi-Fi password and put the new one in each tank's `secrets.h`;
+(2) deploy the database rules with `npx firebase deploy --only database` (the `/roles` entries already exist, since
+the current rules need them too). Until the rules are deployed, 2.2 is only fixed in git, not in the live database.
+
+- [x] **2.1 Wi-Fi password in the code.** A fallback SSID and password are hard-coded in all four sketches
   (`backend/firmware/esp32_firmware.ino:16` and `:20`; same lines in `tank2/tank2.ino`, `tank3/tank3.ino`,
   `tank4/tank4.ino`) and are in the GitHub history.
   *Fix:* delete the fallback values so the sketch fails to compile without `secrets.h`, and **change the router's
   Wi-Fi password**, because the old one stays in git history.
-- [ ] **2.2 Workers can change tank settings in the database.** The rules let the `worker` role write any field of
+  *Done (code):* the fallback block is replaced in all four sketches by `#error` checks, so a build without the five
+  values in `secrets.h` stops with a message naming them. Checked with the ESP32 toolchain's preprocessor (fails with an
+  empty `secrets.h`, passes with `secrets.example.h`). A test in `phase1.test.ts` fails if a sketch defines a credential
+  again. **The router password still has to be changed** (it stays in commits `9133053` and `a70e646`).
+- [x] **2.2 Workers can change tank settings in the database.** The rules let the `worker` role write any field of
   `tanks/{id}`: calibration, capacity and assignment (`backend/cloud/database.rules.json:31`). Only the web page
   stops them.
   *Fix:* allow `worker` to write only the fields it needs (or none, once Group 1 removes pump commands), then
   `npx firebase deploy --only database`. Deploy only while the `/roles` entries exist, or the ESP32 is rejected.
+  *Done (code):* `tanks/{id}` is now writable by `admin` and `device` only. A `worker` may write just `pumpOn`
+  (the Dashboard pump switch, kept because Group 1 made it a virtual pump), and only on a tank assigned to them while
+  `config/pumpControlLock` is off: the same conditions the Dashboard already checks. `controllerOffline` keeps its own
+  rule. Worker browsers can no longer recreate a missing Tank 1–4; an admin's browser still does. Test in
+  `phase1.test.ts`. **Not live until the rules are deployed.**
 
 ## Group 3: Tanks 1–4 consistency (Done 2026-11-14)
 

@@ -10,26 +10,16 @@
 #include <time.h>
 
 // ==========================================
-// Fallback Credentials (if missing from secrets.h)
+// Required credentials (from secrets.h; copy secrets.example.h)
 // ==========================================
-#ifndef WIFI_SSID
-#define WIFI_SSID "TP-Link_1902"
+// No fallback values: credentials must never be written in this file, because
+// it is committed to git. A missing value stops the build here.
+#if !defined(WIFI_SSID) || !defined(WIFI_PASSWORD)
+#error "Define WIFI_SSID and WIFI_PASSWORD in secrets.h (copy secrets.example.h)"
 #endif
 
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "40114583"
-#endif
-
-#ifndef FIREBASE_API_KEY
-#define FIREBASE_API_KEY ""
-#endif
-
-#ifndef FIREBASE_AUTH_EMAIL
-#define FIREBASE_AUTH_EMAIL ""
-#endif
-
-#ifndef FIREBASE_AUTH_PASSWORD
-#define FIREBASE_AUTH_PASSWORD ""
+#if !defined(FIREBASE_API_KEY) || !defined(FIREBASE_AUTH_EMAIL) || !defined(FIREBASE_AUTH_PASSWORD)
+#error "Define FIREBASE_API_KEY, FIREBASE_AUTH_EMAIL and FIREBASE_AUTH_PASSWORD in secrets.h (copy secrets.example.h)"
 #endif
 
 // ==========================================

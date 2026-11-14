@@ -67,6 +67,40 @@ describe('Phase 1 Implementation Tests', () => {
       expect(rulesJson.rules.logs['.indexOn']).toContain('timestamp');
       expect(rulesJson.rules.notifications['.indexOn']).toContain('timestamp');
     });
+
+    it('lets a worker write only pumpOn, on an assigned tank, while the pump lock is off (bug 2.2)', () => {
+      const rulesPath = [
+        path.resolve(process.cwd(), 'backend/cloud/database.rules.json'),
+        path.resolve(process.cwd(), '../backend/cloud/database.rules.json'),
+      ].find(p => fs.existsSync(p))!;
+      const tank = JSON.parse(fs.readFileSync(rulesPath, 'utf8')).rules.tanks.$tankId;
+
+      // The whole-tank write (calibration, capacity, assignment, name) is admin and device only
+      expect(tank['.write']).toContain("'admin'");
+      expect(tank['.write']).toContain("'device'");
+      expect(tank['.write']).not.toContain("'worker'");
+
+      // Workers keep the Dashboard pump switch, with the same conditions as the UI
+      expect(tank.pumpOn['.write']).toContain("'worker'");
+      expect(tank.pumpOn['.write']).toContain("child('assignedWorker').val() === auth.uid");
+      expect(tank.pumpOn['.write']).toContain("child('pumpControlLock').val() !== true");
+      expect(tank.pumpOn['.validate']).toBe('newData.isBoolean()');
+    });
+  });
+
+  describe('Firmware credentials (bug 2.1)', () => {
+    it('no sketch defines a Wi-Fi or Firebase credential in the committed code', () => {
+      const firmwareDir = [
+        path.resolve(process.cwd(), 'backend/firmware'),
+        path.resolve(process.cwd(), '../backend/firmware'),
+      ].find(p => fs.existsSync(p))!;
+      const sketches = ['esp32_firmware.ino', 'tank2/tank2.ino', 'tank3/tank3.ino', 'tank4/tank4.ino'];
+      for (const sketch of sketches) {
+        const source = fs.readFileSync(path.join(firmwareDir, sketch), 'utf8');
+        expect(source, sketch).not.toMatch(/#define\s+(WIFI_SSID|WIFI_PASSWORD|FIREBASE_API_KEY|FIREBASE_AUTH_EMAIL|FIREBASE_AUTH_PASSWORD)\b/);
+        expect(source, sketch).toContain('#error');
+      }
+    });
   });
 
   describe('S3: Login Credentials Storage Security', () => {
