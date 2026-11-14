@@ -5,6 +5,7 @@ import { database } from '@/config/firebase';
 import { ref, onValue } from 'firebase/database';
 import { grantDeviceRole, revokeDeviceRole } from '@/services/authService';
 import { toast } from 'sonner';
+import { errorMessage } from '@/lib/utils';
 
 /**
  * Device Accounts card.
@@ -40,8 +41,8 @@ const DeviceAccounts = () => {
       });
       toast.success('Controller account registered.');
       setUidInput('');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to register controller account');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to register controller account');
     } finally {
       setBusy(false);
     }
@@ -58,8 +59,8 @@ const DeviceAccounts = () => {
         logLevel: 'WARNING',
       });
       toast.success('Controller account removed.');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to remove controller account');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to remove controller account');
     }
   };
 

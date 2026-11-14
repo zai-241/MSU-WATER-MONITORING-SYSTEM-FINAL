@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { errorMessage } from '@/lib/utils';
 
 /**
  * Format a Unix timestamp to localized human-readable date + time.
@@ -58,7 +59,7 @@ const highlightText = (text: unknown, search: string) => {
   if (!search || !search.trim()) return <span>{str}</span>;
 
   try {
-    const escapedSearch = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const escapedSearch = search.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
     const regex = new RegExp(`(${escapedSearch})`, 'gi');
     const parts = str.split(regex);
 
@@ -194,8 +195,8 @@ const Notifications = () => {
           : 'Retention check complete: No notifications older than 90 days found.'
       );
       setShowPurgeConfirm(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to purge old notifications');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to purge old notifications');
     } finally {
       setIsPurging(false);
     }

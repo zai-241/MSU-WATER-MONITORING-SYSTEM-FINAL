@@ -810,7 +810,7 @@ const Reports = () => {
                       <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => `${val}%`} />
                       <Tooltip
                         contentStyle={{ background: 'hsl(var(--card))', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
-                        formatter={(value: any) => [value !== null ? `${value}%` : 'Sensor Fault', 'Water Level']}
+                        formatter={(value: unknown) => [value !== null ? `${value}%` : 'Sensor Fault', 'Water Level']}
                       />
                       <Area type="monotone" dataKey="waterLevel" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#levelGradient)" dot={{ r: 4, fill: '#3b82f6' }} />
                       <ReferenceLine y={config.lowLevelThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Low Threshold', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
@@ -854,7 +854,7 @@ const Reports = () => {
                       <YAxis domain={[5.0, 9.0]} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => Number(val).toFixed(1)} />
                       <Tooltip
                         contentStyle={{ background: 'hsl(var(--card))', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
-                        formatter={(value: any) => [value !== null ? `${value} pH` : 'Sensor Fault', 'pH Value']}
+                        formatter={(value: unknown) => [value !== null ? `${value} pH` : 'Sensor Fault', 'pH Value']}
                       />
                       <Line type="monotone" dataKey="phLevel" stroke="#a855f7" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--card))' }} />
                       <ReferenceLine y={config.minPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Acidic Limit', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
@@ -883,7 +883,7 @@ const Reports = () => {
                     <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
                     <Tooltip
                       contentStyle={{ background: 'hsl(var(--card))', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
-                      formatter={(value: any) => [`${value} runs`, 'Activations']}
+                      formatter={(value: unknown) => [`${value} runs`, 'Activations']}
                     />
                     <Bar dataKey="activations" fill="#10b981" radius={[4, 4, 0, 0]}>
                       {pumpActivityData.map((entry, index) => (

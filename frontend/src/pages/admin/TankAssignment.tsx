@@ -3,6 +3,7 @@ import { useTanks, isTankPlanned, Tank } from '@/store/useStore';
 import { Trash2, Power, Loader2, Plus, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import type { UserProfile } from '@/services/authService';
+import { errorMessage } from '@/lib/utils';
 
 interface TankAssignmentProps {
   users: UserProfile[];
@@ -30,8 +31,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
     try {
       await updateTank(tankId, { assignedWorker: workerId });
       toast.success(workerId ? 'Operator assigned successfully!' : 'Tank unassigned successfully!');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to assign operator');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to assign operator');
     }
   };
 
@@ -42,8 +43,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
         ...(currentEnabled ? { pumpOn: false, assignedWorker: null } : {})
       });
       toast.success(`Tank successfully ${!currentEnabled ? 'enabled' : 'disabled'}!`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update tank availability');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to update tank availability');
     }
   };
 
@@ -69,9 +70,9 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
       toast.success(`Tank "${newTankData.name}" successfully registered!`);
       setShowAddTank(false);
       setNewTankData({ id: '', name: '', location: '' });
-    } catch (err: any) {
-      setAddTankError(err.message || 'Failed to register tank');
-      toast.error(err.message || 'Failed to register tank');
+    } catch (err) {
+      setAddTankError(errorMessage(err) || 'Failed to register tank');
+      toast.error(errorMessage(err) || 'Failed to register tank');
     } finally {
       setIsAddingTank(false);
     }
@@ -93,8 +94,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
       toast.success('Tank details successfully updated!');
       setEditingTank(null);
       setEditTankData({ name: '', location: '' });
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update tank details');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to update tank details');
     } finally {
       setIsEditingTank(false);
     }
@@ -107,8 +108,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
       await deleteTank(deletingTank.id);
       toast.success(`Tank "${deletingTank.name}" permanently deleted.`);
       setDeletingTank(null);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete tank');
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to delete tank');
     } finally {
       setIsDeletingTank(false);
     }

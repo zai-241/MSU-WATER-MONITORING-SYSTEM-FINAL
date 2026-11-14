@@ -49,7 +49,7 @@ const highlightText = (text: unknown, search: string) => {
   if (!search || !search.trim()) return <span>{str}</span>;
 
   try {
-    const escapedSearch = search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const escapedSearch = search.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
     const regex = new RegExp(`(${escapedSearch})`, 'gi');
     const parts = str.split(regex);
 

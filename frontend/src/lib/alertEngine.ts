@@ -19,6 +19,8 @@ export const RECOVERY_VALIDATION_MS = 5000; // and this long before recovering
 export const DEFAULT_REPEAT_SEC = 60;
 export const MIN_REPEAT_SEC = 10;
 export const DEFAULT_OFFLINE_THRESHOLD_SEC = 30;
+/** Notification raised by open dashboards when the Alert Service heartbeat stops; the service resolves it on start. */
+export const ALERT_SERVICE_OFFLINE_ID = 'alert-service-offline';
 export const MIN_OFFLINE_THRESHOLD_SEC = 20; // never below two 10 s heartbeats
 export const LEVEL_HYSTERESIS = 2;
 export const PH_HYSTERESIS = 0.15;

@@ -102,6 +102,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'ViewerUser',
         role: 'viewer',
         jobTitle: 'Inspector',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -150,6 +151,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'AdminUser',
         role: 'admin',
         jobTitle: 'Lead Engineer',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -227,6 +229,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'AdminUser',
         role: 'admin',
         jobTitle: 'Lead Engineer',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -288,6 +291,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'WorkerUser',
         role: 'worker',
         jobTitle: 'Field Tech',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -333,6 +337,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'AdminUser',
         role: 'admin',
         jobTitle: 'Lead Engineer',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -389,6 +394,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'ViewerUser',
         role: 'viewer',
         jobTitle: 'Observer',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -440,6 +446,7 @@ describe('Historical Data & Reports Telemetry', () => {
         username: 'AdminUser',
         role: 'admin',
         jobTitle: 'Lead Engineer',
+        createdAt: 0,
         status: 'active',
       },
       loading: false,
@@ -503,7 +510,7 @@ describe('Historical Data & Reports Telemetry', () => {
 
     await waitFor(() => {
       expect(clickSpy).toHaveBeenCalled();
-      const clickedAnchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+      const clickedAnchor = clickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
       expect(clickedAnchor.download).toBe(`WaterReport_Tank1_${today}.xlsx`);
     });
 

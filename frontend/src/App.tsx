@@ -46,7 +46,7 @@ const PageLoading = () => (
 const App = () => (
   <AuthProvider>
     <TooltipProvider>
-      <Sonner />
+      <Sonner richColors />
       <BrowserRouter>
         <Suspense fallback={<PageLoading />}>
           <Routes>
