@@ -13,8 +13,8 @@ references are `file:line` in the current code. After a group, run `npm test` an
 |---|---|---|---|
 | 1 | Remove the pump simulation | 5 | High |
 | 2 | Security and access | 2 | High |
-| 3 | Tanks 1–4 consistency | 2 | Medium |
-| 4 | Reports correctness | 2 | Medium |
+| 3 | Tanks 1–4 consistency | 2 | **Done** (2026-11-14) |
+| 4 | Reports correctness | 2 | **Done** (2026-11-14) |
 | 5 | Settings and alerting | 3 | **Done** (2026-11-14) |
 | 6 | Type-check and lint errors | 6 | **Done** (2026-11-14) |
 | 7 | Build, performance and repo | 4 | Low |
@@ -62,7 +62,9 @@ should remain.
   *Fix:* allow `worker` to write only the fields it needs (or none, once Group 1 removes pump commands), then
   `npx firebase deploy --only database`. Deploy only while the `/roles` entries exist, or the ESP32 is rejected.
 
-## Group 3: Tanks 1–4 consistency (Medium)
+## Group 3: Tanks 1–4 consistency (Done 2026-11-14)
+
+**Done:** both items, in the web app only. The database rules still let an admin write any `tanks/{id}`.
 
 - [x] **3.1 A fifth tank can be added.** Tank Assignment only checks that the ID is new
   (`frontend/src/pages/admin/TankAssignment.tsx:56`), but calibration is fixed to Tanks 1–4
@@ -76,7 +78,10 @@ should remain.
   *Done:* Delete is locked for Tanks 1–4 (tooltip says to use Disable), and `deleteTank` rejects them. A stray tank
   with another ID can still be deleted. Tests in `defaultTanks.test.ts`.
 
-## Group 4: Reports correctness (Medium)
+## Group 4: Reports correctness (Done 2026-11-14)
+
+**Done:** both items. **Thesis check:** if the paper says Reports colours a level at 20% or 90%, it now follows the
+configured thresholds (default 15% and 95%).
 
 - [x] **4.1 Fixed colour cut-offs.** Reports colours a level red below 20% and amber above 90%
   (`frontend/src/pages/Reports.tsx:619–620`, `639–640`, `995`), but the configured thresholds are 15% and 95%.
