@@ -44,7 +44,7 @@ import {
 import { toast } from 'sonner';
 import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { buildExcelWorkbook, buildPdfDocument } from '@/lib/reportExport';
-import { estimateVolumeLiters } from '@/lib/constants';
+import { estimateVolumeLiters, tankCapacityLiters } from '@/lib/constants';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from '@/lib/reportLogs';
@@ -65,8 +65,9 @@ const Reports = () => {
   // Throttle high-frequency updates from Firebase to stabilize chart drawings and heavy table pagination
   const allTanks = useThrottledValue(rawTanks, 1500);
 
-  // Exclude planned expansion tanks from Reports, exports, summary averages, and alert counts
-  const tanks = useMemo(() => allTanks.filter(t => !isTankPlanned(t)), [allTanks]);
+  // Every tank can be picked; planned ones (no controller data yet) are labelled and never auto-selected
+  const tanks = allTanks;
+  const liveTanks = useMemo(() => allTanks.filter(t => !isTankPlanned(t)), [allTanks]);
 
   const [selectedTankId, setSelectedTankId] = useState('');
   const [dateRange, setDateRange] = useState<DateRange>('Last 30 Days');
@@ -81,14 +82,14 @@ const Reports = () => {
   // Auto-select reactive hook - falls back gracefully to the first operational tank
   useEffect(() => {
     if (!selectedTankId && tanks.length > 0) {
-      const firstActive = tanks.find(t => t.enabled) || tanks[0];
+      const firstActive = liveTanks.find(t => t.enabled) || liveTanks[0] || tanks[0];
       if (firstActive) {
         setSelectedTankId(firstActive.id);
       }
     } else if (selectedTankId && tanks.length > 0 && !tanks.some(t => t.id === selectedTankId)) {
       setSelectedTankId(tanks[0].id);
     }
-  }, [tanks, selectedTankId]);
+  }, [tanks, liveTanks, selectedTankId]);
 
   const days = useMemo(() => {
     return dateRange === 'Last 7 Days' ? 7 : dateRange === 'Last 14 Days' ? 14 : 30;
@@ -97,6 +98,9 @@ const Reports = () => {
   const selectedTank = useMemo(() => {
     return tanks.find(t => t.id === selectedTankId) || null;
   }, [tanks, selectedTankId]);
+
+  // Capacity the admin set for this tank (used for the estimated volume)
+  const capacityLiters = tankCapacityLiters(selectedTank);
 
   // Every log entry in the selected window (not just the newest 100) that concerns this tank
   const { logs: rangeLogs } = useRangeLogs(days);
@@ -388,7 +392,7 @@ const Reports = () => {
       const csvRows = telemetryData.map(d => {
         const lvl = d.waterLevel !== null ? String(d.waterLevel) : 'N/A';
         const ph = d.phLevel !== null ? String(d.phLevel) : 'N/A';
-        const estVolume = d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel) : 'N/A';
+        const estVolume = d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel, capacityLiters) : 'N/A';
         return `${d.date},${lvl},${d.height},${ph},${estVolume},${d.sampleCount}`;
       }).join('\n');
       
@@ -525,7 +529,7 @@ const Reports = () => {
               <option value="">No operational tanks installed</option>
             ) : (
               tanks.map(t => (
-                <option key={t.id} value={t.id}>{t.name} {!t.enabled ? '(Disabled)' : ''}</option>
+                <option key={t.id} value={t.id}>{t.name} {!t.enabled ? '(Disabled)' : isTankPlanned(t) ? '(Planned - no data yet)' : ''}</option>
               ))
             )}
           </select>
@@ -624,7 +628,7 @@ const Reports = () => {
                 </h2>
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Height: {(processedTank?.waterHeight ?? 0).toFixed(2)}m</span>
-                  <span>Volume: {estimateVolumeLiters(processedTank?.waterLevel ?? 0).toLocaleString()} L</span>
+                  <span>Volume: {estimateVolumeLiters(processedTank?.waterLevel ?? 0, capacityLiters).toLocaleString()} L</span>
                 </div>
               </div>
 
@@ -639,7 +643,7 @@ const Reports = () => {
                     style={{ width: `${Math.min(100, Math.max(0, processedTank?.waterLevel ?? 0))}%` }}
                   />
                 </div>
-                <span className="text-[10px] text-muted-foreground block text-right font-medium">Cap: 5,000L Max</span>
+                <span className="text-[10px] text-muted-foreground block text-right font-medium">Cap: {capacityLiters.toLocaleString()} L Max</span>
               </div>
             </motion.div>
 
@@ -1005,7 +1009,7 @@ const Reports = () => {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-foreground font-bold">
-                          {row.waterLevel !== null ? `${estimateVolumeLiters(row.waterLevel).toLocaleString()} L` : 'N/A'}
+                          {row.waterLevel !== null ? `${estimateVolumeLiters(row.waterLevel, capacityLiters).toLocaleString()} L` : 'N/A'}
                         </td>
                       </tr>
                     ))

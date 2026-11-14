@@ -25,8 +25,17 @@ export const ALERT_CATEGORIES = [
 
 export type AlertCategory = typeof ALERT_CATEGORIES[number];
 
-/** The tank the ESP32 firmware reports for (TANK_ID in esp32_firmware.ino). */
+/**
+ * Tank for ESP32 entries that carry no tankId: the Tank 1 firmware (esp32_firmware.ino)
+ * and every log written before the Tank 2–4 controllers existed.
+ */
 export const FIRMWARE_TANK_ID = '1';
+
+/** The tank an ESP32 log entry came from: its tankId, or Tank 1 when it has none. */
+export function esp32LogTankId(log: Pick<Log, 'tankId'>): string {
+  const id = log.tankId != null ? String(log.tankId).trim() : '';
+  return id || FIRMWARE_TANK_ID;
+}
 
 const ESP32_PERFORMER = 'ESP32 System';
 const TRIGGERED = '[Status: Triggered]';
@@ -63,12 +72,12 @@ export function isPumpRun(log: Log): boolean {
 }
 
 /**
- * True when the entry is about this tank. ESP32 entries belong to the firmware's tank;
- * controller offline/recovery entries name the tank in their details. Other entries
- * (settings, users) are system-wide and count for every tank.
+ * True when the entry is about this tank. ESP32 entries belong to the tank in their tankId
+ * (Tank 1 when absent); controller offline/recovery entries name the tank in their details.
+ * Other entries (settings, users) are system-wide and count for every tank.
  */
 export function logBelongsToTank(log: Log, tank: Pick<Tank, 'id' | 'name'>): boolean {
-  if (log.performedBy === ESP32_PERFORMER) return tank.id === FIRMWARE_TANK_ID;
+  if (log.performedBy === ESP32_PERFORMER) return tank.id === esp32LogTankId(log);
   if (log.action === 'CONTROLLER_OFFLINE' || log.action === 'CONTROLLER_RECOVERED') {
     return log.details.includes(tank.name);
   }

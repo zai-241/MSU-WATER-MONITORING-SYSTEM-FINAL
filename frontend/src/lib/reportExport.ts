@@ -10,7 +10,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Tank, Log } from '@/store/useStore';
 import type { GroupedTelemetryPoint } from '@/hooks/useTankHistory';
-import { estimateVolumeLiters } from './constants';
+import { estimateVolumeLiters, tankCapacityLiters } from './constants';
 
 /** jspdf-autotable records where the last table ended on the document */
 type DocWithTable = jsPDF & { lastAutoTable: { finalY: number } };
@@ -147,7 +147,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
       waterLevel: item.waterLevel !== null ? item.waterLevel : 'Sensor Fault',
       waterHeight: item.waterLevel !== null ? item.height : 'N/A',
       phLevel: item.phLevel !== null ? item.phLevel : 'Sensor Fault',
-      volume: item.waterLevel !== null ? estimateVolumeLiters(item.waterLevel) : 'N/A',
+      volume: item.waterLevel !== null ? estimateVolumeLiters(item.waterLevel, tankCapacityLiters(selectedTank)) : 'N/A',
       sampleCount: item.sampleCount,
       status,
     });
@@ -315,7 +315,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
       d.waterLevel !== null ? `${d.waterLevel}%` : 'Sensor Fault',
       d.waterLevel !== null ? `${d.height} m` : 'N/A',
       d.phLevel !== null ? `${d.phLevel}` : 'Sensor Fault',
-      d.waterLevel !== null ? `${estimateVolumeLiters(d.waterLevel).toLocaleString()} L` : 'N/A',
+      d.waterLevel !== null ? `${estimateVolumeLiters(d.waterLevel, tankCapacityLiters(selectedTank)).toLocaleString()} L` : 'N/A',
       String(d.sampleCount),
       statusStr,
     ];

@@ -26,7 +26,7 @@ dist-ssr
 # ESP32 Secrets
 secrets.h
 esp32_firmware/secrets.h
-backend/firmware/secrets.h
+backend/firmware/**/secrets.h
 
 # Alert worker secrets and local env files
 backend/worker/.env

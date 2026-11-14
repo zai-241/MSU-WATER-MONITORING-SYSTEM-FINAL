@@ -32,6 +32,7 @@ export function useRangeLogs(days: number): { logs: Log[]; isLoading: boolean } 
               details: String(value?.details ?? ''),
               performedBy: String(value?.performedBy ?? ''),
               logLevel: value?.logLevel,
+              ...(value?.tankId != null ? { tankId: String(value.tankId) } : {}),
               timestamp: typeof value?.timestamp === 'number' ? value.timestamp : 0,
             })) as Log[];
           list.sort((a, b) => b.timestamp - a.timestamp);
