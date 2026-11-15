@@ -119,3 +119,13 @@ Adds the current-to-voltage module, the CPE210 bridge pair, the cloud-hosted Ale
 ![Figure 3-14: Network Design Topology](images/Figure_3-14.png)
 
 Wi-Fi is a standby link; one ESP32 node per tank, with Tank 1 tested on the drum model and Tanks 2–4 planned; the P2P link was 15–20 m in testing; adds the cloud-hosted Alert Service.
+
+## Data Model 1: Cloud Firestore and Realtime Database Structure
+
+![Data Model 1: Cloud Firestore and Realtime Database Structure](images/Data_Model_1.png)
+
+## Data Model 2: Realtime Database Tank, History, Notification and Log Records
+
+![Data Model 2: Realtime Database Tank, History, Notification and Log Records](images/Data_Model_2.png)
+
+New figures (no numbers yet; place them next to the ERD in 3.11–3.13). They are the storage view of the ERD: the one Firestore collection (`users`), the RTDB path tree, each record's key, fields and types, and who writes it. The model is split in two portrait figures so the text stays readable (about 8–9 pt) when a figure is inserted at the full 6.5-inch text width. The same model is written out in `docs/Methodology.md` §5.

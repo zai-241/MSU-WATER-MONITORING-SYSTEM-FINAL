@@ -153,115 +153,147 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
 
 ## 5. Database Schema & Data Models
 
-### 5.1 Firebase Realtime Database (RTDB) Schema
+The system stores data in two Firebase databases. **Cloud Firestore** holds only user profiles. The **Firebase Realtime Database (RTDB)** holds everything that changes live: tank readings, settings, history, logs, alerts, roles and per-user state. The figures `docs/diagrams/images/Data_Model_1.png` (Firestore, the RTDB path tree and the smaller records) and `Data_Model_2.png` (tanks, history, notifications, logs) show this model; the ERD (Figure 3-12) shows the relationships between records.
 
-```json
-{
-  "tanks": {
-    "1": {
-      "id": "1",
-      "name": "Reservoir Tank 1",
-      "waterLevel": 75,
-      "waterHeight": 3.75,
-      "phLevel": 7.20,
-      "status": "safe",
-      "pumpOn": false,
-      "enabled": true,
-      "levelVmin": 0.25,
-      "levelVmax": 3.00,
-      "tankHeight": 5.00,
-      "levelOffset": 0.00,
-      "phNeutralVoltage": 2.50,
-      "phSlope": 0.18,
-      "phOffset": 0.00,
-      "phSensorOk": true,
-      "levelSensorOk": true,
-      "lowLevelAlert": "NORMAL",
-      "highLevelAlert": "NORMAL",
-      "phAlert": "NORMAL",
-      "lastUpdate": 1782348231200,
-      "rssi": -55,
-      "wifiConnected": true,
-      "ethConnected": false,
-      "firebaseConnected": true,
-      "location": "Main Reservoir Area",
-      "assignedWorker": "user_uid_123"
-    },
-    "2": {
-      "id": "2",
-      "name": "Reservoir Tank 2",
-      "waterLevel": 0,
-      "waterHeight": 0,
-      "phLevel": 7.0,
-      "status": "offline",
-      "pumpOn": false,
-      "enabled": false,
-      "location": "North Campus Extension"
-    }
-  },
-  "config": {
-    "lowLevelThreshold": 15,
-    "overflowThreshold": 95,
-    "minPh": 6.5,
-    "maxPh": 8.5,
-    "maintenanceMode": false,
-    "pumpControlLock": false
-  },
-  "notifications": {
-    "notif_1718023": {
-      "id": "notif_1718023",
-      "title": "Low Level Alert",
-      "message": "Reservoir Tank 1 level dropped below 15%. Current level: 14%.",
-      "type": "warning",
-      "timestamp": 1782348234200,
-      "read": false
-    }
-  },
-  "logs": {
-    "log_1718045": {
-      "id": "log_1718045",
-      "action": "Pump Controller",
-      "details": "Pump started automatically. Water level: 14% fell to low level threshold (15%).",
-      "performedBy": "ESP32 System",
-      "logLevel": "INFO",
-      "timestamp": 1782348235000
-    }
-  },
-  "history": {
-    "tanks": {
-      "1": {
-        "-O_sample_123": {
-          "waterLevel": 75,
-          "waterHeight": 3.75,
-          "phLevel": 7.20,
-          "pumpOn": false,
-          "timestamp": 1782348231200
-        }
-      }
-    }
-  }
-}
+Firebase does not enforce foreign keys; keys such as `assignedWorker` or `tankId` are kept consistent by the application. All times are `TIMESTAMP` values in milliseconds since 1970 (readings, logs and alerts use server time).
+
+### 5.1 Firebase Realtime Database (RTDB)
+
+The RTDB is one JSON tree. Names in `{braces}` are generated keys.
+
+```
+/
+├── tanks/{tankId}                      TANKS          tankId = "1" to "4"
+├── config                              CONFIG         one record for all tanks
+├── history/tanks/{tankId}/{pushKey}    HISTORY        one sample every 10 min
+├── logs/{pushKey}                      LOGS
+├── notifications/{alertId}             NOTIFICATIONS  alertId = alert-{tankId}-{type}
+├── roles/{uid}                         ROLES
+├── userState/{uid}                     USER_STATE
+│   ├── notificationsReadIds/{alertId}
+│   └── fcmTokens/{token}
+└── system/worker                       SYSTEM         Alert Service heartbeat
 ```
 
-### 5.2 Cloud Firestore Users Collection Schema
-* **Collection**: `users`
-* **Document ID**: Firebase Auth `uid`
-```json
-{
-  "id": "auth_uid_123",
-  "username": "Operator Name",
-  "email": "operator@msu.edu",
-  "role": "worker",
-  "jobTitle": "Lead Water Technician",
-  "status": "active",
-  "createdAt": 1708000000000
-}
-```
+#### `tanks/{tankId}`: TANKS
+Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capacity), an assigned Worker (`pumpOn` only, while the pump lock is off) and the Alert Service (`controllerOffline`).
+
+| Field | Type | Notes |
+|---|---|---|
+| id | STRING | "1" to "4" |
+| name, location | STRING | |
+| enabled | BOOLEAN | |
+| assignedWorker | STRING | UID of the assigned worker, or null |
+| waterLevel | NUMBER | % (null when the level sensor fails) |
+| waterHeight | NUMBER | m |
+| phLevel | NUMBER | null when the pH sensor fails |
+| status | STRING | safe, warning, danger or offline |
+| lowLevelAlert, highLevelAlert, phAlert | STRING | NORMAL, WARNING, CRITICAL or RECOVERED |
+| pumpOn | BOOLEAN | virtual pump state |
+| levelSensorOk, phSensorOk | BOOLEAN | sensor health |
+| levelVmin, levelVmax | NUMBER | level sensor calibration (V) |
+| tankHeight | NUMBER | m |
+| capacityLiters | NUMBER | > 0; default 200 L when missing |
+| levelOffset | NUMBER | |
+| phNeutralVoltage | NUMBER | V at pH 7 |
+| phSlope, phOffset | NUMBER | pH calibration |
+| rssi | NUMBER | Wi-Fi signal, dBm |
+| wifiConnected, ethConnected, firebaseConnected | BOOLEAN | link status |
+| controllerOffline | BOOLEAN | set by the offline watchdog |
+| lastUpdate | TIMESTAMP | missing = controller never reported ("Planned") |
+
+#### `config`: CONFIG
+Written by the Admin Panel.
+
+| Field | Type | Default |
+|---|---|---|
+| lowLevelThreshold | NUMBER (0–100) | 15 % |
+| overflowThreshold | NUMBER (0–100) | 95 % |
+| minPh, maxPh | NUMBER (0–14) | 6.5, 8.5 |
+| maintenanceMode | BOOLEAN | false |
+| pumpControlLock | BOOLEAN | false |
+| pumpDemoMode | BOOLEAN | missing = on |
+| offlineThresholdSec | NUMBER | 30 |
+| repeatIntervalSec | NUMBER | 60 |
+| soundEnabled | BOOLEAN | true |
+| pushEnabled | BOOLEAN | missing = on |
+
+#### `history/tanks/{tankId}/{pushKey}`: HISTORY
+Written by the ESP32 every 10 minutes. Indexed on `timestamp`.
+
+| Field | Type |
+|---|---|
+| waterLevel, waterHeight, phLevel | NUMBER |
+| pumpOn | BOOLEAN |
+| timestamp | TIMESTAMP |
+
+#### `logs/{pushKey}`: LOGS
+Written by the ESP32, the web app and the Alert Service. Any account with a role may add an entry; only an admin may change or delete one. Indexed on `timestamp`.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | STRING | |
+| tankId | STRING | sent by the Tank 2–4 controllers; missing on ESP32 entries = Tank 1 |
+| action, details | STRING | |
+| performedBy | STRING | name of the user or "ESP32 System" |
+| logLevel | STRING | INFO, WARNING, ERROR or CRITICAL |
+| timestamp | TIMESTAMP | |
+
+#### `notifications/{alertId}`: NOTIFICATIONS
+Written by the Alert Service (or by open dashboards while it is down); users acknowledge. A live alert uses the ID `alert-{tankId}-{type}`; when it ends it is archived as `alert-{tankId}-{type}-{timestamp}`. Indexed on `timestamp`.
+
+| Field | Type | Notes |
+|---|---|---|
+| id, tankId, title, message | STRING | |
+| type | STRING | info, warning or danger |
+| timestamp | TIMESTAMP | |
+| read | BOOLEAN | per-user read state is in USER_STATE |
+| acknowledged | BOOLEAN | |
+| acknowledgedBy | STRING | name |
+| acknowledgedByUid | STRING | must equal the signed-in user's UID |
+| acknowledgedAt | TIMESTAMP | |
+| resolved | BOOLEAN | |
+| resolvedAt, lastRepeatedAt | TIMESTAMP | |
+
+#### `roles/{uid}`: ROLES
+The value is a single STRING: `admin`, `worker`, `viewer` or `device` (an ESP32 controller account). The Admin Panel copies the role from Firestore when an account is created or changed and removes it when the account is set inactive. The database rules read this path to decide who may write.
+
+#### `userState/{uid}`: USER_STATE
+Readable and writable only by the same user.
+
+| Field | Type | Notes |
+|---|---|---|
+| notificationsLastReadAt | TIMESTAMP | everything up to this time is read |
+| notificationsReadIds/{alertId} | BOOLEAN | true for each notification read since then |
+| fcmTokens/{token}/platform | STRING | device registered for push |
+| fcmTokens/{token}/updatedAt | TIMESTAMP | |
+
+#### `system/worker`: SYSTEM
+The Alert Service heartbeat: `lastSeen` and `startedAt` (TIMESTAMP). It is removed when the service disconnects; if it is missing for 60 s, open dashboards show "Alert Service Offline".
+
+**Retention:** the Alert Service deletes notifications, logs and history older than 90 days once a day.
+
+### 5.2 Cloud Firestore
+
+Firestore has one collection, `users`, with one document per account. The document ID is the Firebase Auth `uid`. Every other path is denied by `firestore.rules`.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | STRING | Auth UID |
+| username | STRING | the user may edit |
+| email | STRING | |
+| role | STRING | admin, worker or viewer |
+| jobTitle | STRING | the user may edit |
+| status | STRING | active or inactive |
+| createdAt | TIMESTAMP | |
+
+Any signed-in user may read profiles; only an admin may create or delete them or change `role` and `status`.
 
 * **Role Definitions**:
   - `admin`: Full configuration, user provisioning, tank calibration, and lock overrides.
-  - `worker`: Live monitoring, viewing logs/reports, manual pump toggling (unless locked).
+  - `worker`: Live monitoring, viewing logs/reports, pump switching on an assigned tank while Pump Demo Mode is on and the pump lock is off.
   - `viewer`: Read-only telemetry viewing.
+  - `device` (RTDB `/roles` only): an ESP32 controller account that may write its tank's readings, history and logs.
 
 ### 5.3 Hardware Controller Architecture
 * **Controller**: **ESP32 Dev Module** (Dual-Core Xtensa LX6 @ 240MHz).
