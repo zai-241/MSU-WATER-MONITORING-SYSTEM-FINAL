@@ -117,6 +117,35 @@ async function registerNative(uid: string): Promise<PushResult> {
   });
 }
 
+/**
+ * Registers the messaging service worker and waits until it is active.
+ * On a device's first registration, register() resolves while the worker is still
+ * installing, and subscribing then fails with "no active Service Worker".
+ */
+async function activeServiceWorker(): Promise<ServiceWorkerRegistration> {
+  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  if (registration.active) return registration;
+
+  const worker = registration.installing ?? registration.waiting;
+  if (!worker) throw new Error('The push service worker did not install. Reload the page and try again.');
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The push service worker took too long to start. Try again.')), 15000);
+    const check = () => {
+      if (worker.state === 'activated') {
+        clearTimeout(timer);
+        resolve();
+      } else if (worker.state === 'redundant') {
+        clearTimeout(timer);
+        reject(new Error('The push service worker failed to install. Reload the page and try again.'));
+      }
+    };
+    worker.addEventListener('statechange', check);
+    check();
+  });
+  return registration;
+}
+
 async function registerWeb(uid: string): Promise<PushResult> {
   if (!(await webSupported())) {
     return {
@@ -140,7 +169,7 @@ async function registerWeb(uid: string): Promise<PushResult> {
     };
   }
 
-  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  const registration = await activeServiceWorker();
   const { getMessaging, getToken } = await import('firebase/messaging');
   const token = await getToken(getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
   if (!token) return { status: 'available', message: 'Could not get a push token. Try again.' };
