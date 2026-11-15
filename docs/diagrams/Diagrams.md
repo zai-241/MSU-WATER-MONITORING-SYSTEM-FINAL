@@ -1,10 +1,12 @@
 # Updated Diagrams for Chapter 3
 
-These replace the figures that no longer match the system. They keep the design of the original thesis figures (same layout, colors, fonts, avatars and photos); only the content that was wrong changed.
+These replace the figures that no longer match the system. They keep the design of the original thesis figures (same colors, fonts, avatars and photos); the content that was wrong changed, and most layouts were later made more compact for printing (see "Print size" below).
 
 **To put a figure in Word:** use the PNG in `docs/diagrams/images/` (Insert → Pictures), or open `docs/diagrams/diagrams.html` in a browser to see them all with download links.
 
 **To change a figure:** edit `figures.mjs`, then run `node docs/diagrams/build.mjs` (one-time setup: `npm i --no-save --prefix docs/diagrams puppeteer-core`). It needs Microsoft Edge and an internet connection for the fonts.
+
+**Print size (2026-11-15):** Figures 3-4, 3-5 and 3-8 to 3-14 were redrawn for a portrait page because their text was too small to read on paper. Each is 1200 units wide with body text of 19 to 22 units, so at 6 inches wide the text prints at about 7 to 8 pt (it was 3 to 4 pt). To get this, the empty space was removed and some layouts changed: 3-4 and 3-11 use vertical lanes, 3-5 runs in two halves (reading and sending on the left, database and alerts on the right), 3-10 and 3-12 are stacked in columns, and 3-13 and 3-14 use two rows. The content is the same. Insert each PNG at the full text width; do not shrink it.
 
 Only the figures that contradict the system are here. Figures 3-1 to 3-3 and 3-7 already match and stay as they are.
 

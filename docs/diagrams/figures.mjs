@@ -1,5 +1,5 @@
 // Chapter 3 figures, drawn as SVG in the same style as the original thesis figures.
-// Each figure keeps the old layout; only the content that no longer matches the system changed.
+// Laid out for a portrait page: narrow canvas, large text, little empty space (see PAGE_W below).
 // build.mjs turns these into images/*.svg and images/*.png.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -78,142 +78,169 @@ function imageDef(id, file, w, h) {
 let clipN = 0;
 const crop = (id, [cx, cy, cw, ch], x, y, w = cw, h = ch) =>
   `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="${cx} ${cy} ${cw} ${ch}"><use xlink:href="#${id}"/></svg>`;
-// Crop clipped to a circle (avatars), so leftover line ends around them in the old figure are hidden
-function cropCircle(id, [ocx, ocy, r], x, y) {
+// Crop clipped to a circle of radius R centred at (cx, cy); [ocx, ocy, r] is the circle in the source image
+function cropCircleAt(id, [ocx, ocy, r], cx, cy, R) {
   const n = `cc${++clipN}`;
-  return `<clipPath id="${n}"><circle cx="${x + r}" cy="${y + r}" r="${r}"/></clipPath><g clip-path="url(#${n})">` +
-    crop(id, [ocx - r, ocy - r, 2 * r, 2 * r], x, y) + '</g>';
+  return `<clipPath id="${n}"><circle cx="${cx}" cy="${cy}" r="${R}"/></clipPath><g clip-path="url(#${n})">` +
+    crop(id, [ocx - r, ocy - r, 2 * r, 2 * r], cx - R, cy - R, 2 * R, 2 * R) + '</g>';
+}
+
+// ---------- print size ----------
+// Every figure below except 3-6 is drawn 1200 units wide, so on a 6-inch-wide page 1 unit = 0.36 pt.
+// Keep body text at 19 units or more (about 7 pt in print) and labels at 16 or more.
+const PAGE_W = 1200;
+
+// Rough text width, used to wrap card text and size use-case ellipses
+function estW(s, size, bold = false) {
+  let w = 0;
+  for (const ch of String(s)) {
+    if (ch === ' ') w += 0.28;
+    else if ("iljtfr.,;:'|!()[]/".includes(ch)) w += 0.36;
+    else if ('mwMW'.includes(ch)) w += 0.85;
+    else if (ch >= 'A' && ch <= 'Z') w += 0.68;
+    else if (ch >= '0' && ch <= '9') w += 0.62;
+    else w += 0.56;
+  }
+  return w * size * (bold ? 1.06 : 1);
+}
+function wrap(t, maxW, size, bold = false) {
+  const out = [];
+  let cur = '';
+  for (const word of String(t).replace(/\n/g, ' ').split(/\s+/)) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (cur && estW(next, size, bold) > maxW) { out.push(cur); cur = word; } else cur = next;
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 // ======================================================================
 // Figure 3-4: Proposed Operational Workflow (vertical swimlanes)
 // ======================================================================
 function fig34() {
-  const W = 2280, H = 1350, top = 30, bot = 1320, headH = 58;
-  const lanes = [[30, 900, 'IoT System'], [900, 1270, 'Alert Service'], [1270, 1730, 'Water Controllers'], [1730, 2250, 'Director (Admin)']];
-  let b = `<clipPath id="lanes"><rect x="30" y="${top}" width="2220" height="${bot - top}" rx="12"/></clipPath>`;
-  b += `<g clip-path="url(#lanes)"><rect x="30" y="${top}" width="2220" height="${headH}" fill="${C.head}"/></g>`;
-  b += `<rect x="30" y="${top}" width="2220" height="${bot - top}" rx="12" fill="none" stroke="#111" stroke-width="3"/>`;
-  b += `<line x1="30" y1="${top + headH}" x2="2250" y2="${top + headH}" stroke="#111" stroke-width="3"/>`;
+  const W = PAGE_W, H = 1255, top = 10, bot = 1245, headH = 50, F = 22;
+  const lanes = [[10, 400, 'IoT System'], [400, 650, 'Alert Service'], [650, 940, 'Water Controllers'], [940, 1190, 'Director (Admin)']];
+  let b = `<clipPath id="lanes"><rect x="10" y="${top}" width="1180" height="${bot - top}" rx="10"/></clipPath>`;
+  b += `<g clip-path="url(#lanes)"><rect x="10" y="${top}" width="1180" height="${headH}" fill="${C.head}"/></g>`;
+  b += `<rect x="10" y="${top}" width="1180" height="${bot - top}" rx="10" fill="none" stroke="#111" stroke-width="2.5"/>`;
+  b += `<line x1="10" y1="${top + headH}" x2="1190" y2="${top + headH}" stroke="#111" stroke-width="2.5"/>`;
   for (const [x1, x2, name] of lanes) {
-    if (x1 > 30) b += `<line x1="${x1}" y1="${top}" x2="${x1}" y2="${bot}" stroke="#111" stroke-width="3"/>`;
-    b += text((x1 + x2) / 2, top + headH / 2, name, { size: 34 });
+    if (x1 > 10) b += `<line x1="${x1}" y1="${top}" x2="${x1}" y2="${bot}" stroke="#111" stroke-width="2.5"/>`;
+    b += text((x1 + x2) / 2, top + headH / 2, name, { size: 24 });
   }
   // edges first, nodes on top
-  b += arrow([[440, 210], [440, 250]]);
-  b += arrow([[440, 330], [440, 375]]);
-  b += arrow([[440, 445], [440, 492]]);
-  b += arrow([[440, 568], [440, 600], [290, 600], [290, 625]]);
-  b += arrow([[440, 600], [600, 600], [600, 625]]);
-  b += arrow([[165, 690], [90, 690], [90, 290], [335, 290]]);
-  b += arrow([[725, 690], [810, 690], [810, 310], [545, 310]]);
-  b += arrow([[290, 755], [290, 850], [990, 850]]);
-  b += arrow([[600, 755], [600, 850]], { head: false });
-  b += arrow([[1085, 888], [1085, 942]]);
-  b += arrow([[1180, 980], [1370, 980]]);
-  b += arrow([[1500, 1018], [1500, 1052]]);
-  b += arrow([[1500, 1128], [1500, 1162]]);
-  b += arrow([[1665, 1200], [1700, 1200], [1700, 265], [545, 265]]);
-  b += arrow([[1085, 1018], [1085, 1290], [1840, 1290], [1840, 1018]]);
-  b += arrow([[1935, 980], [2035, 980]]);
-  b += arrow([[2130, 1018], [2130, 1070]]);
-  b += arrow([[2130, 1130], [2130, 1185]]);
-  b += lbl(128, 690, 'No', { size: 14 }) + lbl(767, 690, 'No', { size: 14 });
-  b += lbl(290, 805, 'Yes', { size: 14 }) + lbl(600, 805, 'Yes', { size: 14 });
+  b += arrow([[200, 145], [200, 167]]) + arrow([[200, 243], [200, 267]]) + arrow([[200, 343], [200, 366]]) + arrow([[200, 470], [200, 505]]);
+  b += arrow([[200, 675], [200, 725]]);
+  b += arrow([[55, 810], [30, 810], [30, 205], [75, 205]]);
+  b += arrow([[345, 590], [375, 590], [375, 700], [417, 700]]);
+  b += arrow([[345, 810], [375, 810], [375, 700]], { head: false });
+  b += arrow([[525, 738], [525, 778]]);
+  b += arrow([[633, 830], [665, 830]]);
+  b += arrow([[785, 882], [785, 913]]) + arrow([[785, 1017], [785, 1049]]);
+  b += arrow([[905, 1115], [922, 1115], [922, 205], [325, 205]]);
+  b += arrow([[525, 882], [525, 1218], [952, 1218], [952, 830], [968, 830]]);
+  b += arrow([[1068, 868], [1068, 900]]) + arrow([[1068, 1004], [1068, 1040]]) + arrow([[1068, 1100], [1068, 1138]]);
+  b += lbl(200, 698, 'No', { size: 20 }) + lbl(30, 760, 'No', { size: 20 });
+  b += lbl(375, 640, 'Yes', { size: 20 }) + lbl(375, 760, 'Yes', { size: 20 });
   // nodes
-  b += term(440, 170, 190, 80, 'Continuous 24/7\nMonitoring', { size: 17 });
-  b += box(440, 290, 210, 80, 'Read Sensor Data\n(Level, pH)', { size: 17 });
-  b += box(440, 410, 210, 70, 'Filter & Convert\nReadings', { size: 17 });
-  b += box(440, 530, 260, 76, 'Log Data to Database\n(On Change or Every 10 s)', { size: 17 });
-  b += dec(290, 690, 250, 130, 'Level Low/High\nfor 5 Seconds?', { size: 17 });
-  b += dec(600, 690, 250, 130, 'pH Unsafe\nfor 5 Seconds?', { size: 17 });
-  b += box(1085, 850, 190, 76, 'Create Alert\nNotification', { size: 17 });
-  b += box(1085, 980, 190, 76, 'Send Push\nNotification (FCM)', { size: 17 });
-  b += box(1500, 980, 260, 76, 'Receive Toast, Chime\n& Push Notification', { size: 17 });
-  b += box(1500, 1090, 250, 76, 'Acknowledge Alert\n(Silence Chime, Logged)', { size: 17 });
-  b += box(1500, 1200, 330, 76, 'Perform Manual Intervention /\nOn-Site Inspection', { size: 17 });
-  b += box(1840, 980, 190, 76, 'View Dashboard\nAlert', { size: 17 });
-  b += box(2130, 980, 190, 76, 'Monitor Real-Time\nRecovery', { size: 17 });
-  b += box(2130, 1100, 160, 60, 'View Reports', { size: 17 });
-  b += term(2130, 1215, 170, 60, 'End Process', { size: 17 });
+  b += term(200, 110, 250, 70, 'Continuous 24/7\nMonitoring', { size: F });
+  b += box(200, 205, 250, 76, 'Read Sensor Data\n(Level, pH)', { size: F });
+  b += box(200, 305, 250, 76, 'Filter & Convert\nReadings', { size: F });
+  b += box(200, 418, 276, 104, 'Log Data to\nDatabase (On Change\nor Every 10 s)', { size: F });
+  b += dec(200, 590, 290, 170, 'Level Low/High\nfor 5 Seconds?', { size: 21 });
+  b += dec(200, 810, 290, 170, 'pH Unsafe\nfor 5 Seconds?', { size: 21 });
+  b += box(525, 700, 216, 76, 'Create Alert\nNotification', { size: F });
+  b += box(525, 830, 216, 104, 'Send Push\nNotification\n(FCM)', { size: F });
+  b += box(785, 830, 240, 104, 'Receive Toast,\nChime & Push\nNotification', { size: F });
+  b += box(785, 965, 240, 104, 'Acknowledge Alert\n(Silence Chime,\nLogged)', { size: F });
+  b += box(785, 1115, 240, 132, 'Perform Manual\nIntervention /\nOn-Site\nInspection', { size: F });
+  b += box(1068, 830, 200, 76, 'View Dashboard\nAlert', { size: F });
+  b += box(1068, 952, 200, 104, 'Monitor\nReal-Time\nRecovery', { size: F });
+  b += box(1068, 1070, 200, 60, 'View Reports', { size: F });
+  b += term(1068, 1168, 200, 60, 'End Process', { size: F });
   return svg(W, H, b);
 }
 
 // ======================================================================
 // Figure 3-5: System Data Processing and Logic Flowchart
+// Left half: reading and sending (spine at x = 215). Right half: database and alerts (spine at x = 815).
 // ======================================================================
 function fig35() {
-  const W = 1440, H = 3000, M = 685;
-  const ioL = (cx, w) => cx - w / 2 + SKEW / 2, ioR = (cx, w) => cx + w / 2 - SKEW / 2;
+  const W = PAGE_W, H = 1672, L = 215, R = 815, F = 20, S = 18;
+  const note = (x, y, t) => text(x, y, t, { size: S, lh: 1.25 });
+  const tag = (x, y, t) => lbl(x, y, t, { size: S });
   let b = '';
-  b += arrow([[M, 86], [M, 137]]);
-  b += arrow([[M, 233], [M, 280]]);
-  b += arrow([[535, 360], [285, 360]]);
-  b += arrow([[160, 310], [160, 185], [ioL(M, 290), 185]]);
-  b += arrow([[M, 440], [M, 508]]);
-  b += arrow([[M, 592], [M, 650]]);
-  b += arrow([[495, 735], [70, 735]], { head: false });
-  b += arrow([[M, 820], [M, 880]]);
-  b += arrow([[835, 950], [940, 950]]);
-  b += arrow([[M, 1020], [M, 1095]]);
-  b += arrow([[795, 1170], [920, 1170]]);
-  b += arrow([[575, 1170], [475, 1170]]);
-  b += arrow([[185, 1170], [70, 1170]], { head: false });
-  b += arrow([[70, 735], [70, 2860], [550, 2860]]);
-  b += arrow([[1230, 950], [1270, 950], [1270, 1420], [865, 1420]]);
-  b += arrow([[1060, 1213], [1060, 1380], [865, 1380]]);
-  b += arrow([[M, 1475], [M, 1537]]);
-  b += arrow([[565, 1620], [245, 1620], [245, 1742]]);
-  b += arrow([[805, 1620], [1060, 1620], [1060, 1707]]);
-  b += arrow([[945, 1790], [ioR(245, 290), 1790]]);
-  b += arrow([[245, 1838], [245, 2860]], { head: false });
-  b += arrow([[1060, 1873], [1060, 1935]]);
-  b += arrow([[1060, 2045], [1060, 2112]]);
-  b += arrow([[1060, 2208], [1060, 2275]]);
-  b += arrow([[1180, 2340], [1208, 2340]]);
-  b += arrow([[1300, 2292], [1300, 2160], [ioR(1060, 360), 2160]]);
-  b += arrow([[1060, 2405], [1060, 2462]]);
-  b += arrow([[1060, 2538], [1060, 2595]]);
-  b += arrow([[1225, 2680], [1290, 2680], [1290, 2568], [1064, 2568]]);
-  b += arrow([[1060, 2765], [1060, 2822]]);
-  b += arrow([[930, 2860], [820, 2860]]);
-  b += arrow([[M, 2896], [M, 2950], [1400, 2950], [1400, 185], [ioR(M, 290), 185]]);
+  // left half
+  b += arrow([[L, 70], [L, 110]]);
+  b += arrow([[L, 210], [L, 255]]);
+  b += arrow([[370, 345], [500, 345], [500, 279]]);
+  b += arrow([[394, 180], [353, 180]]);
+  b += arrow([[L, 435], [L, 485]]);
+  b += arrow([[L, 585], [L, 630]]);
+  b += arrow([[50, 725], [32, 725], [32, 1455], [L, 1455]], { head: false });
+  b += arrow([[L, 820], [L, 875]]);
+  b += arrow([[375, 950], [394, 950]]);
+  b += arrow([[L, 1025], [L, 1080]]);
+  b += arrow([[355, 1150], [394, 1150]]);
+  b += arrow([[L, 1220], [L, 1275]]);
+  b += arrow([[L, 1375], [L, 1533]]);
+  b += arrow([[75, 1565], [12, 1565], [12, 160], [75, 160]]);
+  // both transmit boxes feed the database at the top of the right half
+  b += arrow([[606, 1150], [628, 1150], [628, 950]], { head: false });
+  b += arrow([[606, 950], [628, 950], [628, 90], [665, 90]]);
+  // right half
+  b += arrow([[R, 160], [R, 215]]);
+  b += arrow([[940, 300], [1080, 300], [1080, 380]]);
+  b += arrow([[R, 385], [R, 445]]);
+  b += arrow([[940, 530], [1080, 530], [1080, 480]]);
+  b += arrow([[1158, 430], [1186, 430], [1186, 1650], [L, 1650], [L, 1597]]);
+  b += arrow([[R, 615], [R, 676]]);
+  b += arrow([[R, 804], [R, 845]]);
+  b += arrow([[R, 945], [R, 990]]);
+  b += arrow([[940, 1045], [992, 1045]]);
+  b += arrow([[1080, 986], [1080, 895], [972, 895]]);
+  b += arrow([[R, 1100], [R, 1157]]);
+  b += arrow([[R, 1233], [R, 1280]]);
+  b += arrow([[990, 1375], [1060, 1375], [1060, 1256], [819, 1256]]);
+  b += arrow([[R, 1470], [R, 1527]]);
+  b += arrow([[685, 1565], [355, 1565]]);
   // edge labels
-  b += lbl(410, 360, 'Invalid / Voltage Spike');
-  b += lbl(M, 474, 'Valid Reading');
-  b += lbl(300, 735, 'No') + lbl(M, 850, 'Yes');
-  b += lbl(888, 950, 'Yes') + lbl(M, 1057, 'No');
-  b += lbl(858, 1170, 'Yes') + lbl(525, 1170, 'No');
-  b += lbl(405, 1620, 'Normal (15%–95% Level,\n6.5–8.5 pH)');
-  b += lbl(935, 1620, 'Threshold\nBreached');
-  b += lbl(668, 1790, 'Transient Noise (< 5 s)');
-  b += lbl(1060, 1904, 'Persistent (≥ 5 s)');
-  b += text(1194, 2314, 'No', { size: 15 });
-  b += lbl(1060, 2433, 'Yes') + lbl(1258, 2680, 'No') + lbl(1060, 2793, 'Yes');
-  // nodes
-  b += term(M, 60, 150, 52, 'Start', { size: 17 });
-  b += io(M, 185, 290, 96, 'Read Analog Sensors\n(Hydrostatic & pH)\nEvery 20 ms', { size: 17 });
-  b += dec(M, 360, 300, 160, '4-Stage\nSignal Filter & Bounds\nCheck?', { size: 17 });
-  b += box(160, 360, 250, 100, 'Discard Reading &\nResample (Sensor Fault\nif Invalid for 10 s)', { size: 16 });
-  b += box(M, 550, 330, 84, 'Convert to Height, Level %\n& pH (Calibration Values)', { size: 17 });
-  b += dec(M, 735, 380, 170, 'Changed ≥ 2% or\n≥ 0.15 pH, or 10 s\nHeartbeat Due?', { size: 17 });
-  b += dec(M, 950, 300, 140, 'Primary\nEthernet Link Active?', { size: 17 });
-  b += box(1085, 950, 290, 100, 'Transmit via LAN8720\nEthernet & CPE210 P2P\nBridge', { size: 17 });
-  b += dec(M, 1170, 220, 150, 'Backup Wi-Fi\nConnected?', { size: 17 });
-  b += box(1060, 1170, 280, 86, 'Transmit via 2.4GHz\nWi-Fi Backup', { size: 17 });
-  b += box(330, 1170, 290, 100, 'Buffer Critical Logs in\nRAM (20 Entries) & Reconnect\n(90 s Watchdog)', { size: 16 });
-  b += cyl(M, 1400, 360, 150, 'Firebase Realtime\nDatabase Sync\n(History Every 10 min)', { size: 17 });
-  b += dec(M, 1620, 240, 165, 'Threshold\nValidation\nCheck?', { size: 17 });
-  b += io(245, 1790, 290, 96, 'Update Web & Mobile\nDashboard', { size: 17 });
-  b += dec(1060, 1790, 230, 165, '5-Second\nPersistence\nCheck?', { size: 17 });
-  b += box(1060, 1990, 360, 110, 'Alert Service Raises Alert:\nCRITICAL (Low Level, pH),\nWARNING (Overflow);\nESP32 Logs the Event', { size: 16 });
-  b += io(1060, 2160, 360, 96, 'Send Push Notification;\nToast & Audible Chime\non Web & Android', { size: 16 });
-  b += dec(1060, 2340, 240, 130, 'Acknowledged?', { size: 17 });
-  b += box(1300, 2340, 180, 96, 'Re-show Toast &\nChime Every 60 s\n(Push Only at Start)', { size: 14 });
-  b += box(1060, 2500, 280, 76, 'Silence Chime &\nLog Acknowledgment', { size: 17 });
-  b += dec(1060, 2680, 330, 170, 'Normal for 5 s?\n(Level ≥ 17% / ≤ 93%,\npH 6.65–8.35)', { size: 16 });
-  b += box(1060, 2860, 260, 76, 'Alert Resolved;\nRecovered Logged', { size: 17 });
-  b += term(M, 2860, 270, 72, 'Next Reading Cycle', { size: 17 });
+  b += note(442, 380, 'Invalid /\nVoltage Spike');
+  b += tag(L, 457, 'Valid Reading');
+  b += tag(32, 790, 'No') + tag(L, 845, 'Yes');
+  b += note(362, 918, 'Yes') + tag(L, 1050, 'No');
+  b += note(376, 1130, 'Yes') + tag(L, 1245, 'No');
+  b += note(1072, 250, 'Normal\n(15%–95% Level,\n6.5–8.5 pH)');
+  b += tag(R, 412, 'Threshold Breached');
+  b += note(1072, 568, 'Transient Noise\n(< 5 s)');
+  b += tag(R, 643, 'Persistent (≥ 5 s)');
+  b += note(966, 1026, 'No') + tag(R, 1126, 'Yes');
+  b += tag(1060, 1320, 'No') + tag(R, 1496, 'Yes');
+  // nodes, left half
+  b += term(L, 45, 130, 50, 'Start', { size: F });
+  b += io(L, 160, 300, 100, 'Read Analog Sensors\n(Hydrostatic & pH)\nEvery 20 ms', { size: F });
+  b += dec(L, 345, 310, 180, '4-Stage Signal\nFilter & Bounds\nCheck?', { size: F });
+  b += box(500, 215, 212, 128, 'Discard Reading &\nResample (Sensor\nFault if Invalid\nfor 10 s)', { size: 19 });
+  b += box(L, 535, 290, 100, 'Convert to Height,\nLevel % & pH\n(Calibration Values)', { size: F });
+  b += dec(L, 725, 330, 190, 'Changed ≥ 2% or\n≥ 0.15 pH, or 10 s\nHeartbeat Due?', { size: F });
+  b += dec(L, 950, 320, 150, 'Primary Ethernet\nLink Active?', { size: F });
+  b += box(500, 950, 212, 128, 'Transmit via\nLAN8720 Ethernet\n& CPE210 P2P\nBridge', { size: 19 });
+  b += dec(L, 1150, 280, 140, 'Backup Wi-Fi\nConnected?', { size: F });
+  b += box(500, 1150, 212, 102, 'Transmit via\n2.4GHz Wi-Fi\nBackup', { size: 19 });
+  b += box(L, 1325, 320, 100, 'Buffer Critical Logs in\nRAM (20 Entries) &\nReconnect (90 s Watchdog)', { size: F });
+  b += term(L, 1565, 280, 64, 'Next Reading Cycle', { size: F });
+  // nodes, right half
+  b += cyl(R, 90, 300, 140, 'Firebase Realtime\nDatabase Sync\n(History Every 10 min)', { size: F });
+  b += dec(R, 300, 250, 170, 'Threshold\nValidation\nCheck?', { size: F });
+  b += io(1080, 430, 176, 100, 'Update Web\n& Mobile\nDashboard', { size: 19 });
+  b += dec(R, 530, 250, 170, '5-Second\nPersistence\nCheck?', { size: F });
+  b += box(R, 740, 340, 128, 'Alert Service Raises Alert:\nCRITICAL (Low Level, pH),\nWARNING (Overflow);\nESP32 Logs the Event', { size: F });
+  b += io(R, 895, 330, 100, 'Send Push Notification;\nToast & Audible Chime\non Web & Android', { size: F });
+  b += dec(R, 1045, 250, 110, 'Acknowledged?', { size: F });
+  b += box(1080, 1045, 176, 118, 'Re-show Toast\n& Chime Every\n60 s (Push Only\nat Start)', { size: 18 });
+  b += box(R, 1195, 270, 76, 'Silence Chime &\nLog Acknowledgment', { size: F });
+  b += dec(R, 1375, 350, 190, 'Normal for 5 s?\n(Level ≥ 17% / ≤ 93%,\npH 6.65–8.35)', { size: F });
+  b += box(R, 1565, 260, 76, 'Alert Resolved;\nRecovered Logged', { size: F });
   return svg(W, H, b);
 }
 
@@ -248,30 +275,38 @@ function fig36() {
 
 // ======================================================================
 // Figures 3-8 and 3-9: IPO card columns
+// Card text is wrapped to the card width here, so the line breaks in the data below do not matter.
 // ======================================================================
 function ipo(rows) {
-  const cols = [50, 505, 957], cw = 375, card = 325, rowH = 225, gap = 25, y0 = 125;
-  const H = y0 + rows.length * (rowH + gap) + 25;
-  let b = '';
+  const cols = [8, 412, 816], cw = 376, pad = 10, card = cw - 2 * pad, y0 = 62, gap = 10;
+  const TS = 21, BS = 20, TL = TS * 1.28, BL = BS * 1.32;
+  let b = '', y = y0;
+  const cards = [];
+  for (const row of rows) {
+    const cells = row.map(([title, body]) => ({ t: wrap(title, card - 14, TS, true), d: wrap(body, card - 16, BS) }));
+    const rowH = Math.max(...cells.map((c) => c.t.length * TL + 8 + c.d.length * BL)) + 22;
+    cards.push({ y, rowH, cells });
+    y += rowH + gap;
+  }
+  const H = y + 8;
   ['Input', 'Process', 'Output'].forEach((name, i) => {
-    b += rect(cols[i], 50, cw, H - 75, { rx: 30, sw: 2.5 });
-    b += text(cols[i] + cw / 2, 82, name, { size: 30 });
+    b += rect(cols[i], 8, cw, H - 16, { rx: 20, sw: 2 });
+    b += text(cols[i] + cw / 2, 35, name, { size: 26 });
   });
-  rows.forEach((row, r) => {
-    const y = y0 + r * (rowH + gap), mid = y + rowH / 2;
-    row.forEach(([title, body], i) => {
-      const x = cols[i] + 25;
-      b += rect(x, y, card, rowH, { fill: C.green, rx: 6, sw: 2 });
-      const tl = lines(title).length, bl = lines(body).length, th = tl * 22 * 1.3, bh = bl * 20 * 1.4, total = th + 12 + bh;
-      b += text(x + card / 2, mid - total / 2 + th / 2, title, { size: 22, lh: 1.3 });
-      b += text(x + card / 2, mid + total / 2 - bh / 2, body, { size: 20, weight: 400, lh: 1.4 });
+  for (const { y: cy, rowH, cells } of cards) {
+    const mid = cy + rowH / 2;
+    cells.forEach((c, i) => {
+      const x = cols[i] + pad, th = c.t.length * TL, bh = c.d.length * BL, total = th + 8 + bh;
+      b += rect(x, cy, card, rowH, { fill: C.green, rx: 6, sw: 1.5 });
+      b += text(x + card / 2, mid - total / 2 + th / 2, c.t, { size: TS, lh: 1.28 });
+      b += text(x + card / 2, mid + total / 2 - bh / 2, c.d, { size: BS, weight: 400, lh: 1.32 });
     });
-    for (const [x1, x2] of [[cols[0] + 25 + card, cols[1] + 25], [cols[1] + 25 + card, cols[2] + 25]]) {
-      b += `<line x1="${x1}" y1="${mid}" x2="${x2 - 28}" y2="${mid}" stroke="${C.stroke}" stroke-width="9"/>`;
-      b += `<polygon points="${x2 - 32},${mid - 19} ${x2},${mid} ${x2 - 32},${mid + 19}" fill="${C.stroke}"/>`;
+    for (const [x1, x2] of [[cols[0] + pad + card, cols[1] + pad], [cols[1] + pad + card, cols[2] + pad]]) {
+      b += `<line x1="${x1}" y1="${mid}" x2="${x2 - 20}" y2="${mid}" stroke="${C.stroke}" stroke-width="7"/>`;
+      b += `<polygon points="${x2 - 24},${mid - 14} ${x2},${mid} ${x2 - 24},${mid + 14}" fill="${C.stroke}"/>`;
     }
-  });
-  return svg(1382, H, b);
+  }
+  return svg(PAGE_W, Math.round(H), b);
 }
 
 const fig38 = () => ipo([
@@ -336,46 +371,56 @@ const fig39 = () => ipo([
 
 // ======================================================================
 // Figure 3-10: Use Case Diagram
+// Three columns inside the system boundary: A = what the people do, B = included / extending
+// use cases, C = second-level and system use cases. Ellipses are sized from their text.
 // ======================================================================
 function fig310() {
-  const W = 1820, H = 1960, IMG = 'uc';
+  const W = PAGE_W, H = 1664, IMG = 'uc', FS = 19, AX = 200, BX = 575, CX = 870, SX = 945;
   let b = '';
   const E = {};
-  const uc = (id, cx, cy, rx, ry, t, kind = 'blue', size = 15) => { E[id] = { cx, cy, rx, ry, t, kind, size }; };
-  // human use cases (column 1) and their includes / extends
-  uc('cfg', 600, 210, 78, 40, 'Configure\nSystem');
-  uc('setph', 860, 75, 82, 38, 'Set pH Level\nThreshold', 'green');
-  uc('setwl', 1090, 120, 82, 38, 'Set Water\nLevel Threshold', 'green');
-  uc('cal', 1150, 225, 96, 40, 'Calibrate Sensors\n& Set Capacity', 'green');
-  uc('sel', 1395, 225, 84, 38, 'Select Tank\n(Tank 1–4)', 'green');
-  uc('awc', 1090, 330, 82, 38, 'Assign Water\nController', 'green');
-  uc('loc', 860, 345, 74, 36, 'Set Location', 'green');
-  uc('pdm', 640, 372, 84, 36, 'Set Pump\nDemo Mode', 'green');
-  uc('mua', 600, 500, 82, 40, 'Manage User\nAccount');
-  uc('add', 880, 470, 76, 36, 'Add User\n(with Role)', 'green');
-  uc('del', 1130, 520, 70, 34, 'Delete User', 'green');
-  uc('act', 900, 600, 108, 44, 'Activate/Deactivate\nAccount', 'green');
-  uc('gar', 600, 760, 82, 40, 'Generate\nAnalytic Report');
-  uc('vrd', 880, 720, 82, 38, 'View Report\non Dashboard', 'green');
-  uc('exp', 880, 840, 98, 40, 'Export Report to\n(PDF/Excel/CSV)', 'green');
-  uc('fd', 1130, 760, 68, 34, 'Filter Data', 'green');
-  uc('vsl', 600, 940, 78, 40, 'View System\nLogs');
-  uc('ack', 600, 1080, 78, 40, 'Acknowledge\nAlert');
-  uc('vnh', 600, 1220, 92, 40, 'View Notification\nHistory');
-  uc('vd', 600, 1370, 74, 40, 'View\nDashboard');
-  uc('mtt', 900, 1370, 92, 54, 'Monitor Tank\nTelemetry', 'bright', 19);
-  uc('vdd', 1150, 1260, 82, 38, 'View\nDashboard Data', 'green');
-  uc('rt', 960, 1500, 98, 44, 'Real-Time In-App /\nToast & Push Alert');
-  uc('pump', 900, 1222, 96, 40, 'Switch Pump\n(Demo Mode)');
-  uc('login', 600, 1680, 52, 34, 'Login');
-  uc('vc', 880, 1640, 76, 38, 'Validate\nCredentials', 'green');
-  uc('cur', 880, 1760, 76, 38, 'Check User\nRole', 'green');
-  uc('lus', 880, 1875, 76, 38, 'Load User\nSession', 'green');
-  // system use cases (right column)
-  uc('pd', 1430, 1000, 64, 40, 'Provide\nData');
-  uc('ra', 1430, 1460, 64, 40, 'Raise Alert');
-  uc('spn', 1430, 1610, 80, 40, 'Send Push\nNotification');
-  uc('dco', 1430, 1750, 86, 40, 'Detect Controller\nOffline');
+  const uc = (id, x, cy, t, kind = 'blue', leftAligned = false) => {
+    const ls = lines(t), n = ls.length, ry = n === 1 ? 30 : n === 2 ? 38 : 50;
+    const half = ((n - 1) * FS * 1.25) / 2 + FS * 0.42, k = Math.sqrt(1 - (half / ry) ** 2);
+    const rx = Math.max(52, Math.max(...ls.map((l) => estW(l, FS, true))) / 2 / k + 8);
+    E[id] = { cx: leftAligned ? x + rx : x, cy, rx, ry, t, kind };
+  };
+  const row = (n) => 62 + 84 * (n - 1) + (n >= 16 ? 12 : 0);
+  const A = (id, cy, t) => uc(id, AX, cy, t, 'blue', true);
+  // column A: left tips line up so the actor lines fan out without crossing other ellipses
+  A('cfg', 272, 'Configure\nSystem');
+  A('vsl', 470, 'View System\nLogs');
+  A('mua', row(8), 'Manage User\nAccount');
+  A('gar', row(11), 'Generate\nAnalytic\nReport');
+  A('vnh', 1046, 'View\nNotification\nHistory');
+  A('vd', row(14), 'View\nDashboard');
+  A('ack', row(16), 'Acknowledge\nAlert');
+  A('login', row(18), 'Login');
+  // column B
+  uc('setph', BX, row(1), 'Set pH Level\nThreshold', 'green');
+  uc('setwl', BX, row(2), 'Set Water\nLevel Threshold', 'green');
+  uc('cal', BX, row(3), 'Calibrate Sensors\n& Set Capacity', 'green');
+  uc('awc', BX, row(4), 'Assign Water\nController', 'green');
+  uc('loc', BX, row(5), 'Set Location', 'green');
+  uc('pdm', BX, row(6), 'Set Pump\nDemo Mode', 'green');
+  uc('add', BX, row(7), 'Add User\n(with Role)', 'green');
+  uc('del', BX, row(8), 'Delete User', 'green');
+  uc('act', BX, row(9), 'Activate/Deactivate\nAccount', 'green');
+  uc('vrd', BX, row(10), 'View Report\non Dashboard', 'green');
+  uc('exp', BX, row(11), 'Export Report to\n(PDF/Excel/CSV)', 'green');
+  uc('fd', BX, row(12), 'Filter Data', 'green');
+  uc('mtt', BX, row(14), 'Monitor Tank\nTelemetry', 'bright');
+  uc('rt', BX, row(16), 'Real-Time In-App /\nToast & Push Alert');
+  uc('vc', BX, row(17), 'Validate\nCredentials', 'green');
+  uc('cur', BX, row(18), 'Check User\nRole', 'green');
+  uc('lus', BX, row(19), 'Load User\nSession', 'green');
+  // column C and the system use cases
+  uc('sel', CX, row(3), 'Select Tank\n(Tank 1–4)', 'green');
+  uc('vdd', CX, row(14), 'View\nDashboard Data', 'green');
+  uc('pump', CX, row(15), 'Switch Pump\n(Demo Mode)');
+  uc('pd', SX, row(13), 'Provide\nData');
+  uc('ra', SX, row(16), 'Raise Alert');
+  uc('spn', SX, row(17), 'Send Push\nNotification');
+  uc('dco', SX, row(18), 'Detect Controller\nOffline');
 
   const edgePt = (e, tx, ty) => { // point on ellipse border toward (tx,ty)
     const dx = tx - e.cx, dy = ty - e.cy, k = 1 / Math.sqrt((dx * dx) / (e.rx * e.rx) + (dy * dy) / (e.ry * e.ry));
@@ -386,135 +431,138 @@ function fig310() {
     const p1 = edgePt(a, c.cx, c.cy), p2 = edgePt(c, a.cx, a.cy);
     b += arrow([p1, p2], { dash: '6 5', sw: 1.4 });
     const mx = lx ?? (p1[0] + p2[0]) / 2, my = ly ?? (p1[1] + p2[1]) / 2;
-    b += lbl(mx, my, `<<${kind}>>`, { size: 14, weight: 500 });
+    b += lbl(mx, my, `<<${kind}>>`, { size: 16, weight: 500, pad: 2 });
   };
-  const assoc = (x, y, to) => { const c = E[to]; b += arrow([[x, y], edgePt(c, x, y)], { sw: 1.4 }); };
+  const assoc = (x, y, to) => { const c = E[to]; b += arrow([[x, y], [c.cx + (x < c.cx ? -c.rx : c.rx), c.cy]], { sw: 1.4 }); }; // ends at the side tip, so it never cuts across a neighbour
 
-  // actors: avatars from the original figure; Alert Service drawn in the same flat style
-  const admin = [200, 402], worker = [200, 900], viewer = [200, 1422], iot = [1648, 1180], svc = [1648, 1640];
-  for (const id of ['cfg', 'mua', 'gar', 'vsl', 'ack', 'vnh', 'vd', 'login']) assoc(...admin, id);
-  for (const id of ['gar', 'vsl', 'ack', 'vnh', 'vd', 'login']) assoc(...worker, id);
-  for (const id of ['vnh', 'vd', 'login']) assoc(...viewer, id);
-  for (const id of ['pd', 'ra']) assoc(...iot, id);
-  for (const id of ['ra', 'spn', 'dco']) assoc(...svc, id);
+  const LX = 60, RX = 1132, AR = 46;
+  const admin = [LX, 440], worker = [LX, 930], viewer = [LX, 1330], iot = [RX, 1150], svc = [RX, 1470];
+  for (const id of ['cfg', 'vsl', 'mua', 'gar', 'vnh', 'vd', 'ack', 'login']) assoc(admin[0] + AR + 4, admin[1], id);
+  for (const id of ['vsl', 'gar', 'vnh', 'vd', 'ack', 'login']) assoc(worker[0] + AR + 4, worker[1], id);
+  for (const id of ['vnh', 'vd', 'login']) assoc(viewer[0] + AR + 4, viewer[1], id);
+  for (const id of ['pd', 'ra']) assoc(iot[0] - AR - 4, iot[1], id);
+  for (const id of ['ra', 'spn', 'dco']) assoc(svc[0] - AR - 4, svc[1], id);
 
-  for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc']) rel('cfg', id, 'include');
-  rel('cal', 'sel', 'include', 1278, 188);
-  rel('cfg', 'pdm', 'include', 568, 296);
-  rel('pump', 'mtt', 'extend', 958, 1296);
+  for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc', 'pdm']) rel('cfg', id, 'include');
+  rel('cal', 'sel', 'include');
   for (const id of ['add', 'del', 'act']) rel(id, 'mua', 'extend');
-  rel('gar', 'vrd', 'include'); rel('gar', 'fd', 'include', 960, 760); rel('exp', 'gar', 'extend');
-  rel('vd', 'mtt', 'include'); rel('mtt', 'vdd', 'include');
+  rel('gar', 'vrd', 'include'); rel('gar', 'fd', 'include'); rel('exp', 'gar', 'extend');
+  rel('vd', 'mtt', 'include'); rel('mtt', 'vdd', 'include'); rel('pump', 'mtt', 'extend');
   rel('pd', 'mtt', 'include'); rel('pd', 'fd', 'include');
   rel('rt', 'vd', 'extend'); rel('rt', 'ack', 'extend'); rel('ra', 'rt', 'include');
   rel('login', 'vc', 'include'); rel('login', 'cur', 'include'); rel('login', 'lus', 'include');
 
   for (const e of Object.values(E)) {
     const fill = e.kind === 'green' ? C.green : e.kind === 'bright' ? C.bright : C.blue;
-    b += `<ellipse cx="${e.cx}" cy="${e.cy}" rx="${e.rx}" ry="${e.ry}" fill="${fill}" stroke="#2B2F36" stroke-width="1.6"/>`;
-    b += text(e.cx, e.cy, e.t, { size: e.size, lh: 1.3 });
+    b += `<ellipse cx="${e.cx.toFixed(1)}" cy="${e.cy}" rx="${e.rx.toFixed(1)}" ry="${e.ry}" fill="${fill}" stroke="#2B2F36" stroke-width="1.6"/>`;
+    b += text(e.cx, e.cy, e.t, { size: FS, lh: 1.25 });
   }
-  b += text(900, 1166, '[Admin; Worker on assigned tank]', { size: 13, weight: 500 });
-  b = rect(378, 25, 1180, H - 50, { fill: 'none', rx: 3, stroke: '#111', sw: 1.6 }) + b;
+  b += text(CX, row(15) + 54, '[Admin; Worker on assigned tank]', { size: 16, weight: 500 });
+  b = rect(126, 12, 938, H - 24, { fill: 'none', rx: 3, stroke: '#111', sw: 1.6 }) + b;
 
-  b += cropCircle(IMG, [139, 404, 62], 139, 340) + text(200, 306, 'Admin', { size: 25 });
-  b += cropCircle(IMG, [139, 900, 62], 139, 838) + text(200, 806, 'Worker', { size: 25 });
-  b += cropCircle(IMG, [139, 1420, 59], 141, 1363) + text(200, 1330, 'Viewer', { size: 25 });
-  b += cropCircle(IMG, [1710, 1030, 70], 1646, 1110) + text(1716, 1062, 'IoT Sensors\n(Tanks 1–4)', { size: 23 });
-  // Alert Service actor: blue disc with a server glyph
-  const [sx, sy] = [1716, 1640];
-  b += `<circle cx="${sx}" cy="${sy}" r="68" fill="#6FAEDC"/>`;
-  for (const dy of [-34, -6, 22]) {
-    b += `<rect x="${sx - 38}" y="${sy + dy}" width="76" height="22" rx="5" fill="#111"/>`;
-    b += `<circle cx="${sx + 24}" cy="${sy + dy + 11}" r="4" fill="#6FAEDC"/><rect x="${sx - 28}" y="${sy + dy + 8}" width="26" height="6" rx="2" fill="#6FAEDC"/>`;
+  // actors: avatars from the original figure; Alert Service drawn in the same flat style
+  const name = (p, t) => text(p[0], p[1] - AR - 14 - (lines(t).length - 1) * 13, t, { size: 20, lh: 1.25 });
+  b += cropCircleAt(IMG, [139, 404, 62], ...admin, AR) + name(admin, 'Admin');
+  b += cropCircleAt(IMG, [139, 900, 62], ...worker, AR) + name(worker, 'Worker');
+  b += cropCircleAt(IMG, [139, 1420, 59], ...viewer, AR) + name(viewer, 'Viewer');
+  b += cropCircleAt(IMG, [1710, 1030, 70], ...iot, AR) + name(iot, 'IoT Sensors\n(Tanks 1–4)');
+  const [sx, sy] = svc;
+  b += `<circle cx="${sx}" cy="${sy}" r="${AR}" fill="#6FAEDC"/>`;
+  for (const dy of [-24, -5, 14]) {
+    b += `<rect x="${sx - 26}" y="${sy + dy}" width="52" height="15" rx="3.5" fill="#111"/>`;
+    b += `<circle cx="${sx + 16}" cy="${sy + dy + 7.5}" r="3" fill="#6FAEDC"/><rect x="${sx - 19}" y="${sy + dy + 5.5}" width="18" height="4" rx="1.5" fill="#6FAEDC"/>`;
   }
-  b += text(sx, sy - 95, 'Alert Service', { size: 25 });
+  b += name(svc, 'Alert\nService');
   return svg(W, H, b, imageDef(IMG, 'old-3-10-use-case.png', 1812, 1713));
 }
 
 // ======================================================================
-// Figure 3-11: Activity Diagram (horizontal swimlanes)
+// Figure 3-11: Activity Diagram (vertical swimlanes, so it fits the page width)
 // ======================================================================
 function fig311() {
-  const W = 2045, H = 1210, L = 212, R = 1968;
-  const lanes = [[30, 440, 'IoT System'], [440, 650, 'Alert Service'], [650, 930, 'Operator'], [930, 1180, 'Admin']];
-  let b = `<clipPath id="al"><rect x="${L}" y="30" width="${R - L}" height="1150" rx="10"/></clipPath>`;
-  b += `<g clip-path="url(#al)"><rect x="${L}" y="30" width="45" height="1150" fill="${C.head}"/></g>`;
-  b += `<rect x="${L}" y="30" width="${R - L}" height="1150" rx="10" fill="none" stroke="#111" stroke-width="3"/>`;
-  b += `<line x1="${L + 45}" y1="30" x2="${L + 45}" y2="1180" stroke="#111" stroke-width="3"/>`;
-  for (const [y1, y2, name] of lanes) {
-    if (y1 > 30) b += `<line x1="${L}" y1="${y1}" x2="${R}" y2="${y1}" stroke="#111" stroke-width="2.5"/>`;
-    b += text(L + 23, (y1 + y2) / 2, name, { size: 28, rotate: -90 });
+  const W = PAGE_W, H = 1160, top = 10, bot = 1150, headH = 50, F = 22, D = '9 7';
+  const lanes = [[10, 330, 'IoT System'], [330, 590, 'Alert Service'], [590, 890, 'Operator'], [890, 1190, 'Admin']];
+  let b = `<clipPath id="al"><rect x="10" y="${top}" width="1180" height="${bot - top}" rx="10"/></clipPath>`;
+  b += `<g clip-path="url(#al)"><rect x="10" y="${top}" width="1180" height="${headH}" fill="${C.head}"/></g>`;
+  b += `<rect x="10" y="${top}" width="1180" height="${bot - top}" rx="10" fill="none" stroke="#111" stroke-width="2.5"/>`;
+  b += `<line x1="10" y1="${top + headH}" x2="1190" y2="${top + headH}" stroke="#111" stroke-width="2.5"/>`;
+  for (const [x1, x2, name] of lanes) {
+    if (x1 > 10) b += `<line x1="${x1}" y1="${top}" x2="${x1}" y2="${bot}" stroke="#111" stroke-width="2.5"/>`;
+    b += text((x1 + x2) / 2, top + headH / 2, name, { size: 25 });
   }
-  const row1 = 141, D = '9 7';
-  b += arrow([[442, row1], [520, row1]]) + arrow([[734, row1], [842, row1]]) + arrow([[998, row1], [1098, row1]]);
-  b += arrow([[1298, row1], [1400, row1]]) + arrow([[1570, row1], [1691, row1]]);
-  b += arrow([[1776, 188], [1776, 258]]);
-  b += arrow([[1656, 320], [1586, 320]]);
-  b += arrow([[1896, 320], [1922, 320], [1922, 1045], [1862, 1045]], { dash: D, sw: 2.5 });
-  b += arrow([[1485, 360], [1485, 500]], { dash: D, sw: 2.5 });
-  b += arrow([[1385, 540], [1299, 540]]);
-  b += arrow([[1098, 540], [627, 540], [627, 716]], { dash: D, sw: 2.5 });
-  b += arrow([[750, 780], [834, 780]]) + arrow([[1005, 780], [1092, 780]]) + arrow([[1303, 780], [1368, 780]]);
-  b += arrow([[1601, 780], [1632, 780], [1632, 952], [627, 952], [627, 982]], { dash: D, sw: 2.5 });
-  b += arrow([[750, 1045], [810, 1045]]) + arrow([[1029, 1045], [1092, 1045]]) + arrow([[1303, 1045], [1369, 1045]]) + arrow([[1601, 1045], [1690, 1045]]);
-  b += lbl(1620, 320, 'Yes', { size: 17 }) + lbl(1922, 380, 'No', { size: 17 });
-  b += term(380, row1, 124, 62, 'Start', { size: 26 });
-  b += box(627, row1, 214, 92, 'Read Water Level\n(Hydrostatic)', { size: 18 });
-  b += box(920, row1, 155, 92, 'Read pH\nSensor', { size: 18 });
-  b += box(1198, row1, 200, 94, 'Process & Evaluate\nThresholds', { size: 18 });
-  b += box(1485, row1, 170, 94, 'Log Telemetry\nto Database', { size: 18 });
-  b += box(1776, row1, 170, 94, 'Update Live\nDashboard', { size: 18 });
-  b += dec(1776, 320, 240, 124, 'Critical Value\nfor 5 Seconds?', { size: 18 });
-  b += box(1485, 320, 200, 80, 'Log Alert Event', { size: 18 });
-  b += box(1485, 540, 200, 80, 'Create Alert\nNotification', { size: 18 });
-  b += box(1198, 540, 200, 80, 'Send Push\nNotification', { size: 18 });
-  b += box(627, 780, 245, 124, 'Receive Real-Time\nToast, Chime &\nPush Alert', { size: 18 });
-  b += box(920, 780, 170, 94, 'Inspect Tank\nStatus', { size: 18 });
-  b += box(1198, 780, 210, 94, 'Acknowledge Alert\n(Silence Chime)', { size: 18 });
-  b += box(1485, 780, 232, 124, 'Perform On-Site\nManual Inspection', { size: 18 });
-  b += box(627, 1045, 245, 122, 'Receive System Alert\n(Simultaneous\nBroadcast)', { size: 18 });
-  b += box(920, 1045, 218, 94, 'Monitor Real-Time\nTelemetry', { size: 18 });
-  b += box(1198, 1045, 210, 94, 'Inspect System\nDiagnostic Logs', { size: 18 });
-  b += box(1485, 1045, 232, 122, 'Verify Telemetry\nStabilization (Alert\nResolves After 5 s)', { size: 18 });
-  b += term(1776, 1045, 170, 62, 'End', { size: 26 });
+  const dashed = (pts) => arrow(pts, { dash: D, sw: 2.5 });
+  // IoT System
+  for (const [y1, y2] of [[120, 147], [223, 255], [311, 343], [419, 451], [527, 559], [635, 667], [837, 887]]) b += arrow([[170, y1], [170, y2]]);
+  b += dashed([[30, 752], [20, 752], [20, 1128], [1040, 1128], [1040, 1090]]);
+  b += dashed([[300, 915], [352, 915]]);
+  // Alert Service
+  b += arrow([[460, 953], [460, 987]]);
+  b += dashed([[568, 1025], [579, 1025], [579, 150], [615, 150]]);
+  // Operator
+  b += arrow([[740, 202], [740, 242]]) + arrow([[740, 318], [740, 362]]) + arrow([[740, 438], [740, 482]]);
+  b += dashed([[865, 520], [915, 520]]);
+  // Admin
+  b += arrow([[1040, 588], [1040, 632]]) + arrow([[1040, 708], [1040, 752]]) + arrow([[1040, 828], [1040, 867]]) + arrow([[1040, 1003], [1040, 1040]]);
+  b += lbl(170, 858, 'Yes', { size: 20 }) + text(28, 870, 'No', { size: 20, anchor: 'start' });
+  // nodes
+  b += term(170, 95, 130, 50, 'Start', { size: 24 });
+  b += box(170, 185, 260, 76, 'Read Water Level\n(Hydrostatic)', { size: F });
+  b += box(170, 283, 260, 56, 'Read pH Sensor', { size: F });
+  b += box(170, 381, 260, 76, 'Process & Evaluate\nThresholds', { size: F });
+  b += box(170, 489, 260, 76, 'Log Telemetry\nto Database', { size: F });
+  b += box(170, 597, 260, 76, 'Update Live\nDashboard', { size: F });
+  b += dec(170, 752, 280, 170, 'Critical Value\nfor 5 Seconds?', { size: 21 });
+  b += box(170, 915, 260, 56, 'Log Alert Event', { size: F });
+  b += box(460, 915, 216, 76, 'Create Alert\nNotification', { size: F });
+  b += box(460, 1025, 216, 76, 'Send Push\nNotification', { size: F });
+  b += box(740, 150, 250, 104, 'Receive Real-Time\nToast, Chime &\nPush Alert', { size: F });
+  b += box(740, 280, 250, 76, 'Inspect Tank\nStatus', { size: F });
+  b += box(740, 400, 250, 76, 'Acknowledge Alert\n(Silence Chime)', { size: F });
+  b += box(740, 520, 250, 76, 'Perform On-Site\nManual Inspection', { size: F });
+  b += box(1040, 520, 250, 136, 'Receive System\nAlert\n(Simultaneous\nBroadcast)', { size: F });
+  b += box(1040, 670, 250, 76, 'Monitor Real-Time\nTelemetry', { size: F });
+  b += box(1040, 790, 250, 76, 'Inspect System\nDiagnostic Logs', { size: F });
+  b += box(1040, 935, 250, 136, 'Verify Telemetry\nStabilization\n(Alert Resolves\nAfter 5 s)', { size: F });
+  b += term(1040, 1065, 150, 50, 'End', { size: 24 });
   return svg(W, H, b);
 }
 
 // ======================================================================
 // Figure 3-12: ERD (typed tables, crow's foot)
+// Two columns of tables; links between them run in the middle gap and down the right margin.
 // ======================================================================
 function fig312() {
-  const W = 2560, H = 2260, ROW = 37.5, HEAD = 70, TW = 610;
+  const W = PAGE_W, H = 1716, ROW = 26, HEAD = 50, TW = 450, X1 = 12, X2 = 622;
   const RT = 'Firebase Realtime Database';
   let b = '', ents = {};
   const ent = (id, x, y, title, sub, rows, fs = false) => {
     const h = HEAD + rows.length * ROW;
     ents[id] = { x, y, h, rows };
     let s = `<rect x="${x}" y="${y}" width="${TW}" height="${HEAD}" fill="${fs ? '#FCE8CC' : '#D6E4F5'}"/>`;
-    s += text(x + TW / 2, y + 25, title, { size: 26, family: ARIAL });
-    s += text(x + TW / 2, y + 53, sub, { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
+    s += text(x + TW / 2, y + 18, title, { size: 22, family: ARIAL });
+    s += text(x + TW / 2, y + 38, sub, { size: 15, weight: 400, italic: true, fill: '#444', family: ARIAL });
     rows.forEach(([key, name, type], i) => {
       const ry = y + HEAD + i * ROW;
       s += `<rect x="${x}" y="${ry}" width="${TW}" height="${ROW}" fill="${i % 2 ? '#F4F4F4' : '#FFFFFF'}"/>`;
       s += `<line x1="${x}" y1="${ry}" x2="${x + TW}" y2="${ry}" stroke="#CCCCCC"/>`;
-      if (key) s += text(x + 33, ry + ROW / 2, key, { size: 17, family: ARIAL });
-      s += text(x + 78, ry + ROW / 2, name, { size: 20, weight: 400, anchor: 'start', family: ARIAL });
-      s += text(x + 467, ry + ROW / 2, type, { size: 20, weight: 400, anchor: 'start', fill: '#444', family: ARIAL });
+      if (key) s += text(x + 29, ry + ROW / 2, key, { size: 14, family: ARIAL });
+      s += text(x + 68, ry + ROW / 2, name, { size: 19, weight: 400, anchor: 'start', family: ARIAL });
+      s += text(x + 336, ry + ROW / 2, type, { size: 16, weight: 400, anchor: 'start', fill: '#444', family: ARIAL });
     });
-    s += `<line x1="${x + 66}" y1="${y + HEAD}" x2="${x + 66}" y2="${y + h}" stroke="#CCCCCC"/><line x1="${x + 455}" y1="${y + HEAD}" x2="${x + 455}" y2="${y + h}" stroke="#CCCCCC"/>`;
+    s += `<line x1="${x + 58}" y1="${y + HEAD}" x2="${x + 58}" y2="${y + h}" stroke="#CCCCCC"/><line x1="${x + 326}" y1="${y + HEAD}" x2="${x + 326}" y2="${y + h}" stroke="#CCCCCC"/>`;
     s += `<line x1="${x}" y1="${y + HEAD}" x2="${x + TW}" y2="${y + HEAD}" stroke="#111" stroke-width="2"/>`;
     s += `<rect x="${x}" y="${y}" width="${TW}" height="${h}" fill="none" stroke="#111" stroke-width="2"/>`;
     b += s;
   };
   const rowY = (id, i) => ents[id].y + HEAD + i * ROW + ROW / 2;
+  const bottom = (id) => ents[id].y + ents[id].h;
 
-  ent('config', 60, 40, 'CONFIG', `${RT}  /config  (single record)`, [
+  ent('config', X1, 12, 'CONFIG', `${RT}  /config  (single record)`, [
     ['', 'lowLevelThreshold', 'NUMBER'], ['', 'overflowThreshold', 'NUMBER'], ['', 'minPh', 'NUMBER'], ['', 'maxPh', 'NUMBER'],
     ['', 'maintenanceMode', 'BOOLEAN'], ['', 'offlineThresholdSec', 'NUMBER'], ['', 'repeatIntervalSec', 'NUMBER'],
     ['', 'soundEnabled', 'BOOLEAN'], ['', 'pushEnabled', 'BOOLEAN'],
     ['', 'pumpDemoMode', 'BOOLEAN'], ['', 'pumpControlLock', 'BOOLEAN']]);
-  ent('tanks', 60, 630, 'TANKS', `${RT}  /tanks/{id}`, [
+  ent('tanks', X1, 432, 'TANKS', `${RT}  /tanks/{id}`, [
     ['PK', 'id', 'STRING'], ['', 'name', 'STRING'], ['', 'location', 'STRING'], ['', 'enabled', 'BOOLEAN'],
     ['FK', 'assignedWorker', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'], ['', 'phLevel', 'NUMBER'],
     ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'], ['', 'pumpOn', 'BOOLEAN'],
@@ -522,38 +570,39 @@ function fig312() {
     ['', 'tankHeight', 'NUMBER'], ['', 'capacityLiters', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'],
     ['', 'phSlope', 'NUMBER'], ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'], ['', 'firebaseConnected', 'BOOLEAN'],
     ['', 'controllerOffline', 'BOOLEAN'], ['', 'lastUpdate', 'TIMESTAMP']]);
-  ent('hist', 60, 1890, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
+  ent('hist', X1, 1320, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
     ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
     ['', 'phLevel', 'NUMBER'], ['', 'timestamp', 'TIMESTAMP']]);
-  ent('users', 970, 630, 'USERS', 'Cloud Firestore  users/{uid}', [
+  ent('roles', X2, 12, 'ROLES', `${RT}  /roles/{uid}`, [
+    ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
+  ent('users', X2, 198, 'USERS', 'Cloud Firestore  users/{uid}', [
     ['PK', 'id (Auth UID)', 'STRING'], ['', 'username', 'STRING'], ['', 'email', 'STRING'], ['', 'role', 'STRING'],
     ['', 'jobTitle', 'STRING'], ['', 'status', 'STRING'], ['', 'createdAt', 'TIMESTAMP']], true);
-  ent('logs', 970, 1100, 'LOGS', `${RT}  /logs/{id}`, [
+  ent('ustate', X2, 514, 'USER_STATE', `${RT}  /userState/{uid}`, [
+    ['PK,FK', 'uid', 'STRING'], ['', 'notificationsLastReadAt', 'TIMESTAMP'], ['', 'notificationsReadIds', 'MAP'], ['', 'fcmTokens', 'MAP']]);
+  ent('logs', X2, 718, 'LOGS', `${RT}  /logs/{id}`, [
     ['PK', 'id', 'STRING'], ['FK', 'tankId (optional)', 'STRING'], ['', 'action', 'STRING'], ['', 'details', 'STRING'],
     ['', 'performedBy (name)', 'STRING'], ['', 'logLevel', 'STRING'], ['', 'timestamp', 'TIMESTAMP']]);
-  ent('notif', 970, 1520, 'NOTIFICATIONS', `${RT}  /notifications/{id}`, [
+  ent('notif', X2, 1000, 'NOTIFICATIONS', `${RT}  /notifications/{id}`, [
     ['PK', 'id', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'title', 'STRING'], ['', 'message', 'STRING'], ['', 'type', 'STRING'],
     ['', 'timestamp', 'TIMESTAMP'], ['', 'acknowledged', 'BOOLEAN'], ['', 'acknowledgedBy (name)', 'STRING'],
     ['FK', 'acknowledgedByUid', 'STRING'], ['', 'acknowledgedAt', 'TIMESTAMP'], ['', 'resolved', 'BOOLEAN'],
     ['', 'resolvedAt', 'TIMESTAMP'], ['', 'lastRepeatedAt', 'TIMESTAMP']]);
-  ent('roles', 1880, 630, 'ROLES', `${RT}  /roles/{uid}`, [
-    ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
-  ent('ustate', 1880, 900, 'USER_STATE', `${RT}  /userState/{uid}`, [
-    ['PK,FK', 'uid', 'STRING'], ['', 'notificationsLastReadAt', 'TIMESTAMP'], ['', 'notificationsReadIds', 'MAP'], ['', 'fcmTokens', 'MAP']]);
-  ent('worker', 1880, 1280, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
+  ent('worker', X2, 1428, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
     ['', 'lastSeen', 'TIMESTAMP'], ['', 'startedAt', 'TIMESTAMP']]);
-  b += text(1880 + TW / 2, 630 + HEAD + 2 * ROW + 30, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
-  b += text(1880 + TW / 2, 1280 + HEAD + 2 * ROW + 32, 'Cloud-hosted Alert Service heartbeat (no relationships)', { size: 17, weight: 400, italic: true, fill: '#444', family: ARIAL });
+  const small = { size: 15, weight: 400, italic: true, fill: '#444', family: ARIAL };
+  b += text(X2 + 150, (bottom('roles') + 198) / 2, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { ...small, anchor: 'start' });
+  b += text(X2 + TW / 2, bottom('worker') + 20, 'Cloud-hosted Alert Service heartbeat (no relationships)', small);
 
   // crow's foot ends: p = point on the entity edge, d = unit direction away from the entity
   const end = ([px, py], [dx, dy], kind) => {
     const nx = -dy, ny = dx, at = (k) => [px + dx * k, py + dy * k];
-    const bar = (k) => { const [x, y] = at(k); return `<line x1="${x + nx * 12}" y1="${y + ny * 12}" x2="${x - nx * 12}" y2="${y - ny * 12}" stroke="#111" stroke-width="2"/>`; };
-    const circ = (k) => { const [x, y] = at(k); return `<circle cx="${x}" cy="${y}" r="8" fill="#FFF" stroke="#111" stroke-width="2"/>`; };
-    if (kind === 'one') return bar(14) + bar(24);
-    if (kind === 'zeroOne') return bar(16) + circ(36);
-    const [fx, fy] = at(28); // zero or many
-    return `<line x1="${px + nx * 16}" y1="${py + ny * 16}" x2="${fx}" y2="${fy}" stroke="#111" stroke-width="2"/><line x1="${px - nx * 16}" y1="${py - ny * 16}" x2="${fx}" y2="${fy}" stroke="#111" stroke-width="2"/>` + circ(38);
+    const bar = (k) => { const [x, y] = at(k); return `<line x1="${x + nx * 11}" y1="${y + ny * 11}" x2="${x - nx * 11}" y2="${y - ny * 11}" stroke="#111" stroke-width="2"/>`; };
+    const circ = (k) => { const [x, y] = at(k); return `<circle cx="${x}" cy="${y}" r="7" fill="#FFF" stroke="#111" stroke-width="2"/>`; };
+    if (kind === 'one') return bar(12) + bar(21);
+    if (kind === 'zeroOne') return bar(14) + circ(31);
+    const [fx, fy] = at(24); // zero or many
+    return `<line x1="${px + nx * 13}" y1="${py + ny * 13}" x2="${fx}" y2="${fy}" stroke="#111" stroke-width="2"/><line x1="${px - nx * 13}" y1="${py - ny * 13}" x2="${fx}" y2="${fy}" stroke="#111" stroke-width="2"/>` + circ(33);
   };
   const link = (pts, a, b2, dash) => {
     const [p0, p1] = [pts[0], pts[1]], [q0, q1] = [pts[pts.length - 1], pts[pts.length - 2]];
@@ -561,35 +610,45 @@ function fig312() {
     return `<polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="#111" stroke-width="2"${dash ? ' stroke-dasharray="10 7"' : ''}/>` +
       end(p0, u(p0, p1), a) + end(q0, u(q0, q1), b2);
   };
-  const it = (x, y, t, anchor = 'start') => text(x, y, t, { size: 21, weight: 400, italic: true, anchor, family: ARIAL });
-  const cfgB = 40 + HEAD + 11 * ROW, tnkB = 630 + HEAD + 29 * ROW;
-  b += link([[365, cfgB], [365, 630]], 'one', 'zeroMany') + it(385, (cfgB + 630) / 2, 'governs thresholds of');
-  b += link([[365, tnkB], [365, 1890]], 'one', 'zeroMany') + it(385, (tnkB + 1890) / 2, 'stores 10-minute samples in');
-  b += link([[670, rowY('tanks', 4)], [970, rowY('tanks', 4)]], 'zeroMany', 'zeroOne') + it(820, rowY('tanks', 4) - 25, 'is assigned to', 'middle');
-  b += link([[670, rowY('notif', 1)], [970, rowY('notif', 1)]], 'one', 'zeroMany') + it(820, rowY('notif', 1) - 25, 'raises', 'middle');
-  b += link([[670, rowY('logs', 1)], [970, rowY('logs', 1)]], 'zeroOne', 'zeroMany') + it(820, rowY('logs', 1) - 25, 'is the source of', 'middle');
-  const usrB = 630 + HEAD + 7 * ROW;
-  b += link([[1275, usrB], [1275, 1100]], 'zeroOne', 'zeroMany', true) + it(1295, (usrB + 1100) / 2, 'performs / is recorded in (by name)');
-  b += link([[1580, rowY('users', 6)], [1680, rowY('users', 6)], [1680, rowY('notif', 8)], [1580, rowY('notif', 8)]], 'zeroOne', 'zeroMany') + it(1700, 1440, 'acknowledges');
-  b += link([[1580, rowY('users', 0)], [1880, rowY('roles', 0)]], 'one', 'zeroOne') + it(1730, rowY('users', 0) - 25, 'has', 'middle');
-  b += link([[1580, rowY('users', 2)], [1760, rowY('users', 2)], [1760, rowY('ustate', 0)], [1880, rowY('ustate', 0)]], 'one', 'zeroOne') + it(1780, 940, 'has');
+  const IT = { size: 17, weight: 400, italic: true, family: ARIAL };
+  const it = (x, y, t, anchor = 'start') => text(x, y, t, { ...IT, anchor });
+  const itUp = (x, y, t) => text(x, y, t, { ...IT, rotate: -90 });
+  const itOn = (x, y, t) => `<rect x="${x - estW(t, 17) / 2 - 5}" y="${y - 13}" width="${estW(t, 17) + 10}" height="26" fill="#FFF"/>` + it(x, y, t, 'middle');
+  const E1 = X1 + TW, E2 = X2 + TW, MID = (E1 + X2) / 2, VX = X1 + 118, UX = X2 + 70;
+  // left column, top to bottom
+  b += link([[VX, bottom('config')], [VX, ents.tanks.y]], 'one', 'zeroMany') + it(VX + 24, (bottom('config') + ents.tanks.y) / 2, 'governs thresholds of');
+  b += link([[VX, bottom('tanks')], [VX, ents.hist.y]], 'one', 'zeroMany') + it(VX + 24, (bottom('tanks') + ents.hist.y) / 2, 'stores 10-minute samples in');
+  // across the middle gap
+  b += link([[E1, rowY('tanks', 4)], [MID, rowY('tanks', 4)], [MID, rowY('users', 0)], [X2, rowY('users', 0)]], 'zeroMany', 'zeroOne') + itOn(MID, 430, 'is assigned to');
+  b += link([[E1, rowY('logs', 1)], [X2, rowY('logs', 1)]], 'zeroOne', 'zeroMany') + it(MID, rowY('logs', 1) - 30, 'is the source of', 'middle');
+  b += link([[E1, rowY('notif', 1)], [X2, rowY('notif', 1)]], 'one', 'zeroMany') + it(MID, rowY('notif', 1) - 30, 'raises', 'middle');
+  // right column
+  b += link([[UX, ents.users.y], [UX, bottom('roles')]], 'one', 'zeroOne') + it(UX + 22, (bottom('roles') + ents.users.y) / 2, 'has');
+  b += link([[UX, bottom('users')], [UX, ents.ustate.y]], 'one', 'zeroOne') + it(UX + 22, (bottom('users') + ents.ustate.y) / 2, 'has');
+  // down the right margin
+  b += link([[E2, rowY('users', 6)], [E2 + 56, rowY('users', 6)], [E2 + 56, rowY('logs', 4)], [E2, rowY('logs', 4)]], 'zeroOne', 'zeroMany', true) +
+    itUp(E2 + 74, (rowY('users', 6) + rowY('logs', 4)) / 2, 'performs / is recorded in (by name)');
+  b += link([[E2, rowY('users', 0)], [E2 + 106, rowY('users', 0)], [E2 + 106, rowY('notif', 8)], [E2, rowY('notif', 8)]], 'zeroOne', 'zeroMany') +
+    itUp(E2 + 88, 1085, 'acknowledges');
 
-  // legend
-  const lx = 1880, ly = 40;
-  b += `<rect x="${lx}" y="${ly}" width="${TW}" height="470" fill="#FFF" stroke="#999" stroke-width="1.5"/>`;
-  b += text(lx + 18, ly + 28, 'Legend', { size: 20, anchor: 'start', family: ARIAL });
-  const lg = (y, kind, t) => `<line x1="${lx + 30}" y1="${y}" x2="${lx + 80}" y2="${y}" stroke="#111" stroke-width="2"/>` + end([lx + 30, y], [1, 0], kind) + text(lx + 100, y, t, { size: 18, weight: 400, anchor: 'start', family: ARIAL });
-  b += lg(ly + 70, 'one', 'exactly one') + lg(ly + 115, 'zeroMany', 'zero or many') + lg(ly + 160, 'zeroOne', 'zero or one');
-  b += `<line x1="${lx + 30}" y1="${ly + 205}" x2="${lx + 80}" y2="${ly + 205}" stroke="#111" stroke-width="2" stroke-dasharray="10 7"/>` + text(lx + 100, ly + 205, 'linked by name, not a strict key', { size: 18, weight: 400, anchor: 'start', family: ARIAL });
-  b += text(lx + 30, ly + 250, 'PK = primary key     FK = foreign (logical) key', { size: 18, weight: 400, anchor: 'start', family: ARIAL });
-  b += `<rect x="${lx + 30}" y="${ly + 280}" width="30" height="22" fill="#FCE8CC" stroke="#999"/>` + text(lx + 75, ly + 291, 'Cloud Firestore', { size: 18, weight: 400, anchor: 'start', family: ARIAL });
-  b += `<rect x="${lx + 30}" y="${ly + 318}" width="30" height="22" fill="#D6E4F5" stroke="#999"/>` + text(lx + 75, ly + 329, 'Firebase Realtime Database', { size: 18, weight: 400, anchor: 'start', family: ARIAL });
-  b += text(lx + 30, ly + 395, 'Keys are maintained by the application;\nFirebase does not enforce foreign keys.', { size: 18, weight: 400, anchor: 'start', fill: '#444', family: ARIAL });
+  // legend, across the bottom
+  const ly = 1584, lg = { size: 17, weight: 400, anchor: 'start', family: ARIAL };
+  b += `<rect x="${X1}" y="${ly}" width="${W - 2 * X1}" height="120" fill="#FFF" stroke="#999" stroke-width="1.5"/>`;
+  b += text(X1 + 14, ly + 20, 'Legend', { size: 18, anchor: 'start', family: ARIAL });
+  const r = (i) => ly + 46 + i * 26;
+  const foot = (i, kind, t) => `<line x1="34" y1="${r(i)}" x2="84" y2="${r(i)}" stroke="#111" stroke-width="2"/>` + end([34, r(i)], [1, 0], kind) + text(100, r(i), t, lg);
+  b += foot(0, 'one', 'exactly one') + foot(1, 'zeroMany', 'zero or many') + foot(2, 'zeroOne', 'zero or one');
+  b += `<line x1="300" y1="${r(0)}" x2="350" y2="${r(0)}" stroke="#111" stroke-width="2" stroke-dasharray="10 7"/>` + text(364, r(0), 'linked by name, not a strict key', lg);
+  b += text(300, r(1), 'PK = primary key', lg) + text(300, r(2), 'FK = foreign (logical) key', lg);
+  b += `<rect x="660" y="${r(0) - 10}" width="28" height="20" fill="#FCE8CC" stroke="#999"/>` + text(700, r(0), 'Cloud Firestore', lg);
+  b += `<rect x="660" y="${r(1) - 10}" width="28" height="20" fill="#D6E4F5" stroke="#999"/>` + text(700, r(1), 'Firebase Realtime Database', lg);
+  b += text(660, r(2), 'Keys are kept by the application; Firebase does not enforce them.', { ...lg, size: 16, fill: '#444' });
   return svg(W, H, b);
 }
 
 // ======================================================================
 // Figure 3-13: Architectural Design (photos from the original figure)
+// Top row: sensor node, bridge, router. Bottom row: cloud services and the client.
 // ======================================================================
 function serverIcon(cx, cy, r = 46) {
   let s = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#5F6368"/>`;
@@ -604,82 +663,103 @@ function bellIcon(cx, cy, r = 46) {
     `<circle cx="${cx}" cy="${cy + 27}" r="6" fill="#FFFFFF"/><circle cx="${cx}" cy="${cy - 26}" r="4" fill="#FFFFFF"/>`;
 }
 function fig313() {
-  const W = 1680, H = 650, IMG = 'arch', NET = 'net';
-  const P = (x, y, t, size = 17) => text(x, y, t, { size, family: POPPINS, weight: 600, lh: 1.35 });
+  const W = PAGE_W, H = 940, IMG = 'arch', NET = 'net';
+  const P = (x, y, t, size = 19) => text(x, y, t, { size, family: POPPINS, weight: 600, lh: 1.35 });
   const A = (pts, o) => arrow(pts, { sw: 2.5, color: '#000', ...o });
   let b = '';
-  // wiring
-  b += A([[165, 225], [212, 225]]);
-  b += A([[328, 225], [372, 225], [372, 320], [398, 320]]);
-  b += A([[165, 440], [372, 440], [372, 350], [398, 350]]);
-  b += A([[440, 300], [440, 140], [488, 140]]);
-  b += A([[618, 140], [688, 140]]);
-  b += arrow([[740, 140], [808, 140]], { sw: 2.5, color: '#000', dash: '8 6', start: true });
-  b += A([[842, 222], [842, 296]]);
-  b += A([[472, 446], [472, 520], [860, 520], [860, 490]], { dash: '8 6' });
-  b += A([[935, 350], [1045, 350]]) + A([[1045, 380], [935, 380]]);
-  b += A([[1180, 350], [1415, 350]]) + A([[1415, 380], [1180, 380]]);
-  b += arrow([[1112, 182], [1112, 288]], { sw: 2.5, color: '#000', start: true });
-  b += A([[1160, 136], [1283, 136]]);
-  b += A([[1330, 184], [1330, 262], [1505, 262], [1505, 302]], { dash: '8 6' });
+  // wiring inside the sensor node
+  b += A([[196, 151], [272, 151]]);
+  b += A([[388, 151], [405, 151], [405, 300], [423, 300]]);
+  b += A([[192, 380], [423, 380]]);
+  b += A([[545, 262], [545, 230]]);
+  // bridge and router
+  b += A([[647, 172], [758, 172]]);
+  b += A([[822, 172], [888, 172]], { dash: '8 6', start: true });
+  b += A([[952, 172], [1016, 172]]);
+  b += A([[508, 466], [508, 545], [1000, 545], [1000, 215], [1016, 215]], { dash: '8 6' });
+  // cloud and client
+  b += A([[1075, 243], [1075, 612]]) + A([[1105, 612], [1105, 243]]);
+  b += A([[852, 690], [1032, 690]], { start: true });
+  b += A([[748, 690], [572, 690]]);
+  b += A([[468, 690], [362, 690]], { dash: '8 6' });
+  b += A([[1090, 822], [1090, 860], [252, 860], [252, 822]], { start: true });
   // photos and icons
-  b += crop(IMG, [15, 165, 145, 110], 20, 170);
-  b += crop(IMG, [15, 360, 145, 112], 20, 385);
-  b += crop(IMG, [285, 260, 145, 125], 400, 290);
-  b += crop(IMG, [466, 70, 126, 95], 490, 92);
-  b += crop(NET, [325, 145, 55, 155], 688, 66);
-  b += crop(NET, [680, 145, 55, 155], 808, 66);
-  b += crop(IMG, [630, 255, 140, 130], 790, 296);
-  b += crop(IMG, [873, 245, 106, 140], 1060, 292);
-  b += crop(IMG, [1130, 255, 170, 105], 1420, 310);
+  b += crop(IMG, [15, 165, 136, 110], 25, 85, 163, 132);
+  b += crop(IMG, [15, 360, 139, 112], 30, 318, 154, 124);
+  b += crop(IMG, [285, 260, 145, 125], 425, 262, 167, 144);
+  b += crop(IMG, [466, 70, 126, 95], 500, 118, 145, 109);
+  b += crop(NET, [325, 145, 55, 155], 760, 88, 60, 169);
+  b += crop(NET, [680, 145, 55, 155], 890, 88, 60, 169);
+  b += crop(IMG, [630, 255, 140, 130], 1018, 110, 140, 130);
+  b += crop(IMG, [873, 245, 106, 140], 1037, 615);
+  b += crop(IMG, [1130, 255, 170, 105], 150, 630, 204, 126);
   // current-to-voltage module, drawn as a small board
-  b += `<rect x="214" y="190" width="112" height="72" rx="6" fill="#2B5C9E" stroke="#1B3B66" stroke-width="2"/>`;
-  b += `<rect x="226" y="202" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="270" y="204" width="44" height="18" rx="2" fill="#111"/>`;
-  for (let i = 0; i < 4; i++) b += `<rect x="${232 + i * 20}" y="240" width="10" height="16" fill="#E2B33B"/>`;
-  b += serverIcon(1112, 136) + bellIcon(1330, 136);
+  b += `<rect x="274" y="115" width="112" height="72" rx="6" fill="#2B5C9E" stroke="#1B3B66" stroke-width="2"/>`;
+  b += `<rect x="286" y="127" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="330" y="129" width="44" height="18" rx="2" fill="#111"/>`;
+  for (let i = 0; i < 4; i++) b += `<rect x="${292 + i * 20}" y="165" width="10" height="16" fill="#E2B33B"/>`;
+  b += serverIcon(800, 690) + bellIcon(520, 690);
   // relay output reserved for future pump control (GPIO 32): dashed because it is not installed
-  b += rect(566, 300, 60, 44, { fill: '#FFF', rx: 5, stroke: '#555', sw: 2, dash: '6 4' });
-  b += A([[547, 322], [566, 322]], { dash: '6 4' });
-  b += P(596, 322, 'Relay', 13) + P(596, 372, 'GPIO 32\n(Future\nPump)', 12);
-  // one sensor node per tank: the left group is repeated at Tanks 1–4
-  b += rect(8, 78, 625, 470, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
-  b += P(200, 52, 'One Sensor Node per Tank (Tanks 1–4)', 16);
+  b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#555', sw: 2, dash: '6 4' });
+  b += A([[594, 322], [620, 322]], { dash: '6 4' });
+  b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Future\nPump)', 16);
+  // one sensor node per tank: the group is repeated at Tanks 1–4
+  b += rect(8, 50, 682, 452, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
+  b += P(349, 28, 'One Sensor Node per Tank (Tanks 1–4)');
   // labels
-  b += P(100, 130, 'Hydrostatic Water\nLevel Sensor\n(4–20 mA)', 16);
-  b += P(270, 296, 'Current-to-Voltage\nModule', 16);
-  b += P(92, 520, 'pH Sensor\n(PH-4502C)', 16);
-  b += P(472, 428, 'ESP32 Microcontroller', 16);
-  b += P(552, 50, 'LAN8720 PHY\nEthernet Module', 16);
-  b += P(775, 34, 'TP-Link CPE210\nP2P Bridge (2.4GHz)', 16);
-  b += P(655, 120, 'RJ45', 14);
-  b += P(860, 460, 'Internet Connection\n(Wireless Router)', 16);
-  b += lbl(666, 520, 'Standby: 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', { size: 15, family: POPPINS, weight: 500 });
-  b += P(1112, 460, 'Firebase Cloud\nService', 16);
-  b += P(1112, 52, 'Cloud-Hosted\nAlert Service', 16);
-  b += P(1330, 52, 'Firebase Cloud\nMessaging (FCM)', 16);
-  b += lbl(1420, 262, 'Push', { size: 15, family: POPPINS, weight: 500 });
-  b += P(1505, 460, 'Web & Mobile\nDashboard Client', 16);
-  b += P(240, 610, 'Physical Perception Layer', 26) + P(940, 610, 'Network & Cloud Infrastructure Layer', 26) + P(1505, 610, 'Client Application Layer', 26);
+  b += P(112, 262, 'Hydrostatic Water\nLevel Sensor\n(4–20 mA)');
+  b += P(330, 85, 'Current-to-Voltage\nModule');
+  b += P(110, 469, 'pH Sensor\n(PH-4502C)');
+  b += P(508, 436, 'ESP32\nMicrocontroller');
+  b += P(572, 85, 'LAN8720 PHY\nEthernet Module');
+  b += P(855, 45, 'TP-Link CPE210\nP2P Bridge (2.4GHz)');
+  b += P(725, 152, 'RJ45', 17);
+  b += P(1088, 60, 'Internet\nConnection\n(Wireless Router)');
+  b += lbl(754, 545, 'Standby: 2.4GHz Wi-Fi\n(Used if Ethernet Goes Down)', { size: 18, family: POPPINS, weight: 500 });
+  b += P(1090, 790, 'Firebase Cloud\nService');
+  b += P(800, 775, 'Cloud-Hosted\nAlert Service');
+  b += P(520, 775, 'Firebase Cloud\nMessaging (FCM)');
+  b += lbl(415, 690, 'Push', { size: 18, family: POPPINS, weight: 500 });
+  b += P(252, 790, 'Web & Mobile\nDashboard Client');
+  b += P(250, 540, 'Physical Perception Layer', 24) + P(820, 905, 'Network & Cloud Infrastructure Layer', 24) + P(252, 905, 'Client Application Layer', 24);
   return svg(W, H, b, imageDef(IMG, 'old-3-13-architecture.png', 1385, 579) + imageDef(NET, 'old-3-14-network.png', 1430, 523));
 }
 
 // ======================================================================
-// Figure 3-14: Network Design Topology (original figure with corrected labels)
+// Figure 3-14: Network Design Topology (photos from the original figure, labels redrawn larger)
 // ======================================================================
 function fig314() {
-  const W = 1720, H = 540, NET = 'net';
-  const P = (x, y, t, size = 16, weight = 600) => text(x, y, t, { size, family: POPPINS, weight, lh: 1.3 });
-  let b = crop(NET, [0, 0, 1430, 518], 0, 0);
-  // relabel: test site, link distance, standby link
-  b += `<rect x="56" y="438" width="380" height="100" fill="#FFF"/>` + P(246, 486, 'Sensor Site: One ESP32 Node per\nTank (Tank 1: Drum Model of\nReservoir Tank No. 1; Tanks 2–4 Planned)', 17, 600);
-  b += `<rect x="462" y="212" width="134" height="46" fill="#FFF"/>` + P(529, 235, '2.4GHz P2P Link\n(15–20 m in Testing)', 12, 600);
-  b += `<rect x="232" y="401" width="592" height="26" fill="#FFF"/>` + P(528, 414, 'Standby Link: Built-in 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', 15, 600);
-  // alert service beside Firebase
-  b += arrow([[1518, 82], [1398, 82]], { sw: 2.5, color: '#000', start: true });
-  b += P(1458, 66, 'Internet', 12, 600);
-  b += serverIcon(1580, 82, 52);
-  b += P(1580, 175, 'Cloud-Hosted\nAlert Service', 16);
-  return svg(W, H, b, imageDef(NET, 'old-3-14-network.png', 1430, 523));
+  const W = PAGE_W, H = 815, NET = 'net', IMG = 'arch';
+  const P = (x, y, t, size = 19, o = {}) => text(x, y, t, { size, family: POPPINS, weight: 600, lh: 1.3, ...o });
+  const A = (pts, o) => arrow(pts, { sw: 2.5, color: '#000', ...o });
+  let b = '';
+  // cloud, above the router
+  b += crop(IMG, [873, 245, 106, 140], 969, 12);
+  b += P(1022, 180, 'Firebase Cloud\nServices');
+  b += serverIcon(720, 82, 50);
+  b += P(720, 165, 'Cloud-Hosted\nAlert Service');
+  b += A([[774, 82], [962, 82]], { start: true }) + P(868, 62, 'Internet', 17);
+  b += A([[1022, 210], [1022, 282]], { start: true }) + P(1008, 246, 'Internet /\nWAN Link', 17, { anchor: 'end' });
+  // sensor site to the office
+  b += A([[192, 360], [272, 360], [272, 235], [880, 235], [880, 360], [947, 360]], { start: true });
+  b += lbl(576, 235, 'Primary Link: LAN8720 PHY Ethernet + P2P Wireless Bridge', { size: 17, family: POPPINS, weight: 600 });
+  b += A([[192, 400], [296, 400]], { start: true }) + A([[800, 400], [947, 400]], { start: true });
+  b += A([[100, 458], [100, 590], [985, 590], [985, 450]], { dash: '9 7', start: true });
+  b += lbl(542, 590, 'Standby Link: Built-in 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', { size: 17, family: POPPINS, weight: 600 });
+  b += crop(NET, [15, 162, 168, 136], 20, 318);
+  b += P(135, 280, 'ESP32 Microcontroller\nNode');
+  b += crop(NET, [325, 145, 62, 172], 300, 300) + crop(NET, [396, 192, 64, 82], 370, 345);
+  b += P(548, 386, '2.4GHz P2P Link\n(15–20 m in Testing)', 17);
+  b += crop(NET, [603, 192, 64, 82], 662, 345) + crop(NET, [680, 145, 62, 172], 734, 300);
+  b += P(331, 510, 'TP-Link CPE210\n(Client / Station)') + P(765, 510, 'TP-Link CPE210\n(Access Point)');
+  b += P(1022, 300, 'Wireless Router');
+  b += crop(NET, [882, 164, 138, 128], 953, 318);
+  // wireless clients
+  b += crop(NET, [1045, 278, 66, 74], 1098, 446);
+  b += crop(NET, [1168, 328, 244, 122], 950, 625);
+  b += P(1085, 776, 'Client Dashboard\nEndpoints');
+  b += P(240, 690, 'Sensor Site: One ESP32 Node per\nTank (Tank 1: Drum Model of Reservoir\nTank No. 1; Tanks 2–4 Planned)', 18);
+  b += P(690, 700, 'Motor Pool Office / Gateway', 24, { weight: 700 });
+  return svg(W, H, b, imageDef(IMG, 'old-3-13-architecture.png', 1385, 579) + imageDef(NET, 'old-3-14-network.png', 1430, 523));
 }
 
 export const figures = [
