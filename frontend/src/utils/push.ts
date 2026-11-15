@@ -53,6 +53,12 @@ async function saveToken(uid: string, token: string, platform: 'web' | 'android'
   }
 }
 
+/** iPhone or iPad (an iPad can report itself as a Mac with a touch screen). */
+function isAppleMobile(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 async function webSupported(): Promise<boolean> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window) || !('PushManager' in window)) {
     return false;
@@ -113,14 +119,25 @@ async function registerNative(uid: string): Promise<PushResult> {
 
 async function registerWeb(uid: string): Promise<PushResult> {
   if (!(await webSupported())) {
-    return { status: 'unsupported', message: 'This browser cannot receive push notifications.' };
+    return {
+      status: 'unsupported',
+      message: isAppleMobile()
+        ? 'On iPhone and iPad, add this site to the Home Screen (Share, then Add to Home Screen) and open it from that icon to get push alerts.'
+        : 'This browser cannot receive push notifications. Try Chrome, Edge or Firefox.',
+    };
   }
   if (!VAPID_KEY) {
-    return { status: 'not-configured', message: 'Push is not set up for this site yet (missing web push key).' };
+    return {
+      status: 'not-configured',
+      message: 'Push is not set up for browsers on this site yet. Ask the administrator to add the web push key and redeploy.',
+    };
   }
   const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
   if (permission !== 'granted') {
-    return { status: 'blocked', message: 'Notifications are blocked for this site in your browser settings.' };
+    return {
+      status: 'blocked',
+      message: 'Notifications are blocked for this site. Allow them in the browser\'s site settings (the icon beside the address), then try again.',
+    };
   }
 
   const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');

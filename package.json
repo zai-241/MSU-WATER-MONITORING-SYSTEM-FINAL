@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit -p frontend/tsconfig.app.json",
     "worker:install": "cd backend/worker && npm install",
     "worker:setup": "npm run worker:install && npm run worker:check",
-    "deploy:hosting": "npm run build && npx firebase deploy --only hosting"
+    "deploy:hosting": "node scripts/check-push-key.mjs && npm run build &&npx firebase deploy --only hosting"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

@@ -93,7 +93,8 @@ const NotificationCenter = () => {
   };
 
   // R9: push alerts reach this device even when the tab (or the Android app) is closed
-  const [pushStatus, setPushStatus] = useState<PushStatus>('unsupported');
+  // null until the first check finishes, so the button does not flash "unavailable"
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +126,17 @@ const NotificationCenter = () => {
     }
   };
   const pushAvailable = pushStatus === 'enabled' || pushStatus === 'available';
+  // The button is shown in every state. When push cannot be enabled, tapping it explains why.
+  const pushText =
+    pushStatus === 'enabled' ? 'Push On'
+    : pushStatus === 'available' ? 'Enable Push'
+    : pushStatus === 'blocked' ? 'Push Blocked'
+    : 'Push Unavailable';
+  const pushLabel =
+    pushStatus === 'enabled' ? 'Push alerts are on for this device. Tap to turn them off.'
+    : pushStatus === 'available' ? 'Get alerts on this device even when the app is closed'
+    : pushStatus === 'blocked' ? 'Push alerts are blocked on this device. Tap to see how to allow them.'
+    : 'Push alerts are not available on this device. Tap to see why.';
 
   /** Toolbar button: icon only on phones (label kept for screen readers), icon + text from 640px */
   const ToolButton = ({ label, text, icon, onClick, className = '', variant = 'ghost', disabled, testId }: {
@@ -185,18 +197,16 @@ const NotificationCenter = () => {
       <div className="flex flex-wrap items-center justify-between gap-x-2 bg-secondary/30 border-t px-3 text-xs text-muted-foreground">
         <span className="text-[11px] font-medium">Alert audio</span>
         <div className="flex flex-wrap items-center justify-end">
-          {pushAvailable && (
+          {pushStatus !== null && currentUser?.id && (
             <ToolButton
               testId="push-toggle"
               variant={pushStatus === 'enabled' ? 'ghost' : 'outline'}
-              label={pushStatus === 'enabled'
-                ? 'Push alerts are on for this device. Tap to turn them off.'
-                : 'Get alerts on this device even when the app is closed'}
-              text={pushStatus === 'enabled' ? 'Push On' : 'Enable Push'}
+              label={pushLabel}
+              text={pushText}
               icon={<Bell className="h-4 w-4" />}
               onClick={togglePush}
               disabled={pushBusy}
-              className={pushStatus === 'enabled' ? 'text-emerald-600' : ''}
+              className={pushStatus === 'enabled' ? 'text-emerald-600' : pushAvailable ? '' : 'text-muted-foreground border-dashed'}
             />
           )}
           {!pushAvailable && desktopSupported && desktopPermission === 'default' && (

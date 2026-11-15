@@ -66,7 +66,7 @@ npm run dev            # web app at http://localhost:8080
 npm test               # Vitest suites in frontend/src/test
 npm run typecheck
 npm run lint
-npm run deploy:hosting # build + deploy web (also updates the APK's content)
+npm run deploy:hosting # build + deploy web (also updates the APK's content); stops if frontend/.env has no VITE_FCM_VAPID_KEY (browser push)
 npm run cap:sync       # copy build into mobile/android before an APK build
 npm run worker:check   # verify worker credentials and DB access
 ```

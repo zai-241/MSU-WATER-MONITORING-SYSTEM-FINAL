@@ -136,7 +136,8 @@ npm run deploy:hosting
 
 Things to know:
 
-- The button only appears when the browser supports push and the key above is set.
+- The button is always shown. If the browser cannot do push, notifications are blocked, or the key above was missing from the build, it reads **Push Blocked** or **Push Unavailable** and tapping it says why.
+- `npm run deploy:hosting` stops if `VITE_FCM_VAPID_KEY` is missing from `frontend/.env`, so a deploy from a computer without that file cannot switch browser push off by accident. Every computer that deploys needs the same key.
 - iPhone and iPad: push works only after the site is added to the Home Screen (Share → Add to Home Screen), then opened from that icon.
 - Signing out removes that device's registration, so a signed-out device stops receiving alerts.
 - `frontend/public/firebase-messaging-sw.js` loads Firebase version 12.9.0. If you upgrade the `firebase` package, change the version in that file to match.
