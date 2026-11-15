@@ -572,7 +572,7 @@ function fig312() {
     ['', 'controllerOffline', 'BOOLEAN'], ['', 'lastUpdate', 'TIMESTAMP']]);
   ent('hist', X1, 1320, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
     ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
-    ['', 'phLevel', 'NUMBER'], ['', 'timestamp', 'TIMESTAMP']]);
+    ['', 'phLevel', 'NUMBER'], ['', 'pumpOn', 'BOOLEAN'], ['', 'timestamp', 'TIMESTAMP']]);
   ent('roles', X2, 12, 'ROLES', `${RT}  /roles/{uid}`, [
     ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
   ent('users', X2, 198, 'USERS', 'Cloud Firestore  users/{uid}', [
@@ -644,6 +644,159 @@ function fig312() {
   b += `<rect x="660" y="${r(1) - 10}" width="28" height="20" fill="#D6E4F5" stroke="#999"/>` + text(700, r(1), 'Firebase Realtime Database', lg);
   b += text(660, r(2), 'Keys are kept by the application; Firebase does not enforce them.', { ...lg, size: 16, fill: '#444' });
   return svg(W, H, b);
+}
+
+// ======================================================================
+// Data Model: Cloud Firestore and Firebase Realtime Database
+// Two portrait figures sized for a 6.5-inch page width (text about 8-9 pt when inserted full width):
+//   Data Model 1: Firestore, the RTDB path tree, ROLES, USER_STATE, CONFIG, SYSTEM
+//   Data Model 2: TANKS, HISTORY, NOTIFICATIONS, LOGS
+// Relationships are in the ERD (Figure 3-12); these figures are the storage view.
+// ======================================================================
+const DM = { W: 1540, TW: 720, ROW: 44, COL: [30, 790], FS: '#FCE8CC', RT: '#D6E4F5', MONO: 'Consolas, monospace' };
+function dmKit() {
+  const { TW, ROW, RT, MONO } = DM;
+  const k = { b: '' };
+  k.tbl = (x, y, title, path, by, rows, fill = RT) => {
+    const subs = lines(by), hh = 74 + subs.length * 28, h = hh + rows.length * ROW;
+    let s = `<rect x="${x}" y="${y}" width="${TW}" height="${hh}" fill="${fill}"/>`;
+    s += text(x + 18, y + 32, title, { size: 32, anchor: 'start', family: ARIAL });
+    s += text(x + TW - 18, y + 32, path, { size: 24, anchor: 'end', fill: '#1F3A5F', family: MONO });
+    subs.forEach((l, i) => { s += text(x + 18, y + 72 + i * 28, (i ? '' : 'Written by: ') + l, { size: 21, weight: 400, italic: true, anchor: 'start', fill: '#222', family: ARIAL }); });
+    rows.forEach(([name, type], i) => {
+      const ry = y + hh + i * ROW;
+      s += `<rect x="${x}" y="${ry}" width="${TW}" height="${ROW}" fill="${i % 2 ? '#F2F2F2' : '#FFFFFF'}"/>`;
+      s += `<line x1="${x}" y1="${ry}" x2="${x + TW}" y2="${ry}" stroke="#BBBBBB"/>`;
+      s += text(x + 18, ry + ROW / 2, name, { size: 27, weight: 400, anchor: 'start', family: ARIAL });
+      s += text(x + 548, ry + ROW / 2, type, { size: 23, weight: 400, anchor: 'start', fill: '#333', family: ARIAL });
+    });
+    s += `<line x1="${x + 534}" y1="${y + hh}" x2="${x + 534}" y2="${y + h}" stroke="#BBBBBB"/>`;
+    s += `<line x1="${x}" y1="${y + hh}" x2="${x + TW}" y2="${y + hh}" stroke="#111" stroke-width="2.5"/>`;
+    s += `<rect x="${x}" y="${y}" width="${TW}" height="${h}" fill="none" stroke="#111" stroke-width="2.5"/>`;
+    k.b += s;
+    return y + h;
+  };
+  // path pill: fixed names are filled, generated keys ({...}) are dashed and white
+  k.pill = (x, y, t) => {
+    const key = t.startsWith('{'), w = textW(t, 21, 0.6) + 26;
+    k.b += `<rect x="${x}" y="${y - 21}" width="${w}" height="42" rx="21" fill="${key ? '#FFFFFF' : RT}" stroke="#111" stroke-width="2"${key ? ' stroke-dasharray="7 5"' : ''}/>`;
+    k.b += text(x + w / 2, y, t, { size: 21, weight: key ? 400 : 700, family: MONO });
+    return x + w;
+  };
+  k.chain = (x, y, parts) => {
+    let cx = x;
+    parts.forEach((p, i) => {
+      if (i) { k.b += `<line x1="${cx}" y1="${y}" x2="${cx + 18}" y2="${y}" stroke="#111" stroke-width="2"/>`; cx += 18; }
+      cx = k.pill(cx, y, p);
+    });
+    return cx;
+  };
+  k.note = (x, y, t, o = {}) => { k.b += text(x, y, t, { size: 21, weight: 400, italic: true, anchor: 'start', fill: '#333', family: ARIAL, ...o }); };
+  k.legend = (x, y, h, items) => {
+    k.b += `<rect x="${x}" y="${y}" width="${TW}" height="${h}" fill="#FFF" stroke="#888" stroke-width="2"/>`;
+    k.b += text(x + 20, y + 34, 'Legend', { size: 27, anchor: 'start', family: ARIAL });
+    let ly = y + 82;
+    for (const it of items) {
+      const lab = (t, o = {}) => text(x + 130, ly, t, { size: 23, weight: 400, anchor: 'start', family: ARIAL, ...o });
+      if (it.swatch) k.b += `<rect x="${x + 30}" y="${ly - 15}" width="70" height="30" fill="${it.swatch}" stroke="#888"/>` + lab(it.t);
+      else if (it.pill) { k.pill(x + 24, ly, it.pill); k.b += lab(it.t); }
+      else k.b += text(x + 30, ly, it.t, { size: 23, weight: 400, anchor: 'start', fill: it.grey ? '#444' : C.ink, family: ARIAL });
+      ly += it.gap || 50;
+    }
+  };
+  return k;
+}
+
+function figDataModel1() {
+  const { W, TW, COL, FS, RT, MONO } = DM, H = 1680;
+  const k = dmKit();
+  // ---- column 1: Firestore, ROLES, USER_STATE, legend
+  let x = COL[0];
+  k.b += `<rect x="${x}" y="30" width="${TW}" height="210" fill="${FS}" stroke="#111" stroke-width="2.5"/>`;
+  k.b += text(x + 18, 64, 'Cloud Firestore (document database)', { size: 29, anchor: 'start', family: ARIAL });
+  k.b += `<rect x="${x + 30}" y="104" width="140" height="52" rx="4" fill="#FFF" stroke="#111" stroke-width="2"/>` + text(x + 100, 130, 'users', { size: 24, family: MONO });
+  k.b += `<line x1="${x + 170}" y1="130" x2="${x + 220}" y2="130" stroke="#111" stroke-width="2"/>`;
+  k.b += `<rect x="${x + 220}" y="104" width="140" height="52" rx="4" fill="#FFF" stroke="#111" stroke-width="2" stroke-dasharray="7 5"/>` + text(x + 290, 130, '{uid}', { size: 24, weight: 400, family: MONO });
+  k.note(x + 100, 192, 'collection', { anchor: 'middle' });
+  k.note(x + 290, 192, 'document\n(Auth UID)', { anchor: 'middle' });
+  k.note(x + 390, 130, 'the only collection;\nall other paths\nare denied');
+  const usersEnd = k.tbl(x, 280, 'USERS', 'users/{uid}', ['Admin Panel (create, role, status);', 'the user edits only username, jobTitle'], [
+    ['id', 'STRING'], ['username', 'STRING'], ['email', 'STRING'], ['role (admin | worker | viewer)', 'STRING'],
+    ['jobTitle', 'STRING'], ['status (active | inactive)', 'STRING'], ['createdAt', 'TIMESTAMP']], FS);
+  k.b += arrow([[x + 360, usersEnd], [x + 360, usersEnd + 102]], { dash: '10 7', sw: 2.5 });
+  k.note(x + 380, usersEnd + 50, 'role copied on create and change;\nremoved when inactive');
+  const rolesEnd = k.tbl(x, usersEnd + 110, 'ROLES', 'roles/{uid}', 'Admin Panel; read by database rules', [
+    ['(value) admin|worker|viewer|device', 'STRING']]);
+  k.note(x, rolesEnd + 30, 'device = an ESP32 controller account (one per tank)');
+  const usEnd = k.tbl(x, rolesEnd + 76, 'USER_STATE', 'userState/{uid}', 'web app or APK, only by the same user', [
+    ['notificationsLastReadAt', 'TIMESTAMP'], ['notificationsReadIds/{alertId}', 'BOOLEAN'],
+    ['fcmTokens/{token}/platform', 'STRING'], ['fcmTokens/{token}/updatedAt', 'TIMESTAMP']]);
+  k.legend(x, usEnd + 40, 280, [
+    { swatch: FS, t: 'Cloud Firestore' }, { swatch: RT, t: 'Firebase Realtime Database' },
+    { pill: 'tanks', t: 'fixed path name', gap: 56 }, { pill: '{key}', t: 'generated key (ID, UID, push key)', gap: 50 },
+  ]);
+
+  // ---- column 2: RTDB path tree, CONFIG, SYSTEM
+  x = COL[1];
+  const tree = [
+    [['tanks', '{tankId}'], 'TANKS'], [['config'], 'CONFIG'], [['history', 'tanks', '{tankId}', '{pushKey}'], 'HISTORY'],
+    [['logs', '{pushKey}'], 'LOGS'], [['notifications', '{alertId}'], 'NOTIFICATIONS'], [['roles', '{uid}'], 'ROLES'],
+    [['userState', '{uid}'], 'USER_STATE'], [['system', 'worker'], 'SYSTEM'],
+  ];
+  const tH = 160 + tree.length * 68;
+  k.b += `<rect x="${x}" y="30" width="${TW}" height="${tH}" fill="#FFF" stroke="#111" stroke-width="2.5"/>`;
+  k.b += text(x + 18, 64, 'Realtime Database (one JSON tree)', { size: 29, anchor: 'start', family: ARIAL });
+  k.b += `<rect x="${x + 22}" y="96" width="50" height="40" rx="20" fill="#111"/>` + text(x + 47, 116, '/', { size: 22, fill: '#FFF', family: MONO });
+  const trunk = x + 47;
+  tree.forEach(([parts, ent], i) => {
+    const y = 180 + i * 68;
+    k.b += `<polyline points="${trunk},${i ? y - 68 : 136} ${trunk},${y} ${trunk + 24},${y}" fill="none" stroke="#111" stroke-width="2"/>`;
+    const end = k.chain(trunk + 24, y, parts);
+    if (end < x + 520) k.note(x + 530, y, ent, { size: 20 });
+  });
+  k.note(x + 18, 30 + tH - 26, 'Each path leads to the table of the same name.', { size: 20 });
+  const cfgEnd = k.tbl(x, 30 + tH + 40, 'CONFIG', 'config', 'Admin Panel (one record for all tanks)', [
+    ['lowLevelThreshold (%, default 15)', 'NUMBER'], ['overflowThreshold (%, default 95)', 'NUMBER'],
+    ['minPh (default 6.5)', 'NUMBER'], ['maxPh (default 8.5)', 'NUMBER'], ['maintenanceMode', 'BOOLEAN'],
+    ['pumpControlLock', 'BOOLEAN'], ['pumpDemoMode (missing = on)', 'BOOLEAN'], ['offlineThresholdSec (default 30)', 'NUMBER'],
+    ['repeatIntervalSec (default 60)', 'NUMBER'], ['soundEnabled', 'BOOLEAN'], ['pushEnabled', 'BOOLEAN']]);
+  k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system/worker', 'Alert Service heartbeat', [
+    ['lastSeen', 'TIMESTAMP'], ['startedAt', 'TIMESTAMP']]);
+  return svg(W, H, k.b);
+}
+
+function figDataModel2() {
+  const { W, COL, RT } = DM, H = 1860;
+  const k = dmKit();
+  let x = COL[0];
+  const tnkEnd = k.tbl(x, 30, 'TANKS', 'tanks/{tankId}', ['ESP32 (live readings), Admin (setup,', 'calibration, capacity), Worker (pumpOn),', 'Alert Service (controllerOffline)'], [
+    ['id ("1" to "4")', 'STRING'], ['name', 'STRING'], ['location', 'STRING'], ['enabled', 'BOOLEAN'], ['assignedWorker (user UID)', 'STRING'],
+    ['waterLevel (%)', 'NUMBER'], ['waterHeight (m)', 'NUMBER'], ['phLevel', 'NUMBER'], ['status (safe|warning|danger|offline)', 'STRING'],
+    ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn', 'BOOLEAN'],
+    ['levelSensorOk', 'BOOLEAN'], ['phSensorOk', 'BOOLEAN'], ['levelVmin (V)', 'NUMBER'], ['levelVmax (V)', 'NUMBER'],
+    ['tankHeight (m)', 'NUMBER'], ['capacityLiters (default 200)', 'NUMBER'], ['levelOffset', 'NUMBER'], ['phNeutralVoltage (V)', 'NUMBER'],
+    ['phSlope', 'NUMBER'], ['phOffset', 'NUMBER'], ['rssi (dBm)', 'NUMBER'], ['wifiConnected', 'BOOLEAN'], ['ethConnected', 'BOOLEAN'],
+    ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['lastUpdate', 'TIMESTAMP']]);
+  k.tbl(x, tnkEnd + 40, 'HISTORY', 'history/tanks/{tankId}/{pushKey}', 'ESP32, one sample every 10 minutes', [
+    ['waterLevel', 'NUMBER'], ['waterHeight', 'NUMBER'], ['phLevel', 'NUMBER'], ['pumpOn', 'BOOLEAN'], ['timestamp (indexed)', 'TIMESTAMP']]);
+
+  x = COL[1];
+  const ntfEnd = k.tbl(x, 30, 'NOTIFICATIONS', 'notifications/{alertId}', ['Alert Service (or open dashboards while', 'it is down); users acknowledge'], [
+    ['id (alert-{tankId}-{type})', 'STRING'], ['tankId', 'STRING'], ['title', 'STRING'], ['message', 'STRING'], ['type (info | warning | danger)', 'STRING'],
+    ['timestamp (indexed)', 'TIMESTAMP'], ['read', 'BOOLEAN'], ['acknowledged', 'BOOLEAN'], ['acknowledgedBy (name)', 'STRING'],
+    ['acknowledgedByUid', 'STRING'], ['acknowledgedAt', 'TIMESTAMP'], ['resolved', 'BOOLEAN'], ['resolvedAt', 'TIMESTAMP'], ['lastRepeatedAt', 'TIMESTAMP']]);
+  const logEnd = k.tbl(x, ntfEnd + 40, 'LOGS', 'logs/{pushKey}', 'ESP32, web app, Alert Service (append only)', [
+    ['id', 'STRING'], ['tankId (Tanks 2–4; none = Tank 1)', 'STRING'], ['action', 'STRING'], ['details', 'STRING'],
+    ['performedBy (name)', 'STRING'], ['logLevel (see legend)', 'STRING'], ['timestamp (indexed)', 'TIMESTAMP']]);
+  k.legend(x, logEnd + 40, 400, [
+    { t: 'logLevel = INFO | WARNING | ERROR | CRITICAL' },
+    { swatch: RT, t: 'Firebase Realtime Database' },
+    { t: 'TIMESTAMP = milliseconds since 1970' },
+    { t: '{tankId} = "1" to "4" (one record per tank)' },
+    { t: 'Records older than 90 days are deleted daily', grey: true, gap: 32 },
+    { t: 'by the Alert Service (notifications, logs, history).', grey: true },
+  ]);
+  return svg(W, H, k.b);
 }
 
 // ======================================================================
@@ -773,4 +926,6 @@ export const figures = [
   ['Figure 3-12: Entity-Relationship Diagram (ERD)', fig312],
   ['Figure 3-13: Architectural Design of the System', fig313],
   ['Figure 3-14: Network Design Topology', fig314],
+  ['Data Model 1: Cloud Firestore and Realtime Database Structure', figDataModel1],
+  ['Data Model 2: Realtime Database Tank, History, Notification and Log Records', figDataModel2],
 ].map(([title, draw]) => ({ title, file: title.split(':')[0].replace(/\s+/g, '_'), draw }));
