@@ -15,7 +15,9 @@ import {
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import type { UserProfile } from '@/services/authService';
 import { useProcessedTankData } from '@/hooks/useUIStabilization';
-import { WifiOff, User } from 'lucide-react';
+import { WifiOff, User, Loader2 } from 'lucide-react';
+import { PUMP_FEEDBACK_MS } from '@/lib/constants';
+import { resolvePumpCommand, type PendingPumpCommand, type PumpCommandOutcome } from '@/lib/pumpCommand';
 import { useAuth } from '@/hooks/useAuth';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { firestore } from '@/config/firebase';
@@ -30,6 +32,10 @@ interface TankCardProps {
   assignedWorkerName: string;
   isOffline: boolean;
   nowServer: number;
+  /** Requested pump state while a command waits for the controller, else undefined */
+  pumpPending?: boolean;
+  /** Result of the last pump command, shown for a few seconds */
+  pumpFeedback?: PumpCommandOutcome;
 }
 
 /**
@@ -46,6 +52,8 @@ const TankCard = memo(({
   assignedWorkerName,
   isOffline,
   nowServer,
+  pumpPending,
+  pumpFeedback,
 }: TankCardProps) => {
   // Apply display stabilization: formats, rounds, and throttles values for clean UI presentation
   const processedTank = useProcessedTankData(tank);
@@ -61,6 +69,8 @@ const TankCard = memo(({
   const isWorker = currentUser?.role === 'worker';
   const canTogglePump = isAdmin || (isWorker && !config.pumpControlLock && processedTank.assignedWorker === currentUser?.id);
   const pumpMode = getPumpMode(config);
+  const isPumpWaiting = pumpPending !== undefined;
+  const pumpToggleDisabled = disabled || isOffline || config.maintenanceMode || !canTogglePump || isPumpWaiting;
 
   return (
     <div className={`rounded-xl bg-card p-6 shadow-sm border transition-all ${
@@ -193,25 +203,53 @@ const TankCard = memo(({
                 >
                   {pumpMode === 'manual' ? 'Manual' : 'Auto'}
                 </span>
-                <span className={`text-sm font-medium ${processedTank.pumpOn && !disabled && !isOffline ? 'text-safe' : 'text-muted-foreground'}`}>
-                  {processedTank.pumpOn && !disabled ? 'ON' : 'OFF'}
-                </span>
+                {isPumpWaiting ? (
+                  <span data-testid="pump-status" className="text-sm font-medium text-primary flex items-center gap-1">
+                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                    {pumpPending ? 'Turning ON…' : 'Turning OFF…'}
+                  </span>
+                ) : (
+                  <span data-testid="pump-status" className={`text-sm font-medium ${processedTank.pumpOn && !disabled && !isOffline ? 'text-safe' : 'text-muted-foreground'}`}>
+                    {processedTank.pumpOn && !disabled ? 'ON' : 'OFF'}
+                  </span>
+                )}
                 <button
-                  disabled={disabled || isOffline || config.maintenanceMode || !canTogglePump}
+                  data-testid="pump-toggle"
+                  aria-label={`Turn pump ${processedTank.pumpOn ? 'off' : 'on'}`}
+                  aria-busy={isPumpWaiting}
+                  disabled={pumpToggleDisabled}
                   onClick={() => onPumpToggle(processedTank.id, processedTank.name, !processedTank.pumpOn)}
-                  title={isOffline ? 'Pump toggle disabled: Controller is offline' : undefined}
+                  title={isOffline ? 'Pump toggle disabled: Controller is offline' : isPumpWaiting ? 'Waiting for the controller to confirm' : undefined}
                   className={`relative h-6 w-11 rounded-full transition-colors ${
-                    disabled || isOffline || config.maintenanceMode || !canTogglePump
+                    isPumpWaiting
+                      ? `cursor-wait ${processedTank.pumpOn ? 'bg-primary/60' : 'bg-muted'}`
+                      : pumpToggleDisabled
                       ? 'cursor-not-allowed bg-muted opacity-50'
                       : processedTank.pumpOn ? 'bg-primary' : 'bg-muted'
                   }`}
                 >
-                  <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${processedTank.pumpOn && !disabled ? 'translate-x-5' : ''}`} />
+                  <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform flex items-center justify-center ${processedTank.pumpOn && !disabled ? 'translate-x-5' : ''}`}>
+                    {isPumpWaiting && <Loader2 size={12} className="animate-spin text-primary" aria-hidden="true" />}
+                  </span>
                 </button>
               </>
             )}
           </div>
         </div>
+        {!isPlanned && (isPumpWaiting || pumpFeedback) && (
+          <p
+            data-testid="pump-feedback"
+            role="status"
+            className={`text-[11px] text-right font-medium ${
+              isPumpWaiting ? 'text-muted-foreground'
+                : pumpFeedback?.kind === 'accepted' ? 'text-safe'
+                : pumpFeedback?.kind === 'timeout' ? 'text-warning'
+                : 'text-danger'
+            }`}
+          >
+            {isPumpWaiting ? 'Waiting for the controller to confirm…' : pumpFeedback?.message}
+          </p>
+        )}
         {!isPlanned && !disabled && pumpMode === 'auto' && (
           <p data-testid="pump-auto-note" className="text-[11px] text-muted-foreground text-right">
             Auto: the pump may restart by itself at or below {config.lowLevelThreshold}%.
@@ -233,6 +271,8 @@ const TankCard = memo(({
   if (prevPlanned !== nextPlanned) return false;
 
   if (prevProps.isOffline !== nextProps.isOffline) return false;
+  if (prevProps.pumpPending !== nextProps.pumpPending) return false;
+  if (prevProps.pumpFeedback !== nextProps.pumpFeedback) return false;
   if (p.enabled !== n.enabled) return false;
   if (p.pumpOn !== n.pumpOn) return false;
   if (prevProps.assignedWorkerName !== nextProps.assignedWorkerName) return false;
@@ -303,6 +343,9 @@ const Dashboard = () => {
   }, []);
   const isAdmin = currentUser?.role === 'admin';
   const [pumpConfirm, setPumpConfirm] = useState<{ tankId: string; tankName: string; newState: boolean } | null>(null);
+  // Pump commands waiting for the controller's acknowledgment, and recent results (per tank id)
+  const [pumpPending, setPumpPending] = useState<Record<string, PendingPumpCommand>>({});
+  const [pumpFeedback, setPumpFeedback] = useState<Record<string, PumpCommandOutcome & { until: number }>>({});
 
   // Synchronized server clock timer (ticks every 1000ms using Firebase server time offset)
   const [nowServer, setNowServer] = useState(() => Date.now() + serverTimeOffset);
@@ -315,6 +358,38 @@ const Dashboard = () => {
 
     return () => clearInterval(interval);
   }, [serverTimeOffset]);
+
+  // End each pump wait once the controller acknowledges it (or it times out),
+  // and drop results that have been shown long enough. Runs on every tank
+  // update and on the 1 s clock tick.
+  useEffect(() => {
+    const now = Date.now();
+    const resolved: Record<string, PumpCommandOutcome> = {};
+    for (const [tankId, pending] of Object.entries(pumpPending)) {
+      const outcome = resolvePumpCommand(pending, tanks.find(t => t.id === tankId), now);
+      if (outcome) resolved[tankId] = outcome;
+    }
+    const resolvedIds = Object.keys(resolved);
+    if (resolvedIds.length > 0) {
+      setPumpPending(prev => {
+        const next = { ...prev };
+        resolvedIds.forEach(id => delete next[id]);
+        return next;
+      });
+    }
+    setPumpFeedback(prev => {
+      const next: typeof prev = {};
+      let changed = false;
+      for (const [id, fb] of Object.entries(prev)) {
+        if (fb.until > now) next[id] = fb; else changed = true;
+      }
+      for (const id of resolvedIds) {
+        next[id] = { ...resolved[id], until: now + PUMP_FEEDBACK_MS };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [tanks, pumpPending, nowServer]);
 
   // Connection status & relative heartbeat timer calculations
   // Select active operational tank (skip planned expansion tanks)
@@ -363,6 +438,7 @@ const Dashboard = () => {
     if (!targetTank || isTankPlanned(targetTank) || isTankControllerOffline(targetTank, serverTimeOffset, offlineMs)) {
       return; // Cannot toggle pump on planned tanks or when controller is offline
     }
+    if (pumpPending[tankId]) return; // the last command is still waiting for the controller
     setPumpConfirm({ tankId, tankName, newState });
   };
 
@@ -373,7 +449,33 @@ const Dashboard = () => {
       setPumpConfirm(null);
       return;
     }
-    updateTank(pumpConfirm.tankId, { pumpOn: pumpConfirm.newState });
+    const { tankId, newState } = pumpConfirm;
+    // Remember the controller's last acknowledgment; the spinner stops when it changes
+    setPumpPending(prev => ({
+      ...prev,
+      [tankId]: { requested: newState, ackBefore: targetTank?.pumpCommandAt, sentAt: Date.now() },
+    }));
+    setPumpFeedback(prev => {
+      if (!prev[tankId]) return prev;
+      const next = { ...prev };
+      delete next[tankId];
+      return next;
+    });
+    Promise.resolve(updateTank(tankId, { pumpOn: newState })).catch((err: unknown) => {
+      setPumpPending(prev => {
+        const next = { ...prev };
+        delete next[tankId];
+        return next;
+      });
+      setPumpFeedback(prev => ({
+        ...prev,
+        [tankId]: {
+          kind: 'error',
+          message: `Could not send the command: ${err instanceof Error ? err.message : String(err)}`,
+          until: Date.now() + PUMP_FEEDBACK_MS,
+        },
+      }));
+    });
 
     addLog({
       action: pumpConfirm.newState ? 'PUMP_ON' : 'PUMP_OFF',
@@ -463,6 +565,8 @@ const Dashboard = () => {
               assignedWorkerName={getWorkerName(tank.assignedWorker)}
               isOffline={isOffline}
               nowServer={nowServer}
+              pumpPending={pumpPending[tank.id]?.requested}
+              pumpFeedback={pumpFeedback[tank.id]}
             />
           );
         })}

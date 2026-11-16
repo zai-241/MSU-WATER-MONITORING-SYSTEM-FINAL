@@ -190,6 +190,14 @@ bool commandClientConfigured = false;
 bool lastPumpState = false;
 bool currentPumpState = false;
 bool lastSentPumpState = false;
+// pumpOn in tanks/{TANK_ID} is a command field: the web app writes it, and the
+// ESP32 writes it only through updateFirebasePumpState() (never in the regular
+// sensor upload, which would overwrite a command sent between two polls).
+// While this flag is set, the ESP32's own pump state has not reached the
+// database yet (boot, or a failed write), so the value there is not read as a
+// command; the next poll writes the ESP32's state instead. Starting at true also
+// means a leftover pumpOn=true does not restart the pump after a power cut.
+bool pumpSyncPending = true;
 unsigned long lastPumpStopTime = 0;
 const unsigned long PUMP_MIN_OFF_TIME = 30000; // anti-chatter
 
@@ -1375,36 +1383,73 @@ void checkNetworkWatchdog() {
 // ==========================================
 // Pump Control & Synchronization Helper
 // ==========================================
-void updateFirebasePumpState(bool pumpState) {
-  lastSentPumpState = pumpState;
-  if (isNetworkConnected()) {
-    if (ensureFirebaseAuth()) {
-      WiFiClientSecure secureClient;
-      secureClient.setInsecure();
-      HTTPClient http;
-      http.begin(secureClient, getTanksUrl());
-      http.setTimeout(1500);
-      http.addHeader("Content-Type", "application/json");
-      String patchPayload =
-          "{\"pumpOn\":" + String(pumpState ? "true" : "false") +
-          ",\"lastUpdate\":{\".sv\":\"timestamp\"}}";
-      int code = http.sendRequest("PATCH", patchPayload);
-      if (code == 401) {
-        DEBUG_PRINTLN(
-            "[FirebaseAuth] Received 401 in updateFirebasePumpState.");
-        firebaseAuthValid = false;
-      }
-      if (code >= 200 && code < 300) {
-        lastSensorWrite = millis();
-        DEBUG_PRINTF("[Pump] Updated pumpOn in tanks/%d to %s (HTTP %d)\n",
-                     TANK_ID, pumpState ? "true" : "false", code);
-      } else {
-        DEBUG_PRINTF("[Pump] Failed to PATCH pumpOn in tanks/%d. Code: %d\n",
-                     TANK_ID, code);
-      }
-      http.end();
-    }
+// Sends one PATCH to tanks/{TANK_ID} with the pump fields.
+//   writePumpOn:   include pumpOn = pumpState.
+//   commandResult: when not NULL, also acknowledges a pump command from the web
+//                  app: pumpCommandAt (server time) and pumpCommandResult
+//                  ("accepted" or "refused-<reason>"). The dashboard shows a
+//                  waiting spinner until pumpCommandAt changes.
+// Returns true when the database accepted the write.
+bool sendPumpPatch(bool writePumpOn, bool pumpState,
+                   const char *commandResult) {
+  if (!isNetworkConnected() || !ensureFirebaseAuth()) {
+    return false;
   }
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();
+  HTTPClient http;
+  http.begin(secureClient, getTanksUrl());
+  http.setTimeout(1500);
+  http.addHeader("Content-Type", "application/json");
+  String patchPayload = "{";
+  if (writePumpOn) {
+    patchPayload += "\"pumpOn\":" + String(pumpState ? "true" : "false") + ",";
+  }
+  if (commandResult != NULL) {
+    patchPayload += "\"pumpCommandResult\":\"" + String(commandResult) + "\",";
+    patchPayload += "\"pumpCommandAt\":{\".sv\":\"timestamp\"},";
+  }
+  patchPayload += "\"lastUpdate\":{\".sv\":\"timestamp\"}}";
+  int code = http.sendRequest("PATCH", patchPayload);
+  if (code == 401) {
+    DEBUG_PRINTLN("[FirebaseAuth] Received 401 in sendPumpPatch.");
+    firebaseAuthValid = false;
+  }
+  bool ok = (code >= 200 && code < 300);
+  if (ok) {
+    lastSensorWrite = millis();
+    DEBUG_PRINTF("[Pump] Updated pump fields in tanks/%d (pumpOn %s, result "
+                 "%s, HTTP %d)\n",
+                 TANK_ID,
+                 writePumpOn ? (pumpState ? "true" : "false") : "unchanged",
+                 commandResult != NULL ? commandResult : "-", code);
+  } else {
+    DEBUG_PRINTF("[Pump] Failed to PATCH pump fields in tanks/%d. Code: %d\n",
+                 TANK_ID, code);
+  }
+  http.end();
+  return ok;
+}
+
+// Writes the ESP32's pump state to pumpOn, and acknowledges a pump command
+// when commandResult is not NULL (used when a command is refused).
+void updateFirebasePumpStateWithResult(bool pumpState,
+                                       const char *commandResult) {
+  lastSentPumpState = pumpState;
+  pumpSyncPending = true; // cleared only when the write succeeds
+  if (sendPumpPatch(true, pumpState, commandResult)) {
+    pumpSyncPending = false;
+  }
+}
+
+void updateFirebasePumpState(bool pumpState) {
+  updateFirebasePumpStateWithResult(pumpState, NULL);
+}
+
+// Acknowledges an accepted pump command without touching pumpOn: it already
+// holds the commanded value, and rewriting it could undo a newer command.
+void acknowledgePumpCommand(const char *commandResult) {
+  sendPumpPatch(false, false, commandResult);
 }
 
 void processAutomaticPumpControl() {
@@ -1766,7 +1811,11 @@ void networkTask(void *pvParameters) {
 
           bool firebasePump = getBoolFromJson(payload, "pumpOn");
 
-          if (firebasePump != lastSentPumpState) {
+          if (pumpSyncPending) {
+            // The database does not hold our pump state yet: write it first
+            // and read commands from the next poll on.
+            updateFirebasePumpState(currentPumpState);
+          } else if (firebasePump != lastSentPumpState) {
             if (firebasePump) {
               // Manual ON command requested
               bool lvlOk;
@@ -1788,7 +1837,7 @@ void networkTask(void *pvParameters) {
                                "Manual pump ON command refused: Pump demo mode "
                                "is off.",
                                LEVEL_WARNING);
-                updateFirebasePumpState(false);
+                updateFirebasePumpStateWithResult(false, "refused-demo-off");
                 currentPumpState = false;
               } else if (lvlOk && lvlPct >= 0 && lvlPct >= (int)overflowThreshold) {
                 DEBUG_PRINTLN(
@@ -1800,7 +1849,7 @@ void networkTask(void *pvParameters) {
                                    "%) is at or above overflow threshold (" +
                                    String((int)overflowThreshold) + "%).",
                                LEVEL_WARNING);
-                updateFirebasePumpState(false);
+                updateFirebasePumpStateWithResult(false, "refused-overflow");
                 currentPumpState = false;
               } else if (maintenanceMode) {
                 DEBUG_PRINTLN("[Pump] Manual ON command refused: Maintenance "
@@ -1809,7 +1858,7 @@ void networkTask(void *pvParameters) {
                                "Manual pump ON command refused: Maintenance "
                                "mode is active.",
                                LEVEL_WARNING);
-                updateFirebasePumpState(false);
+                updateFirebasePumpStateWithResult(false, "refused-maintenance");
                 currentPumpState = false;
               } else if (pumpControlLock) {
                 DEBUG_PRINTLN("[Pump] Manual toggle refused: Pump control lock "
@@ -1818,7 +1867,8 @@ void networkTask(void *pvParameters) {
                     "Pump Controller",
                     "Manual pump toggle refused: Pump control lock is enabled.",
                     LEVEL_WARNING);
-                updateFirebasePumpState(currentPumpState);
+                updateFirebasePumpStateWithResult(currentPumpState,
+                                                  "refused-lock");
               } else if (!lvlOk) {
                 DEBUG_PRINTLN("[Pump] Manual ON command refused: Level sensor "
                               "is faulty.");
@@ -1826,7 +1876,7 @@ void networkTask(void *pvParameters) {
                                "Manual pump ON command refused: Water level "
                                "sensor is faulty.",
                                LEVEL_CRITICAL);
-                updateFirebasePumpState(false);
+                updateFirebasePumpStateWithResult(false, "refused-level-sensor");
                 currentPumpState = false;
               } else {
                 currentPumpState = true;
@@ -1836,6 +1886,7 @@ void networkTask(void *pvParameters) {
                     "Manual pump ON command accepted. Water level: " +
                         String(lvlPct) + "%",
                     LEVEL_INFO);
+                acknowledgePumpCommand("accepted");
               }
             } else {
               // Manual OFF command requested
@@ -1846,7 +1897,8 @@ void networkTask(void *pvParameters) {
                     "Pump Controller",
                     "Manual pump toggle refused: Pump control lock is enabled.",
                     LEVEL_WARNING);
-                updateFirebasePumpState(currentPumpState);
+                updateFirebasePumpStateWithResult(currentPumpState,
+                                                  "refused-lock");
               } else {
                 currentPumpState = false;
                 lastSentPumpState = false;
@@ -1856,6 +1908,7 @@ void networkTask(void *pvParameters) {
                     "Manual pump OFF command accepted. Water level: " +
                         String(stabilizedWaterLevelPercent) + "%",
                     LEVEL_INFO);
+                acknowledgePumpCommand("accepted");
               }
             }
           }
@@ -2003,14 +2056,12 @@ void networkTask(void *pvParameters) {
     int snapLevel;
     float snapPh, snapHeight;
     bool snapPhOk, snapLevelOk;
-    bool snapPumpState;
     if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       snapLevel = stabilizedWaterLevelPercent;
       snapPh = stabilizedPhValue;
       snapHeight = stabilizedWaterHeight;
       snapPhOk = phSensorOk;
       snapLevelOk = levelSensorOk;
-      snapPumpState = currentPumpState;
       xSemaphoreGive(sensorDataMutex);
     } else {
       vTaskDelay(pdMS_TO_TICKS(10));
@@ -2023,7 +2074,6 @@ void networkTask(void *pvParameters) {
     bool phChangedSignificantly =
         (lastSentPhValue == -999.0) ||
         (abs(snapPh - lastSentPhValue) >= PH_LEVEL_DEADBAND);
-    bool pumpStateChanged = (snapPumpState != lastSentPumpState);
     bool phHealthChanged = (snapPhOk != lastSentPhHealth);
     bool levelHealthChanged = (snapLevelOk != lastSentLevelHealth);
     bool alertStateChanged =
@@ -2037,7 +2087,7 @@ void networkTask(void *pvParameters) {
     if (isNetworkConnected()) {
       if (rateLimitElapsed &&
           (levelChangedSignificantly || phChangedSignificantly ||
-           pumpStateChanged || phHealthChanged || levelHealthChanged ||
+           phHealthChanged || levelHealthChanged ||
            alertStateChanged || heartbeatElapsed)) {
         if (ensureFirebaseAuth()) {
 
@@ -2058,8 +2108,7 @@ void networkTask(void *pvParameters) {
           jsonPayload += "\"phLevel\":" + String(snapPh, 2) + ",";
           jsonPayload += "\"waterHeight\":" + String(snapHeight, 2) + ",";
           jsonPayload += "\"status\":\"" + status + "\",";
-          jsonPayload +=
-              "\"pumpOn\":" + String(snapPumpState ? "true" : "false") + ",";
+          // No pumpOn here: it is written only by updateFirebasePumpState().
           jsonPayload +=
               "\"phSensorOk\":" + String(snapPhOk ? "true" : "false") + ",";
           jsonPayload +=
@@ -2115,7 +2164,6 @@ void networkTask(void *pvParameters) {
               flushRamLogBuffer();
             }
 
-            lastSentPumpState = snapPumpState;
             lastSentWaterLevelPercent = snapLevel;
             lastSentPhValue = snapPh;
             lastSentWaterHeight = snapHeight;

@@ -189,7 +189,9 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | phLevel | NUMBER | null when the pH sensor fails |
 | status | STRING | safe, warning, danger or offline |
 | lowLevelAlert, highLevelAlert, phAlert | STRING | NORMAL, WARNING, CRITICAL or RECOVERED |
-| pumpOn | BOOLEAN | virtual pump state |
+| pumpOn | BOOLEAN | virtual pump state, and the command field: the web app writes it; the ESP32 writes it only when it changes the pump itself or refuses a command (not in its regular sensor upload) |
+| pumpCommandAt | TIMESTAMP | ESP32: server time it last handled a pump command from the web app |
+| pumpCommandResult | STRING | ESP32: `accepted`, or `refused-demo-off`, `refused-overflow`, `refused-maintenance`, `refused-lock`, `refused-level-sensor` |
 | levelSensorOk, phSensorOk | BOOLEAN | sensor health |
 | levelVmin, levelVmax | NUMBER | level sensor calibration (V) |
 | tankHeight | NUMBER | m |

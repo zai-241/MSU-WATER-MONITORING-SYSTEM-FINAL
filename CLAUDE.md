@@ -35,7 +35,7 @@ There is no physical pump: the ESP32 drives a virtual pump (no pin), shown only 
 
 | Path | Written by | Contents |
 |---|---|---|
-| `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin) |
+| `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin). `pumpOn` is the pump command: the ESP32 writes it only when it changes the pump itself or refuses a command, never in its regular sensor upload (that overwrote commands). It acknowledges each command with `pumpCommandAt` + `pumpCommandResult`; the dashboard shows a spinner until then (15 s timeout, `PUMP_COMMAND_TIMEOUT_MS`). After a reboot the ESP32 writes its own state (OFF) before reading commands |
 | `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), maintenance mode, locks, `pumpDemoMode` (Pump Demo Mode; missing = on: shows the pump UI and lets the ESP32 run the virtual pump), `pumpMode` (`"auto"` / `"manual"`, admin-only; missing = auto; manual skips the low-level auto start, safety stops stay; Tank 1 sketch only so far) |
 | `/history/tanks/{id}` | ESP32 | One sample every 10 min |
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1 |

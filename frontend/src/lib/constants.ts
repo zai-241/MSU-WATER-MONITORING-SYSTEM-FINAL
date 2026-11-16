@@ -47,6 +47,14 @@ export function estimateVolumeLiters(levelPercent: number, capacityLiters: numbe
   return Math.round((levelPercent / 100) * capacityLiters);
 }
 
+/**
+ * How long the dashboard waits for the controller to acknowledge a pump command
+ * (tanks/{id}/pumpCommandAt changes) before it says there was no response.
+ */
+export const PUMP_COMMAND_TIMEOUT_MS = 15_000;
+/** How long the result of a pump command stays under the pump toggle. */
+export const PUMP_FEEDBACK_MS = 5_000;
+
 /** Minimum gap between writes of the tank list to the offline cache. */
 export const TANK_CACHE_WRITE_INTERVAL_MS = 5_000;
 

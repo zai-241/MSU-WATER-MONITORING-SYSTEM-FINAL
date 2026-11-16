@@ -52,8 +52,12 @@ export interface Tank {
   status: TankStatus;
   assignedWorker: string | null;
   pumpOn: boolean;
+  /** Server time when the controller last handled a pump command from the web app */
+  pumpCommandAt?: number;
+  /** What the controller did with that command: "accepted" or "refused-<reason>" */
+  pumpCommandResult?: string;
   enabled: boolean;
-  
+
   /**
    * Calibration parameters used to convert raw sensor voltages to meaningful values.
    * These are configurable per‑tank to allow fine‑tuning of sensor accuracy.
