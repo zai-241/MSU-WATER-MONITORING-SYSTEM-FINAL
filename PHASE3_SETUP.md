@@ -97,10 +97,10 @@ The worker can run as a free Render **Web Service**. When Render sets `PORT`, th
 3. Build command `npm run worker:install`, start command `npm run worker`, instance type Free.
 4. Environment: `DATABASE_URL`, `APP_URL`, `PUSH_ENABLED=true`, `NODE_VERSION=20`, and `GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/serviceAccount.json`.
 5. Secret File `serviceAccount.json`: paste the whole key file.
-6. Free services sleep after about 15 minutes without traffic, so add an UptimeRobot HTTP monitor on `https://<service>.onrender.com/health` every 5 minutes. It also emails you if the worker goes down.
+6. Free services sleep after about 15 minutes without traffic, so ping `https://<service>.onrender.com/health` every 5 minutes. We use two pingers so one can fail without the worker sleeping: an UptimeRobot HTTP monitor (it also emails you if the worker goes down) and a cron-job.org job ("MSU worker keep-alive"). A single failed check right after a deploy is normal: Render answers 502/503 while it switches builds.
 7. Stop any local or pm2 worker once Admin Panel shows "Alert service: running" from Render.
 
-Render redeploys on every push to `main`. One always-on free service uses about 744 of the 750 free hours a month, so keep it the only one.
+Render redeploys on every push to `main` only while Settings → Auto-Deploy is **On Commit** (if it is Off, use Manual Deploy → Deploy latest commit). One always-on free service uses about 744 of the 750 free hours a month, so keep it the only one.
 
 ### Test it
 
