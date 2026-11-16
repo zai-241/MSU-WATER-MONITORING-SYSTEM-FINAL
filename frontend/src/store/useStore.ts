@@ -111,7 +111,7 @@ export interface SystemConfig {
   /** When false the alert worker stops sending push notifications */
   pushEnabled?: boolean;
   /**
-   * Pump demo mode (virtual pump, no physical pump connected). On unless an admin turns it off:
+   * Pump system on/off ("Pump System" in the Admin Panel; the key keeps its old name). On unless an admin turns it off:
    * a missing value counts as on. Off hides every pump control and makes the ESP32 keep the pump off.
    */
   pumpDemoMode?: boolean;

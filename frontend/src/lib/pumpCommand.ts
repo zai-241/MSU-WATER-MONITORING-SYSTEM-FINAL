@@ -26,7 +26,7 @@ export interface PumpCommandOutcome {
 }
 
 const REFUSAL_REASONS: Record<string, string> = {
-  'refused-demo-off': 'Pump Demo Mode is off',
+  'refused-demo-off': 'the pump system is off (Admin Panel)',
   'refused-overflow': 'the water level is at or above the overflow threshold',
   'refused-maintenance': 'maintenance mode is on',
   'refused-lock': 'the pump control lock is on',

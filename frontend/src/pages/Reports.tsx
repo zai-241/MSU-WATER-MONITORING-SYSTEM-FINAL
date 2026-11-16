@@ -65,7 +65,7 @@ const Reports = () => {
   const { config } = useConfig();
   // Same offline rule as the Dashboard: the admin's threshold, not the 30 s default
   const offlineMs = offlineThresholdMs(config);
-  // Pump card, chart, cycle count and export sections appear only in pump demo mode
+  // Pump card, chart, cycle count and export sections appear only while the pump system is on
   const pumpDemo = isPumpDemoOn(config);
   // Same level cut-offs as the alert engine (low: level < threshold, overflow: level > threshold)
   const isLevelLow = (level: number) => level < config.lowLevelThreshold;
@@ -695,7 +695,7 @@ const Reports = () => {
             </motion.div>
 
             {pumpDemo && (
-            /* CARD 3: PUMP & ACTUATORS CARD (demo) */
+            /* CARD 3: PUMP & ACTUATORS CARD */
             <motion.div 
               whileHover={{ y: -3 }}
               className="bg-card/40 backdrop-blur-md p-5 rounded-xl border border-border/40 shadow-sm relative overflow-hidden flex flex-col justify-between"
@@ -705,7 +705,7 @@ const Reports = () => {
                   <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                     <Cpu size={18} />
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Pump System (Demo)</span>
+                  <span className="text-xs font-bold text-muted-foreground tracking-wider uppercase">Pump System</span>
                 </div>
                 <span className={`h-2.5 w-2.5 rounded-full ${processedTank?.pumpOn ? 'bg-safe animate-ping' : 'bg-muted-foreground/60'}`} />
               </div>
@@ -877,14 +877,14 @@ const Reports = () => {
             </div>
 
             {pumpDemo && (
-            /* CHART 3: PUMP RUNS ACTIVITY (BAR, demo) */
+            /* CHART 3: PUMP RUNS ACTIVITY (BAR) */
             <div className="bg-card/30 backdrop-blur-md p-6 rounded-xl border border-border/40 shadow-sm flex flex-col justify-between print:w-full">
               <div>
                 <h3 className="text-lg font-bold text-foreground flex items-center gap-2 tracking-tight">
-                  <Activity className="text-emerald-500 h-5 w-5" /> Demo Pump Activity Histogram
+                  <Activity className="text-emerald-500 h-5 w-5" /> Pump Activity Histogram
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Daily demo pump activations from the system logs (virtual pump, no physical pump connected)
+                  Daily pump activations from the system logs
                 </p>
               </div>
               <div className="h-72 w-full mt-6">
@@ -1133,7 +1133,7 @@ const Reports = () => {
                 </div>
                 {pumpDemo && (
                 <div className="bg-secondary/20 p-2.5 rounded-lg border border-border/10">
-                  <span className="text-muted-foreground block">Demo Pump Cycles</span>
+                  <span className="text-muted-foreground block">Pump Cycles</span>
                   <span className="text-base font-extrabold text-emerald-500 font-mono block mt-1">{summaryMetrics.totalPumpRuns}</span>
                 </div>
                 )}

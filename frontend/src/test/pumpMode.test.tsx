@@ -73,7 +73,7 @@ describe('Pump mode', () => {
       expect(screen.queryByTestId('pump-mode-setting')).not.toBeInTheDocument();
     });
 
-    it('is hidden when Pump Demo Mode is off', () => {
+    it('is hidden when the Pump System is off', () => {
       state.config = { ...baseConfig, pumpDemoMode: false };
       render(<Configuration />);
       expect(screen.queryByTestId('pump-mode-setting')).not.toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('Pump mode', () => {
       expect(screen.queryByTestId('pump-auto-note')).not.toBeInTheDocument();
     });
 
-    it('is hidden when Pump Demo Mode is off', () => {
+    it('is hidden when the Pump System is off', () => {
       state.config = { ...baseConfig, pumpDemoMode: false, pumpMode: 'manual' };
       render(<Dashboard />);
       expect(screen.queryByTestId('pump-mode-badge')).not.toBeInTheDocument();

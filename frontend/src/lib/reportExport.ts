@@ -40,7 +40,7 @@ export interface ReportExportData {
   selectedTank: Tank;
   summaryMetrics: ReportSummaryMetrics | null;
   telemetryData: GroupedTelemetryPoint[];
-  /** Include the demo pump rows, sheet and section (pump demo mode on). Defaults to true. */
+  /** Include the pump rows, sheet and section (pump system on). Defaults to true. */
   includePump?: boolean;
   /** Configured alert thresholds, shown as the benchmarks in the summary */
   thresholds: { lowLevel: number; overflow: number; minPh: number; maxPh: number };
@@ -107,7 +107,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
     ['Average pH Level', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', `Safe: ${thresholds.minPh} - ${thresholds.maxPh}`],
     ['Minimum pH Level', summaryMetrics?.minPh !== null && summaryMetrics?.minPh !== undefined ? `${summaryMetrics.minPh}` : 'N/A', 'Observed Low'],
     ['Maximum pH Level', summaryMetrics?.maxPh !== null && summaryMetrics?.maxPh !== undefined ? `${summaryMetrics.maxPh}` : 'N/A', 'Observed High'],
-    ...(includePump ? [['Demo Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns ?? 0, 'Virtual pump: no physical pump connected']] : []),
+    ...(includePump ? [['Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns ?? 0, 'Pump starts in the period']] : []),
     ['Total System Alarms / Alerts', summaryMetrics?.alertsRegistered ?? 0, 'Registered Incidents'],
   ];
 
@@ -158,7 +158,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
 
   if (includePump) {
     // 3. PUMP ACTIVITY SHEET
-    const pumpSheet = workbook.addWorksheet('Demo Pump Activity', {
+    const pumpSheet = workbook.addWorksheet('Pump Activity', {
       views: [{ showGridLines: true }]
     });
     pumpSheet.columns = [
@@ -283,7 +283,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
     ['Water Level Range', summaryMetrics ? `${summaryMetrics.minLevel}% - ${summaryMetrics.maxLevel}%` : 'N/A', 'Observed extremes'],
     ['Average pH Value', summaryMetrics?.avgPh !== null && summaryMetrics?.avgPh !== undefined ? `${summaryMetrics.avgPh}` : 'N/A', `Safe range: ${thresholds.minPh} - ${thresholds.maxPh}`],
     ['pH Value Range', summaryMetrics ? `${summaryMetrics.minPh} - ${summaryMetrics.maxPh}` : 'N/A', 'Observed extremes'],
-    ...(includePump ? [['Demo Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns !== undefined ? `${summaryMetrics.totalPumpRuns} cycles` : '0 cycles', 'Virtual pump: no physical pump connected']] : []),
+    ...(includePump ? [['Pump Cycles (Runs)', summaryMetrics?.totalPumpRuns !== undefined ? `${summaryMetrics.totalPumpRuns} cycles` : '0 cycles', 'Pump starts in the period']] : []),
     ['Total Alarms & Incidents', summaryMetrics?.alertsRegistered !== undefined ? `${summaryMetrics.alertsRegistered}` : '0', 'System warnings'],
   ];
 
@@ -349,7 +349,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(...primaryColor);
-    doc.text('3. Demo Pump Activity (virtual pump, no physical pump connected)', 14, currentY);
+    doc.text('3. Pump Activity', 14, currentY);
 
     const pumpRows = pumpActivityData.map(p => [
       p.date,

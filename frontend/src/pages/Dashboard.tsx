@@ -186,7 +186,7 @@ const TankCard = memo(({
         {isPumpDemoOn(config) && (
         <>
         <div className="flex justify-between items-center">
-          <span className="text-muted-foreground" title="Demo pump: the controller runs the pump logic, but no physical pump is connected">Pump (Demo):</span>
+          <span className="text-muted-foreground">Pump:</span>
           <div className="flex items-center gap-2">
             {isPlanned ? (
               <span className="text-sm font-medium text-muted-foreground">--</span>
@@ -495,7 +495,7 @@ const Dashboard = () => {
       )}
       {config.maintenanceMode && (
         <div className="mb-4 p-3 rounded-lg bg-warning/20 border border-warning text-warning text-sm font-medium flex items-center gap-2">
-          ⚠️ Maintenance Mode is active — Alerts are suppressed{isPumpDemoOn(config) ? ' and the demo pump is stopped' : ''}.
+          ⚠️ Maintenance Mode is active — Alerts are suppressed{isPumpDemoOn(config) ? ' and the pump is stopped' : ''}.
         </div>
       )}
       {isPumpDemoOn(config) && config.pumpControlLock && !config.maintenanceMode && (
@@ -579,9 +579,6 @@ const Dashboard = () => {
             <div className="text-sm text-muted-foreground space-y-3">
               <p>
                 Are you sure you want to turn <span className="font-semibold text-foreground">{pumpConfirm.newState ? 'ON' : 'OFF'}</span> the pump for <span className="font-semibold text-foreground">{pumpConfirm.tankName}</span>?
-              </p>
-              <p className="text-xs">
-                Demo pump: the controller runs its pump logic and reports the result, but no physical pump is connected.
               </p>
             </div>
             <div className="flex gap-3">

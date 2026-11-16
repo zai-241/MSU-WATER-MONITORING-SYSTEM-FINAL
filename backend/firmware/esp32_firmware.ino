@@ -1466,7 +1466,7 @@ void processAutomaticPumpControl() {
     return;
   }
 
-  // Rule 0: with pump demo mode off the pump stays OFF (no automatic starts).
+  // Rule 0: with the pump system off (config/pumpDemoMode false) the pump stays OFF.
   if (!pumpDemoMode) {
     if (currentPumpState) {
       currentPumpState = false;
@@ -1474,7 +1474,7 @@ void processAutomaticPumpControl() {
       logSystemEvent("Pump Controller",
                      "Pump stopped automatically. Water level: " +
                          String(levelPercent) +
-                         "%. Reason: Pump demo mode turned off.",
+                         "%. Reason: Pump system turned off.",
                      LEVEL_INFO);
       updateFirebasePumpState(false);
     }
@@ -1831,10 +1831,10 @@ void networkTask(void *pvParameters) {
               }
 
               if (!pumpDemoMode) {
-                DEBUG_PRINTLN("[Pump] Manual ON command refused: Pump demo "
-                              "mode is off.");
+                DEBUG_PRINTLN("[Pump] Manual ON command refused: Pump system "
+                              "is off.");
                 logSystemEvent("Pump Controller",
-                               "Manual pump ON command refused: Pump demo mode "
+                               "Manual pump ON command refused: Pump system "
                                "is off.",
                                LEVEL_WARNING);
                 updateFirebasePumpStateWithResult(false, "refused-demo-off");

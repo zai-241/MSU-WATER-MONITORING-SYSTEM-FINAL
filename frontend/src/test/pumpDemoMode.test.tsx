@@ -46,13 +46,13 @@ describe('Pump demo mode', () => {
 
   it('shows the demo pump switch on the dashboard by default', () => {
     render(<Dashboard />);
-    expect(screen.getByText('Pump (Demo):')).toBeInTheDocument();
+    expect(screen.getByText('Pump:')).toBeInTheDocument();
   });
 
   it('hides the pump switch and the pump lock banner when demo mode is off', () => {
     state.config = { ...state.config, pumpDemoMode: false, pumpControlLock: true };
     render(<Dashboard />);
-    expect(screen.queryByText('Pump (Demo):')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pump:')).not.toBeInTheDocument();
     expect(screen.queryByText(/Pump Control Lock is active/)).not.toBeInTheDocument();
   });
 
@@ -70,10 +70,10 @@ describe('Pump demo mode', () => {
     } as unknown as ReportExportData;
 
     const withPump = await buildExcelWorkbook(base);
-    expect(withPump.getWorksheet('Demo Pump Activity')).toBeDefined();
+    expect(withPump.getWorksheet('Pump Activity')).toBeDefined();
 
     const withoutPump = await buildExcelWorkbook({ ...base, includePump: false });
-    expect(withoutPump.getWorksheet('Demo Pump Activity')).toBeUndefined();
+    expect(withoutPump.getWorksheet('Pump Activity')).toBeUndefined();
     expect(withoutPump.getWorksheet('Alert Logs')).toBeDefined();
   });
 });
