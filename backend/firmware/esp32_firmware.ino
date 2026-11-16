@@ -108,11 +108,11 @@ bool isNetworkConnected() { return ethConnected || wifiConnected; }
 // ==========================================
 // Sensor & Actuator Pin Definitions
 // ==========================================
-// Virtual pump: the pump logic below still decides ON/OFF (automatic start below the low
-// threshold, stop at overflow, dashboard commands, maintenance and lock refusals) and reports
-// pumpOn, but no pin is switched because this prototype has no relay or pump connected.
-// To drive a real relay on GPIO 32, set PUMP_RELAY_ENABLED to 1 and flash again.
-#define PUMP_RELAY_ENABLED 0
+// Pump relay on GPIO 32: the pump logic below decides ON/OFF (automatic start at the low
+// threshold, stop at overflow, dashboard commands, maintenance and lock refusals), reports
+// pumpOn, and drives the relay: HIGH = pump ON, LOW = pump OFF (LOW at boot).
+// Set PUMP_RELAY_ENABLED to 0 to run the pump logic without switching any pin.
+#define PUMP_RELAY_ENABLED 1
 #define RELAY_PIN 32
 #define PH_SENSOR_PIN 34
 #define LEVEL_SENSOR_PIN 35
@@ -1702,7 +1702,7 @@ void sensorTask(void *pvParameters) {
       updateAlertState(phAlert, isPhAbnormal,
                        "Unsafe pH level detected: " + String(phV, 2));
 
-      // Drive relay directly with no network dependency (virtual pump: no pin unless enabled)
+      // Drive relay directly with no network dependency (no pin when PUMP_RELAY_ENABLED is 0)
       bool desiredPumpState = currentPumpState;
       if (desiredPumpState != lastActualPumpState) {
 #if PUMP_RELAY_ENABLED
