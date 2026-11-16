@@ -26,6 +26,7 @@ import { database, auth } from '@/config/firebase';
 import { ref, onValue, set, update, push, remove, runTransaction, query, orderByChild, limitToLast, endAt, get } from 'firebase/database';
 import {
   CONTROLLER_OFFLINE_THRESHOLD_MS,
+  OFFLINE_CHECK_SETTLE_MS,
   WORKER_STALE_MS,
   LIVE_NOTIFICATION_LIMIT,
   LIVE_LOG_LIMIT,
@@ -325,6 +326,20 @@ export function isTankControllerOffline(tank: Tank, serverTimeOffset: number = 0
   if (!tank.lastUpdate) return false;
   const currentServerTime = Date.now() + serverTimeOffset;
   return (currentServerTime - tank.lastUpdate) > thresholdMs;
+}
+
+/**
+ * Whether this browser's copy of the tank data is fresh enough to mark a controller offline.
+ * `freshSince` is when the database connection last came up or the page last woke
+ * (null while disconnected). Recovery never needs this check: new data is proof enough.
+ */
+export function canJudgeControllerOffline(
+  connected: boolean,
+  freshSince: number | null,
+  now: number,
+  settleMs: number = OFFLINE_CHECK_SETTLE_MS
+): boolean {
+  return connected && freshSince !== null && now - freshSince >= settleMs;
 }
 
 export type TankOperationalStatus = 'planned' | 'offline' | 'live';

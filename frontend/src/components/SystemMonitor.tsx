@@ -4,6 +4,8 @@ import {
   useConfig,
   useNotifications,
   useWorkerStatus,
+  useConnectionState,
+  canJudgeControllerOffline,
   addSystemLog,
   serverNow,
   isTankPlanned,
@@ -45,6 +47,8 @@ const SystemMonitor = () => {
   const serviceDownSince = useRef<number | null>(null);
   const serviceNoticeRaised = useRef(false);
   const mountedAt = useRef<number>(serverNow());
+  const isConnected = useConnectionState();
+  const freshSince = useRef<number | null>(null);
   const [tick, setTick] = useState(0);
 
   const activeAlertCount = notifications.filter(
@@ -109,11 +113,37 @@ const SystemMonitor = () => {
     });
   }, [notifications, config?.maintenanceMode]);
 
+  // Freshness of this browser's tank data, for the offline watchdog below. It restarts when
+  // the database connection comes back and when the page wakes up (tab shown again, APK
+  // resumed), because until the listeners re-sync, lastUpdate is from before the sleep.
+  useEffect(() => {
+    freshSince.current = isConnected ? Date.now() : null;
+  }, [isConnected]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && freshSince.current !== null) {
+        freshSince.current = Date.now();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   // Timer for the fallback evaluator: validation windows and the offline watchdog must
   // advance even when no new telemetry arrives (which is exactly the offline case).
   useEffect(() => {
     if (workerActive) return;
-    const interval = setInterval(() => setTick(t => t + 1), EVALUATION_TICK_MS);
+    let lastTickAt = Date.now();
+    const interval = setInterval(() => {
+      const now = Date.now();
+      // A long gap between ticks means the timers were frozen (device asleep): treat as a wake-up
+      if (now - lastTickAt > EVALUATION_TICK_MS * 5 && freshSince.current !== null) {
+        freshSince.current = now;
+      }
+      lastTickAt = now;
+      setTick(t => t + 1);
+    }, EVALUATION_TICK_MS);
     return () => clearInterval(interval);
   }, [workerActive]);
 
@@ -121,6 +151,7 @@ const SystemMonitor = () => {
   useEffect(() => {
     if (workerActive || config?.maintenanceMode) return;
     const thresholdMs = offlineThresholdMs(config);
+    const dataIsFresh = canJudgeControllerOffline(isConnected, freshSince.current, Date.now());
 
     tanks.forEach((tank) => {
       if (!tank.id || isTankPlanned(tank) || !tank.enabled) return;
@@ -128,12 +159,14 @@ const SystemMonitor = () => {
 
       const isOffline = isTankControllerOffline(tank, serverTimeOffset, thresholdMs);
       if (isOffline === (tank.controllerOffline ?? false)) return;
+      // Stale data after a sleep or reconnect must not raise a false "offline"
+      if (isOffline && !dataIsFresh) return;
 
       inFlightOffline.current.add(tank.id);
       syncTankOfflineState(tank.id, tank.name, isOffline, addSystemLog, { addNotification, resolveNotification }, thresholdMs / 1000)
         .finally(() => inFlightOffline.current.delete(tank.id));
     });
-  }, [tanks, config, serverTimeOffset, workerActive, tick, addNotification, resolveNotification]);
+  }, [tanks, config, serverTimeOffset, workerActive, tick, isConnected, addNotification, resolveNotification]);
 
   // 5. Fallback: threshold and sensor-fault alerts through the shared engine
   useEffect(() => {

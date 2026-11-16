@@ -8,6 +8,14 @@ import { DEFAULT_OFFLINE_THRESHOLD_SEC } from './alertEngine';
 /** Default "controller offline" threshold. Admins can change it in the Admin Panel. */
 export const CONTROLLER_OFFLINE_THRESHOLD_MS = DEFAULT_OFFLINE_THRESHOLD_SEC * 1000;
 
+/**
+ * A browser that stands in for the worker may only mark a controller offline after its own
+ * database connection has been up, and the page awake, for this long. A tab or the APK coming
+ * back from the background still holds tank data from before it slept; without this wait it
+ * would report the controller offline and then "back online" a second later.
+ */
+export const OFFLINE_CHECK_SETTLE_MS = 10_000;
+
 /** The worker writes a heartbeat every 10 s; three missed beats means it is down. */
 export const WORKER_STALE_MS = 35_000;
 
