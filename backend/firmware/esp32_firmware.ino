@@ -320,6 +320,11 @@ bool pumpControlLock = false;
 // Pump demo mode (config/pumpDemoMode, on unless an admin turns it off): when off, the
 // virtual pump stays OFF and every pump command is refused.
 bool pumpDemoMode = true;
+// Pump mode (config/pumpMode = "auto" | "manual"; missing or invalid = auto).
+// Manual: only operator commands start the pump (no low-level auto refill); the
+// safety stops (demo off, maintenance, faulty level sensor, overflow) still apply.
+bool pumpManualMode = false;
+bool pumpModeLoaded = false; // false until the first /config read sets the mode
 
 SystemAlert lowLevelAlert = {"Low Water Level", STATE_NORMAL, 0, 0, 0, false};
 SystemAlert highLevelAlert = {"High Water Level", STATE_NORMAL, 0, 0, 0, false};
@@ -1479,6 +1484,11 @@ void processAutomaticPumpControl() {
     return;
   }
 
+  // Manual pump mode: no automatic start; only operator commands turn it on.
+  if (pumpManualMode) {
+    return;
+  }
+
   // Automatic start when level falls to lowLevelThreshold or below
   if (!currentPumpState && (levelPercent <= (int)lowLevelThreshold)) {
     if (now - lastPumpStopTime >= PUMP_MIN_OFF_TIME) {
@@ -1945,6 +1955,23 @@ void networkTask(void *pvParameters) {
           }
           if (hasKeyInJson(configPayload, "pumpDemoMode")) {
             pumpDemoMode = getBoolFromJson(configPayload, "pumpDemoMode");
+          }
+          // pumpMode: only "manual" selects manual; missing or anything else = auto.
+          // Changing mode never switches the pump itself.
+          bool newManualMode =
+              hasKeyInJson(configPayload, "pumpMode") &&
+              getStringFromJson(configPayload, "pumpMode") == "manual";
+          if (!pumpModeLoaded) {
+            pumpManualMode = newManualMode;
+            pumpModeLoaded = true;
+            DEBUG_PRINTF("[Pump] Pump mode at startup: %s\n",
+                         pumpManualMode ? "MANUAL" : "AUTO");
+          } else if (newManualMode != pumpManualMode) {
+            pumpManualMode = newManualMode;
+            logSystemEvent("Pump Controller",
+                           String("Pump mode changed to ") +
+                               (pumpManualMode ? "MANUAL" : "AUTO"),
+                           LEVEL_INFO);
           }
         } else {
           if (configResponseCode <= 0) {

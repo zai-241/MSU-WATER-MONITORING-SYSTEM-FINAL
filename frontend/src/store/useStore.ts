@@ -111,11 +111,23 @@ export interface SystemConfig {
    * a missing value counts as on. Off hides every pump control and makes the ESP32 keep the pump off.
    */
   pumpDemoMode?: boolean;
+  /**
+   * Pump mode. "auto": the ESP32 also starts the pump at the low-level threshold.
+   * "manual": only operator commands start it (safety stops still apply).
+   * Missing or any other value counts as "auto".
+   */
+  pumpMode?: PumpMode;
 }
+
+export type PumpMode = 'auto' | 'manual';
 
 /** True while the pump demo is on (the default; only an explicit false turns it off). */
 export const isPumpDemoOn = (config: Pick<SystemConfig, 'pumpDemoMode'> | null | undefined): boolean =>
   config?.pumpDemoMode !== false;
+
+/** Effective pump mode: only an explicit "manual" is manual; missing or invalid is auto. */
+export const getPumpMode = (config: { pumpMode?: unknown } | null | undefined): PumpMode =>
+  config?.pumpMode === 'manual' ? 'manual' : 'auto';
 
 export interface Notification {
   id: string;

@@ -10,6 +10,7 @@ import {
   Tank,
   SystemConfig,
   isPumpDemoOn,
+  getPumpMode,
 } from '@/store/useStore';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import type { UserProfile } from '@/services/authService';
@@ -59,6 +60,7 @@ const TankCard = memo(({
 
   const isWorker = currentUser?.role === 'worker';
   const canTogglePump = isAdmin || (isWorker && !config.pumpControlLock && processedTank.assignedWorker === currentUser?.id);
+  const pumpMode = getPumpMode(config);
 
   return (
     <div className={`rounded-xl bg-card p-6 shadow-sm border transition-all ${
@@ -172,6 +174,7 @@ const TankCard = memo(({
           </span>
         </div>
         {isPumpDemoOn(config) && (
+        <>
         <div className="flex justify-between items-center">
           <span className="text-muted-foreground" title="Demo pump: the controller runs the pump logic, but no physical pump is connected">Pump (Demo):</span>
           <div className="flex items-center gap-2">
@@ -179,6 +182,17 @@ const TankCard = memo(({
               <span className="text-sm font-medium text-muted-foreground">--</span>
             ) : (
               <>
+                <span
+                  data-testid="pump-mode-badge"
+                  title={pumpMode === 'manual' ? 'Manual mode: only pump commands start the pump' : 'Auto mode: the controller starts the pump at the low-level threshold'}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border ${
+                    pumpMode === 'manual'
+                      ? 'bg-primary/10 text-primary border-primary/20'
+                      : 'bg-muted text-muted-foreground border-border'
+                  }`}
+                >
+                  {pumpMode === 'manual' ? 'Manual' : 'Auto'}
+                </span>
                 <span className={`text-sm font-medium ${processedTank.pumpOn && !disabled && !isOffline ? 'text-safe' : 'text-muted-foreground'}`}>
                   {processedTank.pumpOn && !disabled ? 'ON' : 'OFF'}
                 </span>
@@ -198,6 +212,12 @@ const TankCard = memo(({
             )}
           </div>
         </div>
+        {!isPlanned && !disabled && pumpMode === 'auto' && (
+          <p data-testid="pump-auto-note" className="text-[11px] text-muted-foreground text-right">
+            Auto: the pump may restart by itself at or below {config.lowLevelThreshold}%.
+          </p>
+        )}
+        </>
         )}
       </div>
     </div>
@@ -254,6 +274,7 @@ const TankCard = memo(({
   if (prevProps.config.maintenanceMode !== nextProps.config.maintenanceMode) return false;
   if (prevProps.config.pumpControlLock !== nextProps.config.pumpControlLock) return false;
   if (isPumpDemoOn(prevProps.config) !== isPumpDemoOn(nextProps.config)) return false;
+  if (getPumpMode(prevProps.config) !== getPumpMode(nextProps.config)) return false;
 
   return true; // Values are visually identical; suppress rendering update
 });

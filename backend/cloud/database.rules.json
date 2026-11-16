@@ -23,6 +23,9 @@
       },
       "maxPh": {
         ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 14"
+      },
+      "pumpMode": {
+        ".validate": "newData.isString() && newData.val().matches(/^(auto|manual)$/)"
       }
     },
     "tanks": {

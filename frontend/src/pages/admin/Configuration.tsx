@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useTanks, useConfig, useWorkerStatus, addSystemLog, isPumpDemoOn, SystemConfig, Tank } from '@/store/useStore';
-import { Power, Settings, Loader2, Bell } from 'lucide-react';
+import { useTanks, useConfig, useWorkerStatus, addSystemLog, isPumpDemoOn, getPumpMode, SystemConfig, Tank, PumpMode } from '@/store/useStore';
+import { Power, Settings, Loader2, Bell, Hand } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
@@ -76,7 +76,9 @@ const Configuration = () => {
   const [isTankDirty, setIsTankDirty] = useState(false);
   
   const [controlConfirm, setControlConfirm] = useState<{ key: ControlKey; label: string; newState: boolean } | null>(null);
+  const [modeConfirm, setModeConfirm] = useState<PumpMode | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const isAdmin = currentUser?.role === 'admin';
   const [isSaving, setIsSaving] = useState(false);
 
   // Tank whose calibration the form shows, and a tank the user picked while the form had unsaved edits
@@ -137,6 +139,24 @@ const Configuration = () => {
     }
   };
 
+  const confirmPumpMode = async () => {
+    if (!modeConfirm || !isAdmin) return;
+    const previous = getPumpMode(config);
+    try {
+      await updateConfig({ pumpMode: modeConfirm });
+      addLog({
+        action: 'Configuration Updated',
+        details: `Pump mode changed (${previous.toUpperCase()} -> ${modeConfirm.toUpperCase()})`,
+        performedBy: currentUser?.username || 'Administrator',
+        logLevel: 'INFO'
+      });
+      toast.success(`Pump mode set to ${modeConfirm === 'manual' ? 'Manual' : 'Auto'}`);
+      setModeConfirm(null);
+    } catch (err) {
+      toast.error(errorMessage(err) || 'Failed to update pump mode');
+    }
+  };
+
 
   const handleSaveAll = async () => {
     if (!localConfig) return;
@@ -188,7 +208,10 @@ const Configuration = () => {
         changes.push(`Sound Alerts (${config.soundEnabled !== false ? 'Enabled' : 'Disabled'} -> ${parsedConfig.soundEnabled ? 'Enabled' : 'Disabled'})`);
       }
 
-      await updateConfig(parsedConfig);
+      // pumpMode is written only by its own toggle; a form left open with edits must not revert it
+      const configUpdate: Partial<SystemConfig> = { ...parsedConfig };
+      delete configUpdate.pumpMode;
+      await updateConfig(configUpdate);
       setIsConfigDirty(false);
 
       if (changes.length > 0) {
@@ -550,6 +573,38 @@ const Configuration = () => {
               <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${isPumpDemoOn(localConfig as SystemConfig) ? 'translate-x-5' : ''}`} />
             </button>
           </div>
+          {isAdmin && isPumpDemoOn(config) && (() => {
+            const mode = getPumpMode(config);
+            return (
+              <div data-testid="pump-mode-setting" className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border ${mode === 'manual' ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+                <div className="flex items-center gap-3">
+                  <Hand size={18} className={mode === 'manual' ? 'text-primary' : 'text-muted-foreground'} />
+                  <div>
+                    <p className="font-medium text-sm">Pump Mode</p>
+                    <p className="text-xs text-muted-foreground">
+                      {mode === 'manual'
+                        ? 'Manual: only pump commands start the pump. Overflow, sensor fault and maintenance stops still apply.'
+                        : 'Auto: the controller starts the pump when the level falls to the low threshold.'}
+                    </p>
+                  </div>
+                </div>
+                <div role="radiogroup" aria-label="Pump Mode" className="flex rounded-lg border border-border overflow-hidden shrink-0 self-end sm:self-auto">
+                  {(['auto', 'manual'] as const).map(option => (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={mode === option}
+                      onClick={() => { if (mode !== option) setModeConfirm(option); }}
+                      className={`px-3 py-1.5 text-sm font-semibold transition ${mode === option ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-secondary'}`}
+                    >
+                      {option === 'auto' ? 'Auto' : 'Manual'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border ${localConfig.maintenanceMode ? 'border-warning bg-warning/5' : 'border-border'}`}>
             <div className="flex items-center gap-3">
               <Settings size={18} className={localConfig.maintenanceMode ? 'text-warning' : 'text-muted-foreground'} />
@@ -651,6 +706,25 @@ const Configuration = () => {
               <button onClick={() => setPendingTankId(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground">Keep Editing</button>
               <button onClick={() => switchTank(pendingTankId)} className="flex-1 rounded-lg bg-danger px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 transition">
                 Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div role="alertdialog" aria-labelledby="pump-mode-title" className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 border border-border/40 space-y-4 animate-in zoom-in-95 duration-200">
+            <h4 id="pump-mode-title" className="text-lg font-semibold">Switch to {modeConfirm === 'manual' ? 'Manual' : 'Auto'} pump mode</h4>
+            <p className="text-sm text-muted-foreground">
+              {modeConfirm === 'manual'
+                ? 'The controller will stop starting the pump at the low-level threshold. The pump keeps its current state; only pump commands switch it. Overflow, sensor fault and maintenance stops still apply.'
+                : 'The controller resumes the automatic rules: if the level is at or below the low threshold, the pump may start after the 30 s cooldown.'}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setModeConfirm(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground">Cancel</button>
+              <button onClick={confirmPumpMode} className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 transition">
+                Switch to {modeConfirm === 'manual' ? 'Manual' : 'Auto'}
               </button>
             </div>
           </div>

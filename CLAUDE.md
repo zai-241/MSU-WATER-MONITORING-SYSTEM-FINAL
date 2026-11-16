@@ -36,7 +36,7 @@ There is no physical pump: the ESP32 drives a virtual pump (no pin), shown only 
 | Path | Written by | Contents |
 |---|---|---|
 | `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin) |
-| `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), maintenance mode, locks, `pumpDemoMode` (Pump Demo Mode; missing = on: shows the pump UI and lets the ESP32 run the virtual pump) |
+| `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), maintenance mode, locks, `pumpDemoMode` (Pump Demo Mode; missing = on: shows the pump UI and lets the ESP32 run the virtual pump), `pumpMode` (`"auto"` / `"manual"`, admin-only; missing = auto; manual skips the low-level auto start, safety stops stay; Tank 1 sketch only so far) |
 | `/history/tanks/{id}` | ESP32 | One sample every 10 min |
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1 |
 | `/notifications` | Worker (or browsers while the worker is down) | Alerts with acknowledgment |
