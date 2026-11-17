@@ -200,12 +200,17 @@ const NotificationCenter = () => {
             <ToolButton
               testId="push-toggle"
               variant={pushStatus === 'enabled' ? 'ghost' : 'outline'}
+              pressed={pushStatus === 'enabled'}
               label={pushLabel}
               text={pushText}
               icon={<Bell className="h-4 w-4" />}
               onClick={togglePush}
               disabled={pushBusy}
-              className={pushStatus === 'enabled' ? 'text-emerald-600' : pushAvailable ? '' : 'text-muted-foreground border-dashed'}
+              className={
+                pushStatus === 'enabled'
+                  ? 'bg-emerald-500/15 text-emerald-600 ring-1 ring-emerald-500/60 hover:bg-emerald-500/15 hover:text-emerald-600 [@media(hover:hover)]:hover:bg-emerald-500/25'
+                  : `hover:bg-background hover:text-inherit [@media(hover:hover)]:hover:bg-secondary ${pushAvailable ? '' : 'text-muted-foreground border-dashed'}`
+              }
             />
           )}
           {!pushAvailable && desktopSupported && desktopPermission === 'default' && (
@@ -235,7 +240,11 @@ const NotificationCenter = () => {
             text={isSnoozed ? 'Snoozed (15m)' : 'Snooze'}
             icon={<BellOff className="h-4 w-4" />}
             onClick={() => (isSnoozed ? alertSound.clearSnooze() : alertSound.snooze(15))}
-            className={isSnoozed ? 'bg-amber-500/15 text-amber-600 ring-1 ring-amber-500/40 hover:bg-amber-500/25' : ''}
+            className={
+              isSnoozed
+                ? 'bg-amber-500/15 text-amber-600 ring-1 ring-red-500 hover:bg-amber-500/15 hover:text-amber-600 [@media(hover:hover)]:hover:bg-amber-500/25'
+                : 'hover:bg-transparent hover:text-inherit [@media(hover:hover)]:hover:bg-secondary'
+            }
           />
           {/* Alert sound on/off switch: the switch position and icon show the state on every screen size */}
           <button
@@ -246,7 +255,7 @@ const NotificationCenter = () => {
             aria-label={isMuted ? 'Alert sound is off on this device. Tap to turn it on.' : 'Alert sound is on. Tap to turn it off on this device.'}
             title={isMuted ? 'Alert sound is off on this device. Tap to turn it on.' : 'Alert sound is on. Tap to turn it off on this device.'}
             onClick={() => alertSound.setMuted(!isMuted)}
-            className={`${TAP} inline-flex items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isMuted ? 'text-destructive' : 'text-emerald-600'}`}
+            className={`${TAP} inline-flex items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition-colors [@media(hover:hover)]:hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isMuted ? 'text-destructive' : 'text-emerald-600'}`}
           >
             {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             <span className="hidden sm:inline">{isMuted ? 'Sound Off' : 'Sound On'}</span>
