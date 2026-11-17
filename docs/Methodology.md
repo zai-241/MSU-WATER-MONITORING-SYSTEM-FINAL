@@ -84,7 +84,10 @@ graph TD
 2. **Physical Environmental Bounds**:
    - pH: $0.0 \le \text{pH} \le 14.0$
    - Water Height: $-0.5\text{m} \le \text{Height} \le (\text{Tank Height} + 0.5\text{m})$
-3. **Spike Stabilization Window**:
+3. **Level Signal Stability (disconnected sensor)**:
+   - A disconnected or broken level sensor leaves GPIO 35 floating; the reading then wanders across the range (observed on Tank 1: 0 → 57 → 0 % within a minute) while staying inside the bounds above.
+   - The ESP32 keeps the minimum and maximum level per second for the last 30 s (`LEVEL_STABILITY_WINDOW_S`). A swing of $\ge 25\%$ (`LEVEL_UNSTABLE_RANGE`) within that window makes the reading invalid; after `SENSOR_FAULT_TIMEOUT` (10 s) the level sensor is flagged faulty and the fault log says "Unstable readings". A real 200 L drum cannot change that fast (25 % in 30 s is about 100 L/min).
+4. **Spike Stabilization Window**:
    - If a step change exceeds the spike threshold ($\Delta\text{pH} \ge 1.50$ or $\Delta\text{Level} \ge 15\%$), it is ignored until confirmed across **15 consecutive samples** (`STABILIZATION_SAMPLES = 15`), preventing physical sloshing or turbulence from generating false triggers.
 
 ### 2.5 Stage 4: Deadband Filtering

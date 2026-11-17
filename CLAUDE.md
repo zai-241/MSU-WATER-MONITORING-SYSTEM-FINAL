@@ -32,6 +32,8 @@ The pump decision runs on the ESP32, not in the cloud. The web app only sends co
 A sensor fault never suspends monitoring: after the 10 s fault check the ESP32 keeps sending the live (clamped)
 reading with `levelSensorOk` / `phSensorOk = false`, and `alertEngine.ts` keeps checking thresholds on it (the
 message says the reading may be inaccurate). Only the pump is held off while the level sensor is faulty.
+Besides out-of-range voltage, the level sensor is also flagged faulty when its reading swings 25 % or more within
+30 s (a floating GPIO 35 from a disconnected sensor stays in range but wanders); see `LEVEL_UNSTABLE_RANGE`.
 The pump UI no longer says "demo"; the Admin Panel switch is called "Pump System" (DB key still `pumpDemoMode`).
 All four sketches have `PUMP_RELAY_ENABLED 1`: GPIO 32 drives the pump relay (HIGH = ON). Set it to 0 to run the pump logic without switching a pin.
 

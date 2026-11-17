@@ -367,6 +367,14 @@ const float PH_SPIKE_THRESHOLD = 1.50;
 const int LEVEL_SPIKE_THRESHOLD = 15;
 const int STABILIZATION_SAMPLES = 15;
 const unsigned long SENSOR_FAULT_TIMEOUT = 10000;
+// Unstable level signal: a disconnected or broken level sensor leaves GPIO 35
+// floating, and the reading wanders across the range (e.g. 0 -> 57 -> 0 %)
+// while staying inside the voltage and height bounds. If the level swings by
+// LEVEL_UNSTABLE_RANGE % or more within LEVEL_STABILITY_WINDOW_S seconds, the
+// reading counts as invalid (and, after SENSOR_FAULT_TIMEOUT, as a fault).
+// A real 200 L drum cannot change that fast: 25 % in 30 s is about 100 L/min.
+const int LEVEL_STABILITY_WINDOW_S = 30;
+const int LEVEL_UNSTABLE_RANGE = 25;
 
 int consecutivePhSpikes = 0;
 unsigned long phFaultTimer = 0;
@@ -1311,6 +1319,59 @@ void processPhSensor() {
 }
 
 // =================================================================================
+// Level Signal Stability Check
+// =================================================================================
+// Keeps the min and max level per second for the last LEVEL_STABILITY_WINDOW_S
+// seconds. Returns true when the swing over the full window reaches
+// LEVEL_UNSTABLE_RANGE (see the constants above). Called every 200 ms.
+int levelWindowMin[LEVEL_STABILITY_WINDOW_S];
+int levelWindowMax[LEVEL_STABILITY_WINDOW_S];
+int levelWindowIdx = 0;
+int levelWindowFilled = 0;
+unsigned long levelWindowSecond = 0;
+int lastLevelSwing = 0; // for the fault log message
+
+bool levelSignalUnstable(int levelPercent, unsigned long now) {
+  unsigned long second = now / 1000;
+  if (levelWindowFilled == 0) {
+    levelWindowIdx = 0;
+    levelWindowMin[0] = levelWindowMax[0] = levelPercent;
+    levelWindowFilled = 1;
+    levelWindowSecond = second;
+  } else if (second != levelWindowSecond) {
+    unsigned long steps = second - levelWindowSecond;
+    if (steps > (unsigned long)LEVEL_STABILITY_WINDOW_S)
+      steps = LEVEL_STABILITY_WINDOW_S;
+    for (unsigned long i = 0; i < steps; i++) {
+      levelWindowIdx = (levelWindowIdx + 1) % LEVEL_STABILITY_WINDOW_S;
+      levelWindowMin[levelWindowIdx] = levelWindowMax[levelWindowIdx] =
+          levelPercent;
+      if (levelWindowFilled < LEVEL_STABILITY_WINDOW_S)
+        levelWindowFilled++;
+    }
+    levelWindowSecond = second;
+  } else {
+    if (levelPercent < levelWindowMin[levelWindowIdx])
+      levelWindowMin[levelWindowIdx] = levelPercent;
+    if (levelPercent > levelWindowMax[levelWindowIdx])
+      levelWindowMax[levelWindowIdx] = levelPercent;
+  }
+
+  if (levelWindowFilled < LEVEL_STABILITY_WINDOW_S)
+    return false; // not enough history yet (first 30 s after boot)
+
+  int lo = 100, hi = 0;
+  for (int i = 0; i < LEVEL_STABILITY_WINDOW_S; i++) {
+    if (levelWindowMin[i] < lo)
+      lo = levelWindowMin[i];
+    if (levelWindowMax[i] > hi)
+      hi = levelWindowMax[i];
+  }
+  lastLevelSwing = hi - lo;
+  return lastLevelSwing >= LEVEL_UNSTABLE_RANGE;
+}
+
+// =================================================================================
 // Water Level Sensor Processing Pipeline
 // =================================================================================
 void processLevelSensor() {
@@ -1335,7 +1396,6 @@ void processLevelSensor() {
 #endif
 
   bool physicalValid = (height >= -0.5 && height <= (tankHeight + 0.5));
-  bool readingValid = electricalValid && physicalValid;
 
   float clampedHeight = height;
   if (clampedHeight < 0.0)
@@ -1352,6 +1412,9 @@ void processLevelSensor() {
 
   unsigned long now = millis();
 
+  bool signalUnstable = levelSignalUnstable(levelPercent, now);
+  bool readingValid = electricalValid && physicalValid && !signalUnstable;
+
   if (!readingValid) {
     if (levelFaultTimer == 0) {
       levelFaultTimer = now;
@@ -1361,9 +1424,15 @@ void processLevelSensor() {
 
     if (levelSensorOk && (now - levelFaultTimer >= SENSOR_FAULT_TIMEOUT)) {
       levelSensorOk = false;
+      String reason =
+          (electricalValid && physicalValid)
+              ? "Unstable readings (level swung " + String(lastLevelSwing) +
+                    "% within " + String(LEVEL_STABILITY_WINDOW_S) +
+                    " s; sensor may be disconnected)"
+              : String("Out-of-bounds readings");
       logSystemEvent(
           "Sensor Fault",
-          "Water Level Sensor FAULT! Out-of-bounds readings. Voltage: " +
+          "Water Level Sensor FAULT! " + reason + ". Voltage: " +
               String(rawLevelVoltage, 2) + "V, Height: " + String(height, 2) +
               "m. Monitoring continues with the raw reading.",
           LEVEL_CRITICAL);
