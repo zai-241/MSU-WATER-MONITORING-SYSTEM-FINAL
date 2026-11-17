@@ -39,7 +39,7 @@ The physical edge node deployed at the reservoir site is powered by an **ESP32 D
 * **Hydrostatic Water Level Sensor**: Submersible pressure sensor providing continuous DC voltage on **GPIO 35** (ESP32 ADC1_CH7, 12-bit resolution) mapped to water column height (0–5m).
 * **pH Glass Electrode Sensor**: Industrial electrode with signal conditioner on **GPIO 34** (ESP32 ADC1_CH6, 12-bit resolution) measuring hydrogen-ion concentration (0–14 pH).
 * **Pump Actuator Relay**: 5V optocoupled single-channel relay on **GPIO 32** driving the 220V AC pump (`HIGH` = Pump ON, `LOW` = Pump OFF). Protected by a 30-second anti-chatter minimum OFF cooldown. *(Note: No servo motor or mechanical valve is used).*
-* **Dual Network Connectivity**: Hardware LAN8720 Ethernet PHY (MDC: GPIO 23, MDIO: GPIO 18) as primary wired link; 2.4GHz Wi-Fi as automatic backup with a 90-second zombie-socket watchdog.
+* **Dual Network Connectivity**: W5500 SPI Ethernet module (SCK 18, MISO 19, MOSI 23, CS 5, INT 4, RST 14) as primary wired link; 2.4GHz Wi-Fi as automatic backup with a 90-second zombie-socket watchdog.
 * **Hardware Controller Note**: The deployed edge node is exclusively the ESP32 Dev Module. *(Orange Pi One: Not implemented / TO CONFIRM as an unadopted alternative).*
 
 ### 1.2 Cloud Layer (Firebase)

@@ -67,7 +67,7 @@ mindmap
 ### 2.3 Operating Environment
 * **Web Client**: Modern web browsers (Google Chrome, Microsoft Edge, Mozilla Firefox, Safari) on desktop and mobile viewports.
 * **Mobile Client**: Android 8.0 (API Level 26) or higher via Capacitor wrapper.
-* **Hardware Edge Node**: ESP32 Dev Module (Dual-core Xtensa LX6 @ 240MHz) connected via LAN8720 Ethernet PHY (primary) or 2.4GHz Wi-Fi (backup).
+* **Hardware Edge Node**: ESP32 Dev Module (Dual-core Xtensa LX6 @ 240MHz) connected via W5500 SPI Ethernet module (primary) or 2.4GHz Wi-Fi (backup).
 * **Controller Note**: The operational edge controller is strictly the ESP32 Dev Module. *(Orange Pi One: Not implemented / TO CONFIRM as an unadopted alternative).*
 
 ---

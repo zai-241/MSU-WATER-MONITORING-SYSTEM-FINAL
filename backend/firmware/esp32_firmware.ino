@@ -1,5 +1,6 @@
 #include "secrets.h"
 #include <ETH.h>
+#include <SPI.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -76,14 +77,21 @@ struct LogTracker {
 };
 
 // ==========================================
-// LAN8720 Ethernet Pin Definitions
+// W5500 Ethernet (SPI) Pin Definitions
+// Needs ESP32 Arduino core 3.x (ESP-IDF 5), which has the W5500 driver.
+// Relay (32), pH (34) and level (35) are not shared with these pins.
 // ==========================================
-#define ETH_CLK_MODE ETH_CLOCK_GPIO17_OUT
-#define ETH_POWER_PIN -1
-#define ETH_TYPE ETH_PHY_LAN8720
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
+#error "W5500 Ethernet needs ESP32 Arduino core 3.x: Tools > Board > Boards Manager > esp32 > update"
+#endif
+#define ETH_TYPE ETH_PHY_W5500
 #define ETH_ADDR 1
-#define ETH_MDC_PIN 23
-#define ETH_MDIO_PIN 18
+#define ETH_SPI_SCK 18
+#define ETH_SPI_MISO 19
+#define ETH_SPI_MOSI 23
+#define ETH_SPI_CS 5
+#define ETH_SPI_INT 4
+#define ETH_SPI_RST 14
 
 bool ethConnected = false;
 bool wifiConnected = false;
@@ -105,11 +113,39 @@ volatile bool needTimeInit = false;
 volatile bool needAuth = false;
 volatile bool needEthDownLog = false;
 volatile bool needWifiDownLog = false;
+volatile bool needEthFailover = false; // Ethernet dropped: move traffic to Wi-Fi now
+volatile bool ethLinkUpPending = false; // cable is in, still waiting for an Ethernet IP
+volatile unsigned long ethLinkUpAt = 0;
+
+// Right after a link switch (Ethernet <-> Wi-Fi) the sensor upload goes out
+// first, so the dashboard shows the switch as soon as possible. Until it has
+// gone out (or LINK_UPLOAD_FIRST_MS has passed) command polling waits and logs
+// are queued in RAM (their details keep the ESP32 local time).
+bool linkUploadFirst = false;
+unsigned long linkUploadFirstSince = 0;
+const unsigned long LINK_UPLOAD_FIRST_MS = 5000UL; // 5s
+volatile bool needEthPrimary = false;  // Ethernet got an IP: route traffic through it
 
 // ==========================================
 // Network Helper
 // ==========================================
 bool isNetworkConnected() { return ethConnected || wifiConnected; }
+
+// Ethernet is the main link; Wi-Fi is the backup. Besides a cable unplug, the
+// board also leaves Ethernet when it is connected but has no or slow internet:
+// ETH_BAD_POLLS_TO_SWITCH polls in a row that fail or take longer than
+// ETH_SLOW_POLL_MS. While on Wi-Fi for that reason (ethDegraded), Ethernet is
+// tried again every ETH_RETRY_INTERVAL_MS, and at once if Wi-Fi drops.
+const unsigned long ETH_SLOW_POLL_MS = 4000UL;
+const int ETH_BAD_POLLS_TO_SWITCH = 3;
+const unsigned long ETH_RETRY_INTERVAL_MS = 60000UL;
+bool ethDegraded = false;
+bool ethRetrying = false;
+int ethBadPolls = 0;
+unsigned long ethDegradedSince = 0;
+
+// True when Ethernet is up and carrying the traffic.
+bool ethActive() { return ethConnected && !ethDegraded; }
 
 // ==========================================
 // Sensor & Actuator Pin Definitions
@@ -280,6 +316,24 @@ const unsigned long SENSOR_PROCESSING_INTERVAL = 200;
 // =================================================================================
 unsigned long lastFirebaseSuccessTime = 0;
 const unsigned long NETWORK_WATCHDOG_TIMEOUT = 90000UL; // 90s
+
+// Ethernet -> Wi-Fi failover. After the cable is unplugged, Wi-Fi must reach
+// Firebase within WIFI_FAILOVER_CHECK_MS, or Wi-Fi is reconnected to get a fresh
+// DHCP lease (the DNS servers may still be the ones Ethernet's DHCP set).
+const unsigned long WIFI_FAILOVER_CHECK_MS = 10000UL; // 10s
+// While Ethernet is up, the Wi-Fi backup is kept associated (hot standby). If it
+// is not, it is re-joined in the background at most this often.
+const unsigned long WIFI_STANDBY_RETRY_MS = 60000UL; // 60s
+bool wifiFailoverPending = false;
+unsigned long wifiFailoverStart = 0;
+// Set when Ethernet is lost, so its return is logged (not the first IP at boot).
+bool ethWasLost = false;
+unsigned long ethLostAt = 0;
+// After the cable is plugged back in, the W5500 often gets no IP at all (a DHCP
+// restart alone did not help in the 17 Nov 2026 test). If no IP arrives within
+// this time, the W5500 driver is restarted (hardware reset through RST).
+const unsigned long ETH_RESTART_WAIT_MS = 3000UL; // 3s
+bool ethWaitRouted = false; // Wi-Fi pinned as the route while Ethernet has no IP
 
 // =================================================================================
 // Low-Heap Guard
@@ -631,6 +685,12 @@ void logSystemEvent(String action, String details, LogLevel level) {
     return;
   }
 
+  // Just after a link switch the sensor upload goes first; send this later.
+  if (linkUploadFirst) {
+    pushRamLog(jsonPayload);
+    return;
+  }
+
   bool sentSuccessfully = false;
 
   if (isNetworkConnected()) {
@@ -698,19 +758,34 @@ void WiFiEvent(arduino_event_id_t event) {
     break;
   case ARDUINO_EVENT_ETH_CONNECTED:
     Serial.println("ETH Connected");
+    ethLinkUpAt = millis();
+    ethLinkUpPending = true;
     break;
   case ARDUINO_EVENT_ETH_GOT_IP:
     Serial.print("ETH IP: ");
     Serial.println(ETH.localIP());
     ethConnected = true;
+    ethLinkUpPending = false;
+    needEthPrimary = true;
     needTimeInit = !timeInitialized;
     needAuth = true;
     break;
   case ARDUINO_EVENT_ETH_DISCONNECTED:
     Serial.println("ETH Disconnected");
+    ethLinkUpPending = false;
     if (ethConnected) {
       ethConnected = false;
       needEthDownLog = true;
+      needEthFailover = true;
+    }
+    break;
+
+  case ARDUINO_EVENT_ETH_LOST_IP:
+    Serial.println("ETH Lost IP");
+    if (ethConnected) {
+      ethConnected = false;
+      needEthDownLog = true;
+      needEthFailover = true;
     }
     break;
 
@@ -739,6 +814,49 @@ void WiFiEvent(arduino_event_id_t event) {
 
 // Runs at the top of networkTask: does the work the event callback deferred.
 void processDeferredNetworkWork() {
+  if (linkUploadFirst && millis() - linkUploadFirstSince >= LINK_UPLOAD_FIRST_MS) {
+    linkUploadFirst = false; // upload did not get through; poll as usual
+  }
+  if (needEthFailover) {
+    needEthFailover = false;
+    if (!ethConnected)
+      startWifiFailover();
+  }
+  if (needEthPrimary) {
+    needEthPrimary = false;
+    if (ethConnected) {
+      Serial.println("[Failover] Ethernet is up. Routing traffic through Ethernet.");
+      ethDegraded = false;
+      ethRetrying = false;
+      ethBadPolls = 0;
+      routeViaEthernet();
+      resetFirebaseSocket();
+      linkUploadFirst = true;
+      linkUploadFirstSince = millis();
+      if (ethWasLost) {
+        ethWasLost = false;
+        Serial.printf("[Failover] Back on Ethernet (%lu s after it was lost).\n",
+                      (millis() - ethLostAt) / 1000);
+        logSystemEvent("Network Recovery",
+                       "Ethernet connection restored. Wi-Fi is on standby again.",
+                       LEVEL_INFO);
+      }
+    }
+  }
+  // Cable is in but no Ethernet IP yet. Keep traffic on Wi-Fi (an Ethernet
+  // interface without an IP must not become the route), and restart the W5500
+  // if no IP arrives. Its own ETH_CONNECTED event starts the wait again.
+  if (ethLinkUpPending && !ethConnected) {
+    if (!ethWaitRouted) {
+      ethWaitRouted = true;
+      routeViaWifi();
+    }
+    if (millis() - ethLinkUpAt >= ETH_RESTART_WAIT_MS) {
+      ethLinkUpPending = false;
+      ethWaitRouted = false;
+      restartEthernet();
+    }
+  }
   if (needEthDownLog) {
     needEthDownLog = false;
     logSystemEvent("Network Alert",
@@ -1295,10 +1413,21 @@ void processLevelSensor() {
 void manageConnections() {
   unsigned long now = millis();
 
-  if (ethConnected) {
+  if (ethActive()) {
     if (wifiConnected) {
       wifiConnected = false;
       DEBUG_PRINTLN("Ethernet is active. Disabling backup WiFi flag.");
+    }
+    // Hot standby: keep the Wi-Fi backup joined while Ethernet carries the
+    // traffic, so unplugging the cable switches over in seconds instead of
+    // starting Wi-Fi from scratch.
+    if (WiFi.status() != WL_CONNECTED &&
+        now - lastWifiRetry >= WIFI_STANDBY_RETRY_MS) {
+      lastWifiRetry = now;
+      DEBUG_PRINTLN("Wi-Fi backup not joined. Re-joining it in the background.");
+      WiFi.disconnect();
+      WiFi.setSleep(false);
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
     return;
   }
@@ -1344,6 +1473,149 @@ void manageConnections() {
 }
 
 // =================================================================================
+// Ethernet -> Wi-Fi failover (runs in networkTask right after the cable is
+// unplugged, before anything else uses the network).
+// =================================================================================
+// Sends new connections through Wi-Fi or Ethernet (the default route).
+void routeViaWifi() {
+  esp_netif_t *staNetif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (staNetif != NULL) {
+    esp_netif_set_default_netif(staNetif);
+  }
+}
+
+void routeViaEthernet() { ETH.setDefault(); }
+
+// Closes the persistent TLS socket (it stays on the link it was opened on) and
+// clears the poll backoff, so the next poll opens a new socket at once.
+void resetFirebaseSocket() {
+  commandClient.stop();
+  firebaseConnected = false;
+  firebaseErrorCount = 0;
+  currentCommandPollInterval = COMMAND_POLL_INTERVAL;
+  lastCommandPoll = millis() - COMMAND_POLL_INTERVAL;
+}
+
+// Called after every command poll. Leaves Ethernet for Wi-Fi when Ethernet is
+// connected but its internet fails or is slow.
+void checkEthernetQuality(bool pollOk, unsigned long pollMs) {
+  if (!ethActive()) {
+    ethBadPolls = 0;
+    return;
+  }
+  bool bad = !pollOk || pollMs > ETH_SLOW_POLL_MS;
+  if (!bad) {
+    ethBadPolls = 0;
+    if (ethRetrying) {
+      ethRetrying = false;
+      logSystemEvent("Network Recovery",
+                     "Ethernet internet recovered. Back on Ethernet.", LEVEL_INFO);
+    }
+    return;
+  }
+  ethBadPolls++;
+  if (ethBadPolls < ETH_BAD_POLLS_TO_SWITCH || WiFi.status() != WL_CONNECTED)
+    return; // not bad enough yet, or no Wi-Fi to switch to
+
+  bool firstSwitch = !ethRetrying;
+  ethDegraded = true;
+  ethRetrying = false;
+  ethBadPolls = 0;
+  ethDegradedSince = millis();
+  Serial.printf("[Failover] Ethernet has no or slow internet (last poll %lu ms, "
+                "%s). Switching to the Wi-Fi backup.\n",
+                pollMs, pollOk ? "ok" : "failed");
+  routeViaWifi();
+  resetFirebaseSocket();
+  if (firstSwitch) { // a failed retry does not log again every minute
+    logSystemEvent("Network Alert",
+                   "Ethernet is connected but has no or slow internet. "
+                   "Switched to the Wi-Fi backup.",
+                   LEVEL_WARNING);
+  }
+}
+
+// Runs every networkTask loop: while on Wi-Fi because Ethernet was bad, try
+// Ethernet again after ETH_RETRY_INTERVAL_MS, or at once if Wi-Fi drops.
+void checkEthernetRecovery() {
+  if (!ethConnected || !ethDegraded)
+    return;
+  if (WiFi.status() == WL_CONNECTED &&
+      millis() - ethDegradedSince < ETH_RETRY_INTERVAL_MS)
+    return;
+  Serial.println("[Failover] Trying Ethernet again.");
+  ethDegraded = false;
+  ethRetrying = true;
+  ethBadPolls = 0;
+  routeViaEthernet();
+  resetFirebaseSocket();
+}
+
+void startWifiFailover() {
+  unsigned long now = millis();
+  Serial.println("[Failover] Ethernet lost. Switching to the Wi-Fi backup now.");
+  ethWasLost = true;
+  ethLostAt = now;
+  linkUploadFirst = true;
+  linkUploadFirstSince = now;
+  ethDegraded = false;
+  ethRetrying = false;
+  ethBadPolls = 0;
+
+  // The persistent TLS socket was open on the Ethernet link and is dead now.
+  resetFirebaseSocket();
+
+  // Restart the Wi-Fi retry schedule so manageConnections() retries at once
+  // if Wi-Fi is not joined.
+  wifiReconnectAttempts = 0;
+  wifiRetryInterval = 15000;
+  lastWifiRetry = now - wifiRetryInterval;
+
+  if (WiFi.status() == WL_CONNECTED) {
+    // Route traffic through Wi-Fi now instead of waiting for the stack to
+    // retire the Ethernet interface.
+    routeViaWifi();
+    wifiFailoverPending = true;
+    wifiFailoverStart = now;
+  }
+}
+
+// The cable is in but no Ethernet IP came: restart the W5500 driver (this also
+// resets the chip through its RST pin), so it starts fresh and asks for a lease.
+void restartEthernet() {
+  Serial.println("[Failover] Ethernet cable is in but has no IP. Restarting "
+                 "the W5500.");
+  ETH.end();
+  SPI.begin(ETH_SPI_SCK, ETH_SPI_MISO, ETH_SPI_MOSI);
+  if (!ETH.begin(ETH_TYPE, ETH_ADDR, ETH_SPI_CS, ETH_SPI_INT, ETH_SPI_RST,
+                 SPI)) {
+    Serial.println("[Failover] W5500 restart failed. Staying on Wi-Fi.");
+  }
+  routeViaWifi(); // until the restarted Ethernet has an IP
+}
+
+// Drops the Wi-Fi connection and joins again (fresh DHCP lease: IP, gateway, DNS).
+void forceWifiReconnect(unsigned long now) {
+  commandClient.stop();
+  commandClientConfigured = false;
+  firebaseConnected = false;
+  firebaseAuthValid = false;
+  wifiConnected = false;
+  // Give the new connection a full watchdog period before judging it. (With 0
+  // here the watchdog fired again as soon as Wi-Fi came back, before the first
+  // poll could succeed, and kept dropping Wi-Fi in a loop.)
+  lastFirebaseSuccessTime = now;
+
+  WiFi.disconnect(true);
+  vTaskDelay(pdMS_TO_TICKS(500));
+  WiFi.setSleep(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  lastWifiRetry = now;
+  wifiReconnectAttempts = 0;
+  wifiRetryInterval = 15000;
+}
+
+// =================================================================================
 // Network Watchdog - Zombie Socket Detector
 // WiFi.status() can return WL_CONNECTED even after the router silently deauths
 // the board (e.g. ARP timeout, DHCP lease expired, router restart). In this
@@ -1353,12 +1625,30 @@ void manageConnections() {
 // stack.
 // =================================================================================
 void checkNetworkWatchdog() {
-  if (ethConnected)
+  if (ethActive() || !wifiConnected) {
+    wifiFailoverPending = false; // Ethernet is back, or Wi-Fi re-joins anyway
     return;
-  if (!wifiConnected)
-    return;
+  }
 
   unsigned long now = millis();
+
+  // Right after an Ethernet -> Wi-Fi failover: Wi-Fi gets WIFI_FAILOVER_CHECK_MS
+  // to reach Firebase, not the full 90 s watchdog period.
+  if (wifiFailoverPending) {
+    if (firebaseConnected &&
+        (long)(lastFirebaseSuccessTime - wifiFailoverStart) >= 0) {
+      wifiFailoverPending = false;
+      Serial.printf("[Failover] Wi-Fi backup is carrying data (%lu ms after "
+                    "Ethernet was lost).\n",
+                    lastFirebaseSuccessTime - wifiFailoverStart);
+    } else if (now - wifiFailoverStart >= WIFI_FAILOVER_CHECK_MS) {
+      wifiFailoverPending = false;
+      Serial.println("[Failover] No reply over Wi-Fi yet. Re-joining Wi-Fi for a "
+                     "fresh DHCP lease.");
+      forceWifiReconnect(now);
+      return;
+    }
+  }
   unsigned long referenceTime =
       (lastFirebaseSuccessTime > 0)
           ? lastFirebaseSuccessTime
@@ -1379,20 +1669,7 @@ void checkNetworkWatchdog() {
                    "WL_CONNECTED (zombie socket).",
                    LEVEL_WARNING);
 
-    commandClient.stop();
-    commandClientConfigured = false;
-    firebaseConnected = false;
-    firebaseAuthValid = false;
-    wifiConnected = false;
-    lastFirebaseSuccessTime = 0;
-
-    WiFi.disconnect(true);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    WiFi.setSleep(false);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    lastWifiRetry = now;
-    wifiReconnectAttempts = 0;
-    wifiRetryInterval = 15000;
+    forceWifiReconnect(now);
   }
 }
 
@@ -1745,6 +2022,11 @@ void networkTask(void *pvParameters) {
 
   static bool lastSentPhHealth = true;
   static bool lastSentLevelHealth = true;
+  // Link last reported to the dashboard. A change (Ethernet <-> Wi-Fi) is written
+  // at once, so the dashboard shows a failover when it happens, not at the next
+  // 10 s heartbeat.
+  static bool lastSentEthLink = false;
+  static bool lastSentWifiLink = false;
 
   for (;;) {
     esp_task_wdt_reset(); // Pet the watchdog
@@ -1757,6 +2039,9 @@ void networkTask(void *pvParameters) {
 
     // 2. Network watchdog: zombie socket detector
     checkNetworkWatchdog();
+
+    // 2b. Back to Ethernet after a slow/no-internet switch to Wi-Fi
+    checkEthernetRecovery();
 
     // 3. Low-heap guard
     {
@@ -1788,7 +2073,7 @@ void networkTask(void *pvParameters) {
     // =============================================================
     // 7. CONSOLIDATED COMMAND POLLING (READS from Firebase)
     // =============================================================
-    if (isNetworkConnected() &&
+    if (isNetworkConnected() && !linkUploadFirst &&
         (millis() - lastCommandPoll >= currentCommandPollInterval)) {
       lastCommandPoll = millis();
       unsigned long pollStartTime = millis();
@@ -2056,6 +2341,9 @@ void networkTask(void *pvParameters) {
       }
 
       unsigned long pollDuration = millis() - pollStartTime;
+      bool pollOk = firebaseConnected &&
+                    (long)(lastFirebaseSuccessTime - pollStartTime) >= 0;
+      checkEthernetQuality(pollOk, pollDuration);
       if (pollDuration > 1500) {
         logSystemEvent("System Performance",
                        "Command poll took longer than expected: " +
@@ -2096,6 +2384,10 @@ void networkTask(void *pvParameters) {
         (lowLevelAlert.state != lastSentLowLevelAlertState) ||
         (highLevelAlert.state != lastSentHighLevelAlertState) ||
         (phAlert.state != lastSentPhAlertState);
+    bool snapEth = ethActive();
+    bool snapWifi = wifiConnected;
+    bool linkChanged =
+        (snapEth != lastSentEthLink) || (snapWifi != lastSentWifiLink);
     bool heartbeatElapsed =
         (millis() - lastSensorWrite >= SENSOR_WRITE_HEARTBEAT);
     bool rateLimitElapsed = (millis() - lastSensorWrite >= MIN_WRITE_INTERVAL);
@@ -2104,7 +2396,7 @@ void networkTask(void *pvParameters) {
       if (rateLimitElapsed &&
           (levelChangedSignificantly || phChangedSignificantly ||
            phHealthChanged || levelHealthChanged ||
-           alertStateChanged || heartbeatElapsed)) {
+           alertStateChanged || linkChanged || heartbeatElapsed)) {
         if (ensureFirebaseAuth()) {
 
           // Compute overall status from alert states
@@ -2138,12 +2430,12 @@ void networkTask(void *pvParameters) {
               "\"phAlert\":\"" + getAlertStateStr(phAlert.state) + "\",";
           jsonPayload += "\"rssi\":" + String(WiFi.RSSI()) + ",";
           jsonPayload +=
-              "\"wifiConnected\":" + String(wifiConnected ? "true" : "false") +
+              "\"wifiConnected\":" + String(snapWifi ? "true" : "false") +
               ",";
           jsonPayload += "\"firebaseConnected\":" +
                          String(firebaseConnected ? "true" : "false") + ",";
           jsonPayload +=
-              "\"ethConnected\":" + String(ethConnected ? "true" : "false") +
+              "\"ethConnected\":" + String(snapEth ? "true" : "false") +
               ",";
           jsonPayload += "\"lastUpdate\":{\".sv\":\"timestamp\"}";
           jsonPayload += "}";
@@ -2164,6 +2456,7 @@ void networkTask(void *pvParameters) {
 
           if (httpResponseCode > 0 && httpResponseCode != 401) {
             DEBUG_PRINTLN("Firebase Sensors Updated successfully.");
+            linkUploadFirst = false;
             bool wasDisconnected = !firebaseConnected;
             if (wasDisconnected) {
               logSystemEvent(
@@ -2188,6 +2481,8 @@ void networkTask(void *pvParameters) {
             lastSentLowLevelAlertState = lowLevelAlert.state;
             lastSentHighLevelAlertState = highLevelAlert.state;
             lastSentPhAlertState = phAlert.state;
+            lastSentEthLink = snapEth;
+            lastSentWifiLink = snapWifi;
             lastSensorWrite = millis();
           } else {
             firebaseConnected = false;
@@ -2273,11 +2568,10 @@ void setup() {
   WiFi.setSleep(false);
 
   Serial.println("Initializing Ethernet...");
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-  ETH.begin(ETH_TYPE, ETH_ADDR, ETH_MDC_PIN, ETH_MDIO_PIN, -1, ETH_CLK_MODE);
-#else
-  ETH.begin(ETH_ADDR, -1, ETH_MDC_PIN, ETH_MDIO_PIN, ETH_TYPE, ETH_CLK_MODE);
-#endif
+  SPI.begin(ETH_SPI_SCK, ETH_SPI_MISO, ETH_SPI_MOSI);
+  if (!ETH.begin(ETH_TYPE, ETH_ADDR, ETH_SPI_CS, ETH_SPI_INT, ETH_SPI_RST, SPI)) {
+    Serial.println("W5500 not found: check SPI wiring and 3.3V power. Using Wi-Fi only.");
+  }
 
   // Spawn sensorTask on Core 1 (dedicated to real-time sensor work)
   xTaskCreatePinnedToCore(

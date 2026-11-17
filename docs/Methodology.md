@@ -141,10 +141,17 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
 
 ### 4.2 Network Failover & Resilience
 1. **Dual-Interface Failover**:
-   - Primary: LAN8720 Ethernet (MDC: GPIO 23, MDIO: GPIO 18).
+   - Primary: W5500 Ethernet over SPI (SCK: GPIO 18, MISO: GPIO 19, MOSI: GPIO 23, CS: GPIO 5, INT: GPIO 4, RST: GPIO 14).
    - Backup: Wi-Fi 2.4GHz with exponential retry backoff (15s $\rightarrow$ 30s $\rightarrow$ 60s max).
+   - Ethernet priority: when Ethernet gets an IP address it becomes the default route (`ETH.setDefault()`), so traffic uses Ethernet whenever it is up and healthy.
+   - Slow or no internet on Ethernet: 3 command polls in a row that fail or take longer than 4 s switch traffic to Wi-Fi while the cable stays connected. Ethernet is tried again every 60 s (at once if Wi-Fi drops) and kept if its polls are good.
+   - Hot standby: while Ethernet is up, Wi-Fi stays joined (re-joined in the background at most every 60 s if it drops).
+   - Switch-over: when the cable is unplugged, `startWifiFailover()` closes the TLS socket that was on Ethernet, clears the poll backoff, makes Wi-Fi the default route and polls at once. If Wi-Fi has not reached Firebase within 10 s, Wi-Fi is re-joined for a fresh DHCP lease (Ethernet's DHCP may have left its own DNS servers in place).
+   - Readings first: right after any switch (to Wi-Fi or back to Ethernet) the sensor upload goes out before command polls and log entries (held up to 5 s; held logs are queued in RAM and keep the ESP32 local time in their text), so the dashboard shows the switch at once.
+   - Return to Ethernet: when the cable is plugged back in, Ethernet must get an IP within 3 s; otherwise the W5500 is restarted (`ETH.end()` / `ETH.begin()`, hardware reset through RST), because after a re-plug it often gets no IP on its own. While Ethernet has no IP, Wi-Fi stays the default route. A lost Ethernet IP (`ETH_LOST_IP`) is handled like an unplug. The return is logged as "Ethernet connection restored".
+   - Measured on 17 Nov 2026 (Tank 1, cable unplugged about 2 min, three trials, times from the board's serial log): first sensor upload over Wi-Fi 0.7 s after the board saw the unplug (Wi-Fi poll confirmed at 1.4, 2.7 and 1.4 s); back on Ethernet 1.6, 8.3 (W5500 restart needed) and 2.3 s after re-plug. The board checks the Ethernet link every 2 s, so up to 2 s more passes between the actual unplug and the board noticing it.
 2. **Network Zombie-Socket Watchdog**:
-   - If HTTPS requests fail continuously for $\ge 90\text{ seconds}$ despite `WL_CONNECTED`, `checkNetworkWatchdog()` tears down the TCP socket and triggers a full Wi-Fi reconnection.
+   - If HTTPS requests fail continuously for $\ge 90\text{ seconds}$ despite `WL_CONNECTED`, `checkNetworkWatchdog()` tears down the TCP socket and triggers a full Wi-Fi reconnection. The new connection then gets a fresh 90 s before it is judged again.
 3. **Offline RAM Ring Buffer**:
    - Core 1 buffers up to 20 critical/error log entries in a RAM ring buffer (`ramLogBuffer[20]`).
    - When network connectivity is restored, `flushRamLogBuffer()` pushes all buffered events to Firebase `/logs`.
