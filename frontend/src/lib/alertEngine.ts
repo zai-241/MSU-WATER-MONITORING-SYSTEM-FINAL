@@ -105,13 +105,21 @@ export function isControllerOffline(lastUpdate: number | undefined | null, serve
   return serverNow - lastUpdate > thresholdMs;
 }
 
+/**
+ * A level value the threshold checks can use. A sensor fault does not make it unusable:
+ * monitoring continues on a faulty sensor (the alert says the reading may be inaccurate).
+ * Only a missing or impossible value (e.g. the firmware's -999 "no reading yet") is skipped.
+ */
 export function isValidLevel(tank: EngineTank): boolean {
-  return tank.levelSensorOk !== false && Number.isFinite(tank.waterLevel) && tank.waterLevel >= 0 && tank.waterLevel <= 100;
+  return Number.isFinite(tank.waterLevel) && tank.waterLevel >= 0 && tank.waterLevel <= 100;
 }
 
+/** Same as isValidLevel, for pH (0 to 14). */
 export function isValidPh(tank: EngineTank): boolean {
-  return tank.phSensorOk !== false && Number.isFinite(tank.phLevel) && tank.phLevel >= 0 && tank.phLevel <= 14;
+  return Number.isFinite(tank.phLevel) && tank.phLevel >= 0 && tank.phLevel <= 14;
 }
+
+const FAULT_NOTE = ' Sensor fault: this reading may be inaccurate.';
 
 interface Check {
   key: AlertKey;
@@ -130,7 +138,7 @@ function buildChecks(tank: EngineTank, config: EngineConfig, trackers: TankTrack
   checks.push({
     key: 'levelFault', level: 'danger', title: 'Level Sensor Fault',
     isAbnormal: levelFault, isNormal: !levelFault,
-    abnormalMsg: `${tank.name} water level sensor reported a hardware fault. Level monitoring suspended.`,
+    abnormalMsg: `${tank.name} water level sensor reported a hardware fault. Monitoring continues, but level readings may be inaccurate until the sensor is checked. The pump stays off while the level sensor is faulty.`,
     recoveryMsg: `${tank.name} water level sensor fault resolved.`,
   });
 
@@ -138,26 +146,29 @@ function buildChecks(tank: EngineTank, config: EngineConfig, trackers: TankTrack
   checks.push({
     key: 'phFault', level: 'danger', title: 'pH Sensor Fault',
     isAbnormal: phFault, isNormal: !phFault,
-    abnormalMsg: `${tank.name} pH sensor reported a hardware fault. pH monitoring suspended.`,
+    abnormalMsg: `${tank.name} pH sensor reported a hardware fault. Monitoring continues, but pH readings may be inaccurate until the sensor is checked.`,
     recoveryMsg: `${tank.name} pH sensor fault resolved.`,
   });
 
-  // Threshold checks only run on a healthy sensor with a physically possible value,
-  // so a broken sensor can never produce a false low-water or pH alarm.
+  // Threshold checks keep running on a faulty sensor (monitoring is never suspended);
+  // the message then says the reading may be inaccurate. Only a missing or impossible
+  // value is skipped.
+  const levelNote = levelFault ? FAULT_NOTE : '';
+  const phNote = phFault ? FAULT_NOTE : '';
   if (isValidLevel(tank)) {
     checks.push({
       key: 'lowLevel', level: 'danger', title: 'Low Water Level',
       isAbnormal: tank.waterLevel < config.lowLevelThreshold,
       isNormal: tank.waterLevel >= config.lowLevelThreshold + LEVEL_HYSTERESIS,
-      abnormalMsg: `${tank.name} water level is extremely low (${tank.waterLevel}%).`,
-      recoveryMsg: `${tank.name} water level returned to normal (${tank.waterLevel}%).`,
+      abnormalMsg: `${tank.name} water level is extremely low (${tank.waterLevel}%).${levelNote}`,
+      recoveryMsg: `${tank.name} water level returned to normal (${tank.waterLevel}%).${levelNote}`,
     });
     checks.push({
       key: 'overflow', level: 'warning', title: 'High Water Level',
       isAbnormal: tank.waterLevel > config.overflowThreshold,
       isNormal: tank.waterLevel <= config.overflowThreshold - LEVEL_HYSTERESIS,
-      abnormalMsg: `${tank.name} is reaching overflow capacity (${tank.waterLevel}%).`,
-      recoveryMsg: `${tank.name} overflow condition resolved (${tank.waterLevel}%).`,
+      abnormalMsg: `${tank.name} is reaching overflow capacity (${tank.waterLevel}%).${levelNote}`,
+      recoveryMsg: `${tank.name} overflow condition resolved (${tank.waterLevel}%).${levelNote}`,
     });
   } else {
     // Do not let a pending (not yet raised) level alarm fire on stale data
@@ -170,8 +181,8 @@ function buildChecks(tank: EngineTank, config: EngineConfig, trackers: TankTrack
       key: 'ph', level: 'danger', title: 'Unsafe pH Level',
       isAbnormal: tank.phLevel < config.minPh || tank.phLevel > config.maxPh,
       isNormal: tank.phLevel >= config.minPh + PH_HYSTERESIS && tank.phLevel <= config.maxPh - PH_HYSTERESIS,
-      abnormalMsg: `${tank.name} pH level is unsafe (${tank.phLevel}).`,
-      recoveryMsg: `${tank.name} pH level returned to safe zone (${tank.phLevel}).`,
+      abnormalMsg: `${tank.name} pH level is unsafe (${tank.phLevel}).${phNote}`,
+      recoveryMsg: `${tank.name} pH level returned to safe zone (${tank.phLevel}).${phNote}`,
     });
   } else {
     trackers.ph.abnormalStartTime = 0;

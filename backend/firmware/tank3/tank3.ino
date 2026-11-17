@@ -1234,8 +1234,23 @@ void processPhSensor() {
       phSensorOk = false;
       logSystemEvent("Sensor Fault",
                      "pH Sensor FAULT! Out-of-bounds readings. Voltage: " +
-                         String(rawPhVoltage, 2) + "V, pH: " + String(phVal, 2),
+                         String(rawPhVoltage, 2) + "V, pH: " + String(phVal, 2) +
+                         ". Monitoring continues with the raw reading.",
                      LEVEL_CRITICAL);
+    }
+    // Monitoring is never suspended: once the fault is confirmed (10 s), the
+    // live reading, clamped to 0-14, keeps flowing to the dashboard, history
+    // and alerts, flagged by phSensorOk = false. During the 10 s check the
+    // last good value is held so a short glitch does not show.
+    if (!phSensorOk) {
+      float clampedPh = constrain(phVal, 0.0f, 14.0f);
+      if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        if (stabilizedPhValue == -999.0 ||
+            abs(clampedPh - stabilizedPhValue) >= PH_LEVEL_DEADBAND) {
+          stabilizedPhValue = clampedPh;
+        }
+        xSemaphoreGive(sensorDataMutex);
+      }
     }
     return;
   }
@@ -1302,6 +1317,19 @@ void processLevelSensor() {
   bool physicalValid = (height >= -0.5 && height <= (tankHeight + 0.5));
   bool readingValid = electricalValid && physicalValid;
 
+  float clampedHeight = height;
+  if (clampedHeight < 0.0)
+    clampedHeight = 0.0;
+  if (clampedHeight > tankHeight)
+    clampedHeight = tankHeight;
+
+  int levelPercent = (clampedHeight / tankHeight) * 100;
+  levelPercent += (int)levelOffset;
+  if (levelPercent < 0)
+    levelPercent = 0;
+  if (levelPercent > 100)
+    levelPercent = 100;
+
   unsigned long now = millis();
 
   if (!readingValid) {
@@ -1317,26 +1345,29 @@ void processLevelSensor() {
           "Sensor Fault",
           "Water Level Sensor FAULT! Out-of-bounds readings. Voltage: " +
               String(rawLevelVoltage, 2) + "V, Height: " + String(height, 2) +
-              "m",
+              "m. Monitoring continues with the raw reading.",
           LEVEL_CRITICAL);
+    }
+    // Monitoring is never suspended: once the fault is confirmed (10 s), the
+    // live reading, clamped to 0-100 %, keeps flowing to the dashboard,
+    // history and alerts, flagged by levelSensorOk = false. During the 10 s
+    // check the last good value is held so a short glitch does not show.
+    // The pump still stops on a faulty level sensor (processAutomaticPumpControl).
+    if (!levelSensorOk) {
+      if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        if (stabilizedWaterLevelPercent == -999 ||
+            abs(levelPercent - stabilizedWaterLevelPercent) >=
+                WATER_LEVEL_DEADBAND) {
+          stabilizedWaterLevelPercent = levelPercent;
+          stabilizedWaterHeight = clampedHeight;
+        }
+        xSemaphoreGive(sensorDataMutex);
+      }
     }
     return;
   }
 
   levelFaultTimer = 0;
-
-  float clampedHeight = height;
-  if (clampedHeight < 0.0)
-    clampedHeight = 0.0;
-  if (clampedHeight > tankHeight)
-    clampedHeight = tankHeight;
-
-  int levelPercent = (clampedHeight / tankHeight) * 100;
-  levelPercent += (int)levelOffset;
-  if (levelPercent < 0)
-    levelPercent = 0;
-  if (levelPercent > 100)
-    levelPercent = 100;
 
   if (xSemaphoreTake(sensorDataMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     if (stabilizedWaterLevelPercent == -999) {
@@ -1851,16 +1882,13 @@ void postHistorySample() {
     return;
   }
 
-  if (!lvlOk && !phOk) {
-    DEBUG_PRINTLN("[History] Both sensors faulty. Skipping history sample.");
-    return;
-  }
-
+  // Samples are kept during a sensor fault too (monitoring is never
+  // suspended); the health flags let Reports mark them as faulty readings.
   String jsonPayload;
-  jsonPayload.reserve(256);
+  jsonPayload.reserve(320);
 
   jsonPayload = "{";
-  if (lvlOk && lvlPercent != -999) {
+  if (lvlPercent != -999) {
     jsonPayload += "\"waterLevel\":" + String(lvlPercent) + ",";
     jsonPayload += "\"waterHeight\":" + String(lvlHeight, 2) + ",";
   } else {
@@ -1868,11 +1896,14 @@ void postHistorySample() {
     jsonPayload += "\"waterHeight\":null,";
   }
 
-  if (phOk && phVal != -999.0) {
+  if (phVal != -999.0) {
     jsonPayload += "\"phLevel\":" + String(phVal, 2) + ",";
   } else {
     jsonPayload += "\"phLevel\":null,";
   }
+
+  jsonPayload += "\"levelSensorOk\":" + String(lvlOk ? "true" : "false") + ",";
+  jsonPayload += "\"phSensorOk\":" + String(phOk ? "true" : "false") + ",";
 
   jsonPayload += "\"pumpOn\":" + String(pumpOn ? "true" : "false") + ",";
   jsonPayload += "\"timestamp\":{\".sv\":\"timestamp\"}";

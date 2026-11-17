@@ -29,6 +29,9 @@ Firestore /users/{uid} → profiles; RTDB /roles/{uid} → what each account may
 ```
 
 The pump decision runs on the ESP32, not in the cloud. The web app only sends commands and config.
+A sensor fault never suspends monitoring: after the 10 s fault check the ESP32 keeps sending the live (clamped)
+reading with `levelSensorOk` / `phSensorOk = false`, and `alertEngine.ts` keeps checking thresholds on it (the
+message says the reading may be inaccurate). Only the pump is held off while the level sensor is faulty.
 The pump UI no longer says "demo"; the Admin Panel switch is called "Pump System" (DB key still `pumpDemoMode`).
 All four sketches have `PUMP_RELAY_ENABLED 1`: GPIO 32 drives the pump relay (HIGH = ON). Set it to 0 to run the pump logic without switching a pin.
 
@@ -38,7 +41,7 @@ All four sketches have `PUMP_RELAY_ENABLED 1`: GPIO 32 drives the pump relay (HI
 |---|---|---|
 | `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin). `pumpOn` is the pump command: the ESP32 writes it only when it changes the pump itself or refuses a command, never in its regular sensor upload (that overwrote commands). It acknowledges each command with `pumpCommandAt` + `pumpCommandResult`; the dashboard shows a spinner until then (15 s timeout, `PUMP_COMMAND_TIMEOUT_MS`). After a reboot the ESP32 writes its own state (OFF) before reading commands |
 | `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), maintenance mode, locks, `pumpDemoMode` (shown as "Pump System"; missing = on: shows the pump UI and lets the ESP32 run the pump), `pumpMode` (`"auto"` / `"manual"`, admin-only; missing = auto; manual skips the low-level auto start, safety stops stay; Tank 1 sketch only so far) |
-| `/history/tanks/{id}` | ESP32 | One sample every 10 min |
+| `/history/tanks/{id}` | ESP32 | One sample every 10 min, also during a sensor fault (with `levelSensorOk` / `phSensorOk` flags; Reports marks those "Fault") |
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1 |
 | `/notifications` | Worker (or browsers while the worker is down) | Alerts with acknowledgment |
 | `/userState` | Web app | Per-user read state and settings |

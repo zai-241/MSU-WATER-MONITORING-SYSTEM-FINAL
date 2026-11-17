@@ -42,7 +42,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useTankHistory, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
+import { useTankHistory, isLevelSampleFaulty, isPhSampleFaulty, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 // exceljs and jsPDF are large: reportExport is loaded only when an export button is clicked (see handleExport*)
 const loadReportExport = () => import('@/lib/reportExport');
 import { estimateVolumeLiters, tankCapacityLiters } from '@/lib/constants';
@@ -53,6 +53,18 @@ import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from 
 
 const DATE_RANGES = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days'] as const;
 type DateRange = typeof DATE_RANGES[number];
+
+/** Marks a history value recorded while the sensor was faulty (monitoring continues, value may be off). */
+function FaultTag({ what }: { what: string }) {
+  return (
+    <span
+      className="ml-1.5 text-[10px] text-danger font-semibold uppercase"
+      title={`Recorded during a ${what} sensor fault; may be inaccurate`}
+    >
+      Fault
+    </span>
+  );
+}
 
 const PIE_COLORS = ['#ef4444', '#f59e0b', '#a855f7', '#f97316', '#3b82f6'];
 
@@ -294,6 +306,8 @@ const Reports = () => {
         phLevel: avgPh,
         height: avgHeight,
         sampleCount: samples.length,
+        levelFault: samples.some(isLevelSampleFaulty),
+        phFault: samples.some(isPhSampleFaulty),
       };
     });
   }, [historySamples, days, selectedTank?.tankHeight]);
@@ -1007,11 +1021,14 @@ const Reports = () => {
                         <td className="py-3.5 px-4 font-sans font-semibold text-foreground">{row.date}</td>
                         <td className="py-3.5 px-4 text-foreground font-bold">
                           {row.waterLevel !== null ? (
-                            <span className={`px-2 py-0.5 rounded ${
-                              isLevelLow(row.waterLevel) ? 'bg-danger/10 text-danger' :
-                              isLevelHigh(row.waterLevel) ? 'bg-warning/10 text-warning' :
-                              'text-blue-500'
-                            }`}>{row.waterLevel}%</span>
+                            <>
+                              <span className={`px-2 py-0.5 rounded ${
+                                isLevelLow(row.waterLevel) ? 'bg-danger/10 text-danger' :
+                                isLevelHigh(row.waterLevel) ? 'bg-warning/10 text-warning' :
+                                'text-blue-500'
+                              }`}>{row.waterLevel}%</span>
+                              {row.levelFault && <FaultTag what="level" />}
+                            </>
                           ) : (
                             <span className="text-muted-foreground italic text-[11px]">Sensor Fault</span>
                           )}
@@ -1019,9 +1036,12 @@ const Reports = () => {
                         <td className="py-3.5 px-4 text-muted-foreground">{row.height}m</td>
                         <td className="py-3.5 px-4">
                           {row.phLevel !== null ? (
-                            <span className={`px-2 py-0.5 rounded ${
-                              row.phLevel < config.minPh || row.phLevel > config.maxPh ? 'bg-danger/10 text-danger' : 'text-purple-500'
-                            }`}>{row.phLevel}</span>
+                            <>
+                              <span className={`px-2 py-0.5 rounded ${
+                                row.phLevel < config.minPh || row.phLevel > config.maxPh ? 'bg-danger/10 text-danger' : 'text-purple-500'
+                              }`}>{row.phLevel}</span>
+                              {row.phFault && <FaultTag what="pH" />}
+                            </>
                           ) : (
                             <span className="text-muted-foreground italic text-[11px]">Sensor Fault</span>
                           )}

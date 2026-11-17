@@ -79,6 +79,7 @@ graph TD
    - Safe operational limits: $0.05\text{V} < V_{raw} < 3.25\text{V}$.
    - Voltages $\le 0.05\text{V}$ (open circuit / disconnected wire) or $\ge 3.25\text{V}$ (short circuit to rail) trigger a fault timer.
    - If an electrical fault persists for $\ge 10,000\text{ ms}$ (`SENSOR_FAULT_TIMEOUT`), the sensor health is set to `false`, an emergency error is logged, and the pump is prevented from auto-starting.
+   - Monitoring is never suspended by a fault. During the 10 s check the last good value is held (so a short glitch does not show); once the fault is confirmed, the live reading, clamped to the physical range (pH 0 to 14, level 0 to 100 %), keeps going to the dashboard, the 10-minute history and the alerts, flagged by `levelSensorOk` / `phSensorOk = false`. Threshold alerts (low water, overflow, pH) keep being evaluated and say that the reading may be inaccurate. Only the pump is held off while the level sensor is faulty.
    - Recovery requires stable readings for at least $3,000\text{ ms}$.
 2. **Physical Environmental Bounds**:
    - pH: $0.0 \le \text{pH} \le 14.0$
@@ -191,9 +192,9 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | name, location | STRING | |
 | enabled | BOOLEAN | |
 | assignedWorker | STRING | UID of the assigned worker, or null |
-| waterLevel | NUMBER | % (null when the level sensor fails) |
+| waterLevel | NUMBER | %; still reported during a level sensor fault (clamped 0 to 100, flagged by `levelSensorOk`) |
 | waterHeight | NUMBER | m |
-| phLevel | NUMBER | null when the pH sensor fails |
+| phLevel | NUMBER | still reported during a pH sensor fault (clamped 0 to 14, flagged by `phSensorOk`) |
 | status | STRING | safe, warning, danger or offline |
 | lowLevelAlert, highLevelAlert, phAlert | STRING | NORMAL, WARNING, CRITICAL or RECOVERED |
 | pumpOn | BOOLEAN | virtual pump state, and the command field: the web app writes it; the ESP32 writes it only when it changes the pump itself or refuses a command (not in its regular sensor upload) |
@@ -232,7 +233,8 @@ Written by the ESP32 every 10 minutes. Indexed on `timestamp`.
 
 | Field | Type |
 |---|---|
-| waterLevel, waterHeight, phLevel | NUMBER |
+| waterLevel, waterHeight, phLevel | NUMBER (null only before the first reading after boot; older samples used null for a faulty sensor) |
+| levelSensorOk, phSensorOk | BOOLEAN (false = sample taken during a sensor fault; Reports marks it "Fault") |
 | pumpOn | BOOLEAN |
 | timestamp | TIMESTAMP |
 

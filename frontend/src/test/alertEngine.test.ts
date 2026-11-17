@@ -74,9 +74,29 @@ describe('alertEngine', () => {
     expect(step({ ...healthy, waterLevel: 5 }, 92000)[0].kind).toBe('raise');
   });
 
-  it('raises a sensor fault and never a false low-water alarm from a broken sensor', () => {
+  it('keeps monitoring a faulty level sensor: raises the fault and still checks thresholds', () => {
     const { flat } = run({ ...healthy, levelSensorOk: false, waterLevel: 0 }, [1000, 6000, 12000]);
-    expect(flat.map(e => e.key)).toEqual(['levelFault']);
+    expect(flat.map(e => e.key)).toEqual(['levelFault', 'lowLevel']);
+    const fault = flat.find(e => e.key === 'levelFault')!;
+    expect(fault.message).toContain('Monitoring continues');
+    expect(fault.message).not.toContain('suspended');
+    expect(flat.find(e => e.key === 'lowLevel')!.message).toContain('may be inaccurate');
+  });
+
+  it('keeps monitoring a faulty pH sensor: raises the fault and still checks the pH range', () => {
+    const { flat } = run({ ...healthy, phSensorOk: false, phLevel: 3 }, [1000, 6000]);
+    expect(flat.map(e => e.key)).toEqual(['phFault', 'ph']);
+    expect(flat.find(e => e.key === 'ph')!.message).toContain('may be inaccurate');
+  });
+
+  it('a faulty sensor with a normal reading raises only the fault', () => {
+    const { flat } = run({ ...healthy, phSensorOk: false, levelSensorOk: false }, [1000, 6000]);
+    expect(flat.map(e => e.key)).toEqual(['levelFault', 'phFault']);
+  });
+
+  it('healthy-sensor alert messages carry no fault note', () => {
+    const { flat } = run({ ...healthy, waterLevel: 10 }, [1000, 6000]);
+    expect(flat[0].message).not.toContain('inaccurate');
   });
 
   it('ignores physically impossible readings', () => {

@@ -46,6 +46,17 @@ export interface ReportExportData {
   thresholds: { lowLevel: number; overflow: number; minPh: number; maxPh: number };
 }
 
+/**
+ * Sensor status of one history row. Readings recorded during a fault are kept
+ * (monitoring continues), so the status column is what marks them.
+ */
+export function sensorStatusLabel(d: Pick<GroupedTelemetryPoint, 'levelFault' | 'phFault'>): string {
+  if (d.levelFault && d.phFault) return 'Both Faulty';
+  if (d.levelFault) return 'Level Fault';
+  if (d.phFault) return 'pH Fault';
+  return 'Normal';
+}
+
 export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJS.Workbook> {
   const { currentUser, dateRange, days, logs, pumpActivityData, selectedTank, summaryMetrics, telemetryData, thresholds } = data;
   const includePump = data.includePump !== false;
@@ -135,15 +146,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
   });
 
   telemetryData.forEach(item => {
-    const isLevelFault = item.waterLevel === null;
-    const isPhFault = item.phLevel === null;
-    const status = (isLevelFault && isPhFault)
-      ? 'Both Faulty'
-      : isLevelFault
-      ? 'Level Fault'
-      : isPhFault
-      ? 'pH Fault'
-      : 'Normal';
+    const status = sensorStatusLabel(item);
 
     historySheet.addRow({
       date: item.date,
@@ -306,15 +309,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
   doc.text('2. Water Level & pH History (/history)', 14, currentY);
 
   const historyRows = telemetryData.map((d) => {
-    const isLevelFault = d.waterLevel === null;
-    const isPhFault = d.phLevel === null;
-    const statusStr = (isLevelFault && isPhFault)
-      ? 'Both Faulty'
-      : isLevelFault
-      ? 'Level Fault'
-      : isPhFault
-      ? 'pH Fault'
-      : 'Normal';
+    const statusStr = sensorStatusLabel(d);
 
     return [
       d.date,

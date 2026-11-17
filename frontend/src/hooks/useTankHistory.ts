@@ -14,6 +14,9 @@ export interface HistoryRawSample {
   waterHeight: number | null;
   pumpOn?: boolean;
   timestamp: number;
+  /** false when the sample was taken during a sensor fault (the value is still the live reading) */
+  levelSensorOk: boolean;
+  phSensorOk: boolean;
 }
 
 export interface GroupedTelemetryPoint {
@@ -23,6 +26,21 @@ export interface GroupedTelemetryPoint {
   phLevel: number | null;
   height: number;
   sampleCount: number;
+  /** At least one sample in the group came from a faulty sensor (or has no value) */
+  levelFault: boolean;
+  phFault: boolean;
+}
+
+/**
+ * Older firmware wrote null for a faulty sensor; newer firmware keeps the reading and
+ * adds levelSensorOk / phSensorOk = false. Either one marks the sample as faulty.
+ */
+export function isLevelSampleFaulty(s: Pick<HistoryRawSample, 'waterLevel' | 'levelSensorOk'>): boolean {
+  return s.waterLevel === null || !s.levelSensorOk;
+}
+
+export function isPhSampleFaulty(s: Pick<HistoryRawSample, 'phLevel' | 'phSensorOk'>): boolean {
+  return s.phLevel === null || !s.phSensorOk;
 }
 
 export function useTankHistory(selectedTankId: string, days: number) {
@@ -58,6 +76,8 @@ export function useTankHistory(selectedTankId: string, days: number) {
             waterHeight: typeof val?.waterHeight === 'number' ? val.waterHeight : null,
             pumpOn: typeof val?.pumpOn === 'boolean' ? val.pumpOn : false,
             timestamp: typeof val?.timestamp === 'number' ? val.timestamp : 0,
+            levelSensorOk: val?.levelSensorOk !== false,
+            phSensorOk: val?.phSensorOk !== false,
           })).filter((item) => item.timestamp >= cutoff);
 
           list.sort((a, b) => a.timestamp - b.timestamp);
