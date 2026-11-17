@@ -58,12 +58,14 @@ import {
   emptyProblemCounts,
   isPumpRun,
   logBelongsToTank,
+  PROBLEM_COLUMNS,
   type ProblemCounts,
   type PumpEvent,
+  type TelemetryTableRow,
 } from '@/lib/reportLogs';
 
 /** A Printable Telemetry Log Table row: telemetry averages plus the problems logged in that period. */
-type TableRow = GroupedTelemetryPoint & { hasSamples: boolean; problems: ProblemCounts };
+type TableRow = TelemetryTableRow & { hasSamples: boolean; problems: ProblemCounts };
 
 /** Problem count cell: a red number when there were problems, a muted 0 otherwise. */
 function ProblemCell({ count }: { count: number }) {
@@ -519,12 +521,15 @@ const Reports = () => {
     if (!selectedTank) return;
     
     if (type === 'csv') {
-      const csvHeader = 'Date,Water Level (%),Water Height (m),pH Value,Estimated Volume (L),Sample Count\n';
-      const csvRows = telemetryData.map(d => {
-        const lvl = d.waterLevel !== null ? String(d.waterLevel) : 'N/A';
-        const ph = d.phLevel !== null ? String(d.phLevel) : 'N/A';
-        const estVolume = d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel, capacityLiters) : 'N/A';
-        return `${d.date},${lvl},${d.height},${ph},${estVolume},${d.sampleCount}`;
+      const csvHeader = `Date,Water Level (%),Water Height (m),pH Value,Estimated Volume (L),Sample Count,${PROBLEM_COLUMNS.map(c => c.header).join(',')}\n`;
+      const csvRows = tableRows.map(d => {
+        const noData = !d.hasSamples;
+        const lvl = noData ? 'No data' : d.waterLevel !== null ? String(d.waterLevel) : 'N/A';
+        const height = noData ? 'No data' : String(d.height);
+        const ph = noData ? 'No data' : d.phLevel !== null ? String(d.phLevel) : 'N/A';
+        const estVolume = !noData && d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel, capacityLiters) : 'N/A';
+        const problems = PROBLEM_COLUMNS.map(c => d.problems[c.key]).join(',');
+        return `${d.date},${lvl},${height},${ph},${estVolume},${d.sampleCount},${problems}`;
       }).join('\n');
       
       const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
@@ -556,7 +561,8 @@ const Reports = () => {
     includePump: pumpDemo,
     selectedTank: selectedTank as Tank,
     summaryMetrics,
-    telemetryData,
+    // Table rows: telemetry plus the problem counts (and problem-only periods)
+    telemetryData: tableRows,
     thresholds: {
       lowLevel: config.lowLevelThreshold,
       overflow: config.overflowThreshold,

@@ -10,8 +10,8 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Tank, Log } from '@/store/useStore';
-import type { GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 import { estimateVolumeLiters, tankCapacityLiters } from './constants';
+import { emptyProblemCounts, PROBLEM_COLUMNS, type TelemetryTableRow } from './reportLogs';
 
 /** jspdf-autotable records where the last table ended on the document */
 type DocWithTable = jsPDF & { lastAutoTable: { finalY: number } };
@@ -40,7 +40,8 @@ export interface ReportExportData {
   pumpActivityData: PumpActivityPoint[];
   selectedTank: Tank;
   summaryMetrics: ReportSummaryMetrics | null;
-  telemetryData: GroupedTelemetryPoint[];
+  /** Rows of the Printable Telemetry Log Table: telemetry plus problem counts per period */
+  telemetryData: TelemetryTableRow[];
   /** Include the pump rows, sheet and section (pump system on). Defaults to true. */
   includePump?: boolean;
   /** Configured alert thresholds, shown as the benchmarks in the summary */
@@ -51,7 +52,8 @@ export interface ReportExportData {
  * Sensor status of one history row. Readings recorded during a fault are kept
  * (monitoring continues), so the status column is what marks them.
  */
-export function sensorStatusLabel(d: Pick<GroupedTelemetryPoint, 'levelFault' | 'phFault'>): string {
+export function sensorStatusLabel(d: Pick<TelemetryTableRow, 'levelFault' | 'phFault' | 'hasSamples'>): string {
+  if (d.hasSamples === false) return 'No data';
   if (d.levelFault && d.phFault) return 'Both Faulty';
   if (d.levelFault) return 'Level Fault';
   if (d.phFault) return 'pH Fault';
@@ -137,6 +139,7 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
     { header: 'Estimated Volume (L)', key: 'volume', width: 22 },
     { header: 'Sample Count', key: 'sampleCount', width: 16 },
     { header: 'Sensor Status', key: 'status', width: 20 },
+    ...PROBLEM_COLUMNS.map(c => ({ header: c.header, key: c.key, width: 20 })),
   ];
 
   const histHeader = historySheet.getRow(1);
@@ -148,15 +151,17 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
 
   telemetryData.forEach(item => {
     const status = sensorStatusLabel(item);
+    const noData = item.hasSamples === false;
 
     historySheet.addRow({
       date: item.date,
-      waterLevel: item.waterLevel !== null ? item.waterLevel : 'Sensor Fault',
-      waterHeight: item.waterLevel !== null ? item.height : 'N/A',
-      phLevel: item.phLevel !== null ? item.phLevel : 'Sensor Fault',
-      volume: item.waterLevel !== null ? estimateVolumeLiters(item.waterLevel, tankCapacityLiters(selectedTank)) : 'N/A',
+      waterLevel: noData ? 'No data' : item.waterLevel !== null ? item.waterLevel : 'Sensor Fault',
+      waterHeight: noData ? 'No data' : item.waterLevel !== null ? item.height : 'N/A',
+      phLevel: noData ? 'No data' : item.phLevel !== null ? item.phLevel : 'Sensor Fault',
+      volume: !noData && item.waterLevel !== null ? estimateVolumeLiters(item.waterLevel, tankCapacityLiters(selectedTank)) : 'N/A',
       sampleCount: item.sampleCount,
       status,
+      ...(item.problems ?? emptyProblemCounts()),
     });
   });
 
@@ -311,25 +316,42 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
 
   const historyRows = telemetryData.map((d) => {
     const statusStr = sensorStatusLabel(d);
+    const noData = d.hasSamples === false;
+    const problems = d.problems ?? emptyProblemCounts();
 
     return [
       d.date,
-      d.waterLevel !== null ? `${d.waterLevel}%` : 'Sensor Fault',
-      d.waterLevel !== null ? `${d.height} m` : 'N/A',
-      d.phLevel !== null ? `${d.phLevel}` : 'Sensor Fault',
-      d.waterLevel !== null ? `${estimateVolumeLiters(d.waterLevel, tankCapacityLiters(selectedTank)).toLocaleString()} L` : 'N/A',
+      noData ? 'No data' : d.waterLevel !== null ? `${d.waterLevel}%` : 'Sensor Fault',
+      noData ? '-' : d.waterLevel !== null ? `${d.height} m` : 'N/A',
+      noData ? 'No data' : d.phLevel !== null ? `${d.phLevel}` : 'Sensor Fault',
+      !noData && d.waterLevel !== null ? `${estimateVolumeLiters(d.waterLevel, tankCapacityLiters(selectedTank)).toLocaleString()} L` : 'N/A',
       String(d.sampleCount),
       statusStr,
+      ...PROBLEM_COLUMNS.map(c => String(problems[c.key])),
     ];
   });
 
+  // Eleven columns: smaller type, and the problem counts centred in narrow columns
   autoTable(doc, {
     startY: currentY + 3,
-    head: [['Date / Time', 'Water Level', 'Height', 'pH Level', 'Est. Volume', 'Samples', 'Status']],
+    head: [['Date / Time', 'Water Level', 'Height', 'pH Level', 'Est. Volume', 'Samples', 'Status', 'Level Sensor Fault', 'pH Sensor Fault', 'Controller Offline', 'Other Problems']],
     body: historyRows,
     theme: 'grid',
-    headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8.5, fontStyle: 'bold' },
-    bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+    headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 7, fontStyle: 'bold', valign: 'middle' },
+    bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
+    columnStyles: {
+      7: { halign: 'center', cellWidth: 14 },
+      8: { halign: 'center', cellWidth: 14 },
+      9: { halign: 'center', cellWidth: 15 },
+      10: { halign: 'center', cellWidth: 15 },
+    },
+    // Problem counts above 0 in red, as on the page
+    didParseCell: (cell) => {
+      if (cell.section === 'body' && cell.column.index >= 7 && cell.cell.raw !== '0') {
+        cell.cell.styles.textColor = [220, 38, 38];
+        cell.cell.styles.fontStyle = 'bold';
+      }
+    },
     margin: { left: 14, right: 14 },
   });
 

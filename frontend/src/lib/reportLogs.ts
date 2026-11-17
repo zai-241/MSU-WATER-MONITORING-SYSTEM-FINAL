@@ -14,6 +14,7 @@
  *   when their text mentions "overflow" or "low level".
  */
 import type { Log, Tank } from '@/store/useStore';
+import type { GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 
 export const ALERT_CATEGORIES = [
   'Low Water Level',
@@ -117,6 +118,22 @@ export function problemKind(log: Log): ProblemKind | null {
   if (log.action === 'CONTROLLER_OFFLINE') return 'offline';
   return alertStartCategory(log) ? 'other' : null;
 }
+
+/**
+ * One row of the Printable Telemetry Log Table and of the exports: telemetry averages plus
+ * the problems that started in that period. `hasSamples` is false for a period that only has
+ * problems (no readings, e.g. the controller was offline). Missing fields count as a row
+ * with samples and no problems.
+ */
+export type TelemetryTableRow = GroupedTelemetryPoint & { hasSamples?: boolean; problems?: ProblemCounts };
+
+/** Column headers for the four problem counts, in table order (Excel, CSV). */
+export const PROBLEM_COLUMNS: { key: ProblemKind; header: string }[] = [
+  { key: 'levelFault', header: 'Level Sensor Fault' },
+  { key: 'phFault', header: 'pH Sensor Fault' },
+  { key: 'offline', header: 'Controller Offline' },
+  { key: 'other', header: 'Other Problems' },
+];
 
 /** Problem counts per period; `periodStart` maps a timestamp to the start of its table row. */
 export function countProblemsByPeriod(logs: Log[], periodStart: (timestamp: number) => number): Map<number, ProblemCounts> {
