@@ -304,4 +304,35 @@ describe('Alert Sound & Toast Dismissal on Acknowledgment', () => {
       })
     );
   });
+
+  it('shows the date on every notification and an on/off alert sound switch', () => {
+    vi.spyOn(authHooks, 'useAuth').mockReturnValue({
+      currentUser: { id: '1', username: 'adminUser', email: 'adminUser@example.com', role: 'admin', jobTitle: 'Admin', status: 'active', createdAt: 0 },
+      loading: false,
+      error: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+      resetPassword: vi.fn(),
+      clearError: vi.fn(),
+    });
+    alertSound.setMuted(false);
+    render(React.createElement(NotificationCenter));
+    fireEvent.click(screen.getByTestId('notification-bell'));
+
+    // mm/dd/yyyy date next to the time
+    const d = new Date(1728349200000);
+    const expectedDate = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+    expect(screen.getAllByText(new RegExp(expectedDate)).length).toBeGreaterThan(0);
+
+    const sound = screen.getByTestId('sound-toggle');
+    expect(sound).toHaveAttribute('role', 'switch');
+    expect(sound).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(sound);
+    expect(alertSound.isMuted()).toBe(true);
+    expect(screen.getByTestId('sound-toggle')).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(screen.getByTestId('sound-toggle'));
+    expect(alertSound.isMuted()).toBe(false);
+
+    expect(screen.getByTestId('snooze-toggle')).toHaveAttribute('aria-pressed', 'false');
+  });
 });

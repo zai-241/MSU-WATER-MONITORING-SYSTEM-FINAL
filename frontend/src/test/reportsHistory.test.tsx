@@ -179,11 +179,12 @@ describe('Historical Data & Reports Telemetry', () => {
         timestamp: now - 3600000 * 2 + 600000, // Today, 2 hours ago + 10 mins
       },
       'samp-3': {
-        waterLevel: null, // Faulty level sensor marked null on separate day (yesterday)
+        waterLevel: null, // Faulty level sensor marked null on a separate day
         phLevel: 7.1,
         waterHeight: null,
         pumpOn: false,
-        timestamp: now - 24 * 3600000, // Yesterday
+        // Two days ago: "yesterday" (now - 24 h) falls on the same day as "2 hours ago" between 00:00 and 02:00
+        timestamp: now - 48 * 3600000,
       },
     };
 

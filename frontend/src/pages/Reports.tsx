@@ -50,7 +50,31 @@ import { formatDate, formatDateTime, formatTime } from '@/lib/dateFormat';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
-import { ALERT_CATEGORIES, buildPumpEvents, countAlertStarts, isPumpRun, logBelongsToTank, type PumpEvent } from '@/lib/reportLogs';
+import {
+  ALERT_CATEGORIES,
+  buildPumpEvents,
+  countAlertStarts,
+  countProblemsByPeriod,
+  emptyProblemCounts,
+  isPumpRun,
+  logBelongsToTank,
+  type ProblemCounts,
+  type PumpEvent,
+} from '@/lib/reportLogs';
+
+/** A Printable Telemetry Log Table row: telemetry averages plus the problems logged in that period. */
+type TableRow = GroupedTelemetryPoint & { hasSamples: boolean; problems: ProblemCounts };
+
+/** Problem count cell: a red number when there were problems, a muted 0 otherwise. */
+function ProblemCell({ count }: { count: number }) {
+  return (
+    <td className="py-3.5 px-3 text-center">
+      <span className={count > 0 ? 'inline-block min-w-[1.5rem] px-1.5 py-0.5 rounded bg-danger/10 text-danger font-bold' : 'text-muted-foreground/60'}>
+        {count}
+      </span>
+    </td>
+  );
+}
 
 const DATE_RANGES = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days'] as const;
 type DateRange = typeof DATE_RANGES[number];
@@ -364,6 +388,41 @@ const Reports = () => {
     });
   }, [historySamples, days, selectedTank?.tankHeight]);
 
+  // Printable table rows: the telemetry above plus how many problems started in each row's
+  // period (hour in the 7-day view, day otherwise). A period with problems but no samples,
+  // such as a day the controller was offline, still gets a row.
+  const tableRows: TableRow[] = useMemo(() => {
+    const isHourly = days === 7;
+    const periodStart = (ts: number) => {
+      if (isHourly) return Math.floor(ts / 3600000) * 3600000;
+      const d = new Date(ts);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    };
+    const problems = countProblemsByPeriod(logs, periodStart);
+    const rows: TableRow[] = telemetryData.map(p => ({
+      ...p,
+      hasSamples: true,
+      problems: problems.get(p.timestamp) ?? emptyProblemCounts(),
+    }));
+    const withSamples = new Set(telemetryData.map(p => p.timestamp));
+    for (const [ts, counts] of problems) {
+      if (withSamples.has(ts)) continue;
+      rows.push({
+        date: isHourly ? formatDateTime(ts) : formatDate(ts),
+        timestamp: ts,
+        waterLevel: null,
+        phLevel: null,
+        height: 0,
+        sampleCount: 0,
+        levelFault: false,
+        phFault: false,
+        hasSamples: false,
+        problems: counts,
+      });
+    }
+    return rows.sort((a, b) => a.timestamp - b.timestamp);
+  }, [telemetryData, logs, days]);
+
   // 2. Dynamic Pump Activations parsed from Real-Time Firebase System Logs
   const pumpActivityData = useMemo(() => {
     const rangeData = [];
@@ -552,11 +611,11 @@ const Reports = () => {
   };
 
   // Table pagination calculations
-  const totalPages = Math.ceil(telemetryData.length / itemsPerPage);
+  const totalPages = Math.ceil(tableRows.length / itemsPerPage);
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
-    return telemetryData.slice(startIndex, startIndex + itemsPerPage);
-  }, [telemetryData, currentPage]);
+    return tableRows.slice(startIndex, startIndex + itemsPerPage);
+  }, [tableRows, currentPage]);
 
   const isLoadingTanks = tanks.length === 0;
 
@@ -1036,18 +1095,22 @@ const Reports = () => {
               <span className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages || 1}</span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 print:hidden">
-              {days === 7 ? 'Hourly' : 'Daily'} averaged telemetry logs with water height and estimated metrics
+              {days === 7 ? 'Hourly' : 'Daily'} averaged telemetry logs with water height and estimated metrics, and the number of problems that started in each {days === 7 ? 'hour' : 'day'}
             </p>
             
             <div className="mt-6 overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse text-xs">
+              <table data-testid="telemetry-log-table" className="w-full min-w-[820px] text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-border/40 text-muted-foreground font-bold tracking-wide uppercase bg-secondary/30">
+                  <tr className="border-b border-border/40 text-muted-foreground font-bold tracking-wide uppercase bg-secondary/30 align-bottom">
                     <th className="py-3 px-4 rounded-l-lg">Date</th>
                     <th className="py-3 px-4">Level (%)</th>
                     <th className="py-3 px-4">Height (m)</th>
                     <th className="py-3 px-4">pH Value</th>
-                    <th className="py-3 px-4 rounded-r-lg">Est. Volume (L)</th>
+                    <th className="py-3 px-4">Est. Volume (L)</th>
+                    <th className="py-3 px-3 text-center leading-tight" title="Water level sensor faults that started in this period">Level Sensor<br />Fault</th>
+                    <th className="py-3 px-3 text-center leading-tight" title="pH sensor faults that started in this period">pH Sensor<br />Fault</th>
+                    <th className="py-3 px-3 text-center leading-tight" title="Times the controller went offline in this period">Controller<br />Offline</th>
+                    <th className="py-3 px-3 text-center leading-tight rounded-r-lg" title="Other alerts: low or high water level, unsafe pH, network problems">Other<br />Problems</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/20 font-mono">
@@ -1059,14 +1122,19 @@ const Reports = () => {
                         <td className="py-3 px-4"><div className="h-4 w-8 rounded bg-secondary" /></td>
                         <td className="py-3 px-4"><div className="h-4 w-8 rounded bg-secondary" /></td>
                         <td className="py-3 px-4"><div className="h-4 w-12 rounded bg-secondary" /></td>
+                        {Array.from({ length: 4 }).map((__, i) => (
+                          <td key={i} className="py-3 px-3"><div className="h-4 w-6 mx-auto rounded bg-secondary" /></td>
+                        ))}
                       </tr>
                     ))
                   ) : (
-                    paginatedData.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-secondary/10 transition-colors">
+                    paginatedData.map((row) => (
+                      <tr key={row.timestamp} className="hover:bg-secondary/10 transition-colors">
                         <td className="py-3.5 px-4 font-sans font-semibold text-foreground">{row.date}</td>
                         <td className="py-3.5 px-4 text-foreground font-bold">
-                          {row.waterLevel !== null ? (
+                          {!row.hasSamples ? (
+                            <span className="text-muted-foreground italic text-[11px] font-normal" title="No telemetry samples were recorded in this period">No data</span>
+                          ) : row.waterLevel !== null ? (
                             <>
                               <span className={`px-2 py-0.5 rounded ${
                                 isLevelLow(row.waterLevel) ? 'bg-danger/10 text-danger' :
@@ -1079,9 +1147,11 @@ const Reports = () => {
                             <span className="text-muted-foreground italic text-[11px]">Sensor Fault</span>
                           )}
                         </td>
-                        <td className="py-3.5 px-4 text-muted-foreground">{row.height}m</td>
+                        <td className="py-3.5 px-4 text-muted-foreground">{row.hasSamples ? `${row.height}m` : '-'}</td>
                         <td className="py-3.5 px-4">
-                          {row.phLevel !== null ? (
+                          {!row.hasSamples ? (
+                            <span className="text-muted-foreground italic text-[11px]">No data</span>
+                          ) : row.phLevel !== null ? (
                             <>
                               <span className={`px-2 py-0.5 rounded ${
                                 row.phLevel < config.minPh || row.phLevel > config.maxPh ? 'bg-danger/10 text-danger' : 'text-purple-500'
@@ -1095,12 +1165,16 @@ const Reports = () => {
                         <td className="py-3.5 px-4 text-foreground font-bold">
                           {row.waterLevel !== null ? `${estimateVolumeLiters(row.waterLevel, capacityLiters).toLocaleString()} L` : 'N/A'}
                         </td>
+                        <ProblemCell count={row.problems.levelFault} />
+                        <ProblemCell count={row.problems.phFault} />
+                        <ProblemCell count={row.problems.offline} />
+                        <ProblemCell count={row.problems.other} />
                       </tr>
                     ))
                   )}
                   {!isLoadingTanks && selectedTank && !isLoadingHistory && paginatedData.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-12 text-center text-muted-foreground font-sans">
+                      <td colSpan={9} className="py-12 text-center text-muted-foreground font-sans">
                         <div className="flex flex-col items-center justify-center gap-1.5">
                           <Database size={24} className="opacity-40" />
                           <span className="font-semibold text-foreground text-sm">No data yet</span>

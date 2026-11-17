@@ -18,7 +18,7 @@ import { useIsPhone } from '@/hooks/useMediaQuery';
 import { alertSound } from '@/utils/alertSound';
 import { groupNotifications, type NotificationGroup } from '@/lib/notificationGroups';
 import { toast } from 'sonner';
-import { formatDateTime, formatTime } from '@/lib/dateFormat';
+import { formatDateTime } from '@/lib/dateFormat';
 import { getPushStatus, enablePush, disablePush, type PushStatus } from '@/utils/push';
 
 /** Every control in the panel is at least 44 × 44 px so it can be tapped reliably. */
@@ -26,12 +26,8 @@ const TAP = 'min-h-11 min-w-11';
 
 const isAlert = (n: Notification) => n.type === 'warning' || n.type === 'danger';
 
-const formatNotifTime = (timestamp?: number) => {
-  if (!timestamp) return '';
-  const d = new Date(timestamp);
-  const isToday = new Date().toDateString() === d.toDateString();
-  return isToday ? formatTime(d) : formatDateTime(d);
-};
+/** Date and time on every notification ("11/18/2026 09:05 PM"), today's included. */
+const formatNotifTime = (timestamp?: number) => (timestamp ? formatDateTime(timestamp) : '');
 
 const NotificationCenter = () => {
   const { notifications, acknowledgeNotification } = useNotifications();
@@ -139,9 +135,11 @@ const NotificationCenter = () => {
     : 'Push alerts are not available on this device. Tap to see why.';
 
   /** Toolbar button: icon only on phones (label kept for screen readers), icon + text from 640px */
-  const ToolButton = ({ label, text, icon, onClick, className = '', variant = 'ghost', disabled, testId }: {
+  const ToolButton = ({ label, text, icon, onClick, className = '', variant = 'ghost', disabled, testId, pressed }: {
     label: string; text: string; icon: React.ReactNode; onClick: () => void;
     className?: string; variant?: 'ghost' | 'outline'; disabled?: boolean; testId?: string;
+    /** Set for on/off buttons: announced as a toggle (aria-pressed) */
+    pressed?: boolean;
   }) => (
     <Button
       variant={variant}
@@ -149,6 +147,7 @@ const NotificationCenter = () => {
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
+      aria-pressed={pressed}
       aria-label={label}
       title={label}
       className={`${TAP} px-2 text-[11px] font-semibold gap-1 ${className}`}
@@ -228,20 +227,36 @@ const NotificationCenter = () => {
               className="text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
             />
           )}
+          {/* Snooze: pressed (filled amber) while the 15-minute snooze runs */}
           <ToolButton
+            testId="snooze-toggle"
+            pressed={isSnoozed}
             label={isSnoozed ? 'Snooze active (15 min). Tap to resume alert sound.' : 'Snooze alert sound for 15 minutes'}
             text={isSnoozed ? 'Snoozed (15m)' : 'Snooze'}
             icon={<BellOff className="h-4 w-4" />}
             onClick={() => (isSnoozed ? alertSound.clearSnooze() : alertSound.snooze(15))}
-            className={isSnoozed ? 'bg-amber-500/10 text-amber-600' : ''}
+            className={isSnoozed ? 'bg-amber-500/15 text-amber-600 ring-1 ring-amber-500/40 hover:bg-amber-500/25' : ''}
           />
-          <ToolButton
-            label={isMuted ? 'Unmute alert sounds' : 'Mute alert sounds on this device'}
-            text={isMuted ? 'Muted' : 'Mute'}
-            icon={isMuted ? <VolumeX className="h-4 w-4 text-red-500" /> : <Volume2 className="h-4 w-4" />}
+          {/* Alert sound on/off switch: the switch position and icon show the state on every screen size */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!isMuted}
+            data-testid="sound-toggle"
+            aria-label={isMuted ? 'Alert sound is off on this device. Tap to turn it on.' : 'Alert sound is on. Tap to turn it off on this device.'}
+            title={isMuted ? 'Alert sound is off on this device. Tap to turn it on.' : 'Alert sound is on. Tap to turn it off on this device.'}
             onClick={() => alertSound.setMuted(!isMuted)}
-            className={isMuted ? 'text-destructive' : ''}
-          />
+            className={`${TAP} inline-flex items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isMuted ? 'text-destructive' : 'text-emerald-600'}`}
+          >
+            {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            <span className="hidden sm:inline">{isMuted ? 'Sound Off' : 'Sound On'}</span>
+            <span
+              aria-hidden="true"
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${isMuted ? 'bg-muted-foreground/30' : 'bg-emerald-500'}`}
+            >
+              <span className={`block h-4 w-4 rounded-full bg-background shadow transition-transform ${isMuted ? 'translate-x-0.5' : 'translate-x-[18px]'}`} />
+            </span>
+          </button>
         </div>
       </div>
     </div>

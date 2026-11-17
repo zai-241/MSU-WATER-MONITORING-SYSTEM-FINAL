@@ -101,3 +101,34 @@ describe('Reports log rules', () => {
     expect(reportWindowStart(7, now)).toBe(new Date(2026, 10, 6, 0, 0, 0, 0).getTime());
   });
 });
+
+describe('Problem counts in the Printable Telemetry Log Table', () => {
+  it('sorts each problem start into its column', async () => {
+    const { problemKind } = await import('@/lib/reportLogs');
+    expect(problemKind(log('Sensor Fault', 'Water Level Sensor FAULT! Reading unstable. Voltage: 1.2V', 'ESP32 System', 'CRITICAL'))).toBe('levelFault');
+    expect(problemKind(log('Sensor Fault', 'pH Sensor FAULT! Out-of-bounds readings.', 'ESP32 System', 'CRITICAL'))).toBe('phFault');
+    expect(problemKind(log('CONTROLLER_OFFLINE', 'Controller for Reservoir Tank No. 1 went offline', 'System', 'WARNING'))).toBe('offline');
+    expect(problemKind(log('Low Water Level Alert', 'Water level at 12% [Status: Triggered]'))).toBe('other');
+    expect(problemKind(log('Network Alert', 'WiFi backup connection lost!'))).toBe('other');
+    // Reminders, recoveries and normal events are not new problems
+    expect(problemKind(log('Low Water Level Alert', 'Water level at 11% [Status: Persistent]'))).toBeNull();
+    expect(problemKind(log('CONTROLLER_RECOVERED', 'Controller for Reservoir Tank No. 1 recovered', 'System'))).toBeNull();
+    expect(problemKind(log('Pump Controller', 'Pump started automatically.'))).toBeNull();
+  });
+
+  it('counts problems per day', async () => {
+    const { countProblemsByPeriod } = await import('@/lib/reportLogs');
+    const day = (ts: number) => { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+    const nov17 = new Date(2026, 10, 17, 9).getTime();
+    const nov18 = new Date(2026, 10, 18, 15).getTime();
+    const at = (l: Log, timestamp: number): Log => ({ ...l, id: `${l.id}-${timestamp}`, timestamp });
+    const counts = countProblemsByPeriod([
+      at(log('Sensor Fault', 'Water Level Sensor FAULT! Out-of-bounds readings.'), nov17),
+      at(log('Sensor Fault', 'Water Level Sensor FAULT! Reading unstable.'), nov17 + 3600_000),
+      at(log('CONTROLLER_OFFLINE', 'Controller for Reservoir Tank No. 1 went offline', 'System'), nov18),
+      at(log('Unsafe pH Level Alert', 'pH 9.1 [Status: Triggered]'), nov18 + 60_000),
+    ], day);
+    expect(counts.get(day(nov17))).toEqual({ levelFault: 2, phFault: 0, offline: 0, other: 0 });
+    expect(counts.get(day(nov18))).toEqual({ levelFault: 0, phFault: 0, offline: 1, other: 1 });
+  });
+});

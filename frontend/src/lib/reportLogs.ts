@@ -94,6 +94,44 @@ export function countAlertStarts(logs: Log[]): Record<AlertCategory, number> {
   return counts;
 }
 
+// --- Problem counts per table row (Printable Telemetry Log Table) -----------------------
+
+export type ProblemKind = 'levelFault' | 'phFault' | 'offline' | 'other';
+export type ProblemCounts = Record<ProblemKind, number>;
+
+export const emptyProblemCounts = (): ProblemCounts => ({ levelFault: 0, phFault: 0, offline: 0, other: 0 });
+
+/**
+ * Which problem column a log entry counts in, or null when it is not the start of a problem.
+ * - levelFault / phFault: the ESP32 "Sensor Fault" entry (logged once when a fault starts)
+ * - offline: CONTROLLER_OFFLINE (once per outage)
+ * - other: every other alert start (low / high level, unsafe pH, network alerts)
+ */
+export function problemKind(log: Log): ProblemKind | null {
+  if (log.action === 'Sensor Fault') {
+    const d = (log.details ?? '').toLowerCase();
+    if (d.startsWith('water level sensor') || d.startsWith('level sensor')) return 'levelFault';
+    if (d.startsWith('ph sensor')) return 'phFault';
+    return 'other';
+  }
+  if (log.action === 'CONTROLLER_OFFLINE') return 'offline';
+  return alertStartCategory(log) ? 'other' : null;
+}
+
+/** Problem counts per period; `periodStart` maps a timestamp to the start of its table row. */
+export function countProblemsByPeriod(logs: Log[], periodStart: (timestamp: number) => number): Map<number, ProblemCounts> {
+  const byPeriod = new Map<number, ProblemCounts>();
+  for (const log of logs) {
+    const kind = problemKind(log);
+    if (!kind) continue;
+    const key = periodStart(log.timestamp);
+    const counts = byPeriod.get(key) ?? emptyProblemCounts();
+    counts[kind]++;
+    byPeriod.set(key, counts);
+  }
+  return byPeriod;
+}
+
 // --- Pump activity log (who turned which pump on or off, and when) ----------------------
 
 /** Dashboard pump commands: written by the user's browser when they confirm the pump toggle. */
