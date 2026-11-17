@@ -94,6 +94,167 @@ export function countAlertStarts(logs: Log[]): Record<AlertCategory, number> {
   return counts;
 }
 
+// --- Pump activity log (who turned which pump on or off, and when) ----------------------
+
+/** Dashboard pump commands: written by the user's browser when they confirm the pump toggle. */
+const PUMP_REQUEST_ACTIONS = ['PUMP_ON', 'PUMP_OFF'];
+/** "Pump for <tank name> was turned ON" (dashboard log text, also on entries without tankId). */
+const PUMP_REQUEST_DETAILS = /^Pump for (.+) was turned (ON|OFF)\b/;
+/**
+ * How far apart a dashboard command and the controller's reply may be logged. The controller
+ * reads commands every second and the dashboard gives up after 15 s; both use server time.
+ */
+export const PUMP_REPLY_WINDOW_MS = 60_000;
+
+export type PumpEventResult = 'automatic' | 'accepted' | 'refused' | 'unconfirmed';
+
+export interface PumpEvent {
+  id: string;
+  timestamp: number;
+  /** Tank (and so pump) the event is about; null when an old entry names an unknown tank */
+  tankId: string | null;
+  /** Pump state that was requested or set; null when the log does not say (lock refusal) */
+  state: 'ON' | 'OFF' | null;
+  /** 'user': a dashboard command; 'automatic': the controller's own pump logic */
+  source: 'user' | 'automatic';
+  /** User name, "Automatic (controller)", or "Unknown user" for a command with no dashboard entry */
+  actor: string;
+  /** Role of the user at the time (admin / worker); missing on entries written before it was saved */
+  role?: string;
+  result: PumpEventResult;
+  /** Reason or controller message */
+  detail: string;
+}
+
+/** Text after "Reason: " (automatic stops), or after the first ": " (refusals). */
+function pumpReason(details: string): string {
+  const reason = details.match(/Reason: (.+)$/);
+  if (reason) return reason[1].trim();
+  const afterColon = details.indexOf(': ');
+  return afterColon >= 0 ? details.slice(afterColon + 2).trim() : details;
+}
+
+interface ControllerPumpEntry {
+  kind: 'auto' | 'reply';
+  state: 'ON' | 'OFF' | null;
+  accepted: boolean;
+  detail: string;
+}
+
+/** Reads one ESP32 "Pump Controller" entry; null for entries that are not pump switching (mode changes). */
+function parseControllerPumpEntry(log: Log): ControllerPumpEntry | null {
+  if (log.performedBy !== ESP32_PERFORMER || log.action !== 'Pump Controller') return null;
+  const d = log.details ?? '';
+  if (d.startsWith('Pump started automatically')) {
+    return { kind: 'auto', state: 'ON', accepted: true, detail: pumpReason(d) };
+  }
+  if (d.startsWith('Pump stopped automatically')) {
+    return { kind: 'auto', state: 'OFF', accepted: true, detail: pumpReason(d) };
+  }
+  const accepted = d.match(/^Manual pump (ON|OFF) command accepted/);
+  if (accepted) {
+    return { kind: 'reply', state: accepted[1] as 'ON' | 'OFF', accepted: true, detail: d };
+  }
+  const refusedOn = d.match(/^Manual pump (ON|OFF) command refused/);
+  if (refusedOn) {
+    return { kind: 'reply', state: refusedOn[1] as 'ON' | 'OFF', accepted: false, detail: pumpReason(d) };
+  }
+  if (d.startsWith('Manual pump toggle refused')) {
+    return { kind: 'reply', state: null, accepted: false, detail: pumpReason(d) };
+  }
+  return null;
+}
+
+/**
+ * Tank of a dashboard pump command: its tankId, or, for entries written before tankId was
+ * saved, the tank whose name appears in "Pump for <name> was turned ...".
+ */
+export function pumpRequestTankId(log: Log, tanks: Pick<Tank, 'id' | 'name'>[]): string | null {
+  const id = log.tankId != null ? String(log.tankId).trim() : '';
+  if (id) return id;
+  const named = (log.details ?? '').match(PUMP_REQUEST_DETAILS)?.[1];
+  if (!named) return null;
+  return tanks.find(t => t.name === named)?.id ?? null;
+}
+
+/**
+ * One row per pump switch: dashboard commands (with who sent them and whether the controller
+ * accepted them) and the controller's automatic starts and stops. Newest first.
+ */
+export function buildPumpEvents(logs: Log[], tanks: Pick<Tank, 'id' | 'name'>[]): PumpEvent[] {
+  const requests: PumpEvent[] = [];
+  const replies: { log: Log; entry: ControllerPumpEntry; tankId: string }[] = [];
+  const events: PumpEvent[] = [];
+
+  for (const log of logs) {
+    if (PUMP_REQUEST_ACTIONS.includes(log.action)) {
+      requests.push({
+        id: log.id,
+        timestamp: log.timestamp,
+        tankId: pumpRequestTankId(log, tanks),
+        state: log.action === 'PUMP_ON' ? 'ON' : 'OFF',
+        source: 'user',
+        actor: log.performedBy || 'Unknown user',
+        ...(log.performedByRole ? { role: log.performedByRole } : {}),
+        result: 'unconfirmed',
+        detail: 'No reply from the controller was logged.',
+      });
+      continue;
+    }
+    const entry = parseControllerPumpEntry(log);
+    if (!entry) continue;
+    const tankId = esp32LogTankId(log);
+    if (entry.kind === 'auto') {
+      events.push({
+        id: log.id,
+        timestamp: log.timestamp,
+        tankId,
+        state: entry.state,
+        source: 'automatic',
+        actor: 'Automatic (controller)',
+        result: 'automatic',
+        detail: entry.detail,
+      });
+    } else {
+      replies.push({ log, entry, tankId });
+    }
+  }
+
+  // Pair each controller reply with the closest unanswered command for the same tank and state
+  const answered = new Set<PumpEvent>();
+  replies.sort((a, b) => a.log.timestamp - b.log.timestamp);
+  for (const { log, entry, tankId } of replies) {
+    let best: PumpEvent | null = null;
+    for (const req of requests) {
+      if (answered.has(req) || req.tankId !== tankId) continue;
+      if (entry.state && req.state !== entry.state) continue;
+      const gap = log.timestamp - req.timestamp;
+      // The command is logged first; allow a few seconds the other way for clock rounding
+      if (gap < -5_000 || gap > PUMP_REPLY_WINDOW_MS) continue;
+      if (!best || Math.abs(gap) < Math.abs(log.timestamp - best.timestamp)) best = req;
+    }
+    if (best) {
+      answered.add(best);
+      best.result = entry.accepted ? 'accepted' : 'refused';
+      best.detail = entry.detail;
+    } else {
+      // The controller answered a command whose dashboard entry is missing
+      events.push({
+        id: log.id,
+        timestamp: log.timestamp,
+        tankId,
+        state: entry.state,
+        source: 'user',
+        actor: 'Unknown user',
+        result: entry.accepted ? 'accepted' : 'refused',
+        detail: entry.detail,
+      });
+    }
+  }
+
+  return [...requests, ...events].sort((a, b) => b.timestamp - a.timestamp);
+}
+
 /** Start of the report window: midnight `days` days ago, matching the per-day charts. */
 export function reportWindowStart(days: number, now: number = Date.now()): number {
   const start = new Date(now);

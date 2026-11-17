@@ -497,7 +497,10 @@ const Dashboard = () => {
     addLog({
       action: pumpConfirm.newState ? 'PUMP_ON' : 'PUMP_OFF',
       details: `Pump for ${pumpConfirm.tankName} was turned ${pumpConfirm.newState ? 'ON' : 'OFF'}`,
-      performedBy: currentUser?.username || 'Unknown'
+      performedBy: currentUser?.username || 'Unknown',
+      // Reports → Pump Activity Log shows who switched which tank's pump
+      tankId,
+      ...(currentUser?.role ? { performedByRole: currentUser.role } : {}),
     });
 
     setPumpConfirm(null);

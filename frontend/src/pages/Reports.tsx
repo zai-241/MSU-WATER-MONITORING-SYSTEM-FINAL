@@ -45,14 +45,28 @@ import { toast } from 'sonner';
 import { useTankHistory, isLevelSampleFaulty, isPhSampleFaulty, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 // exceljs and jsPDF are large: reportExport is loaded only when an export button is clicked (see handleExport*)
 const loadReportExport = () => import('@/lib/reportExport');
-import { estimateVolumeLiters, tankCapacityLiters } from '@/lib/constants';
+import { estimateVolumeLiters, tankCapacityLiters, SUPPORTED_TANK_IDS } from '@/lib/constants';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
-import { ALERT_CATEGORIES, countAlertStarts, isPumpRun, logBelongsToTank } from '@/lib/reportLogs';
+import { ALERT_CATEGORIES, buildPumpEvents, countAlertStarts, isPumpRun, logBelongsToTank, type PumpEvent } from '@/lib/reportLogs';
 
 const DATE_RANGES = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days'] as const;
 type DateRange = typeof DATE_RANGES[number];
+
+const PUMP_LOG_PAGE_SIZE = 10;
+
+/** "Zailanor Pundato - ADMIN"; just the name for entries written before the role was saved. */
+function pumpActorLabel(event: PumpEvent): string {
+  return event.role ? `${event.actor} - ${event.role.toUpperCase()}` : event.actor;
+}
+
+const PUMP_RESULT_STYLE: Record<PumpEvent['result'], { label: string; className: string }> = {
+  automatic: { label: 'Automatic', className: 'text-blue-500 bg-blue-500/10 border-blue-500/20' },
+  accepted: { label: 'Accepted', className: 'text-safe bg-safe/10 border-safe/20' },
+  refused: { label: 'Refused', className: 'text-danger bg-danger/10 border-danger/20' },
+  unconfirmed: { label: 'No reply', className: 'text-warning bg-warning/10 border-warning/20' },
+};
 
 /** Marks a history value recorded while the sensor was faulty (monitoring continues, value may be off). */
 function FaultTag({ what }: { what: string }) {
@@ -143,6 +157,30 @@ const Reports = () => {
   const logs = useMemo(
     () => (selectedTank ? rangeLogs.filter(l => logBelongsToTank(l, selectedTank)) : []),
     [rangeLogs, selectedTank]
+  );
+
+  // Pump Activity Log: who turned which tank's pump on or off. Has its own tank filter
+  // (all tanks or Tank 1–4), independent of the reservoir picked above.
+  const [pumpLogTank, setPumpLogTank] = useState<string>('all');
+  const [pumpLogSource, setPumpLogSource] = useState<'all' | 'user' | 'automatic'>('all');
+  const [pumpLogPage, setPumpLogPage] = useState(1);
+  const tankLabel = (id: string | null) => {
+    if (!id) return 'Unknown tank';
+    return allTanks.find(t => t.id === id)?.name || `Tank ${id}`;
+  };
+  const pumpEvents = useMemo(() => buildPumpEvents(rangeLogs, allTanks), [rangeLogs, allTanks]);
+  const filteredPumpEvents = useMemo(
+    () => pumpEvents.filter(e =>
+      (pumpLogTank === 'all' || e.tankId === pumpLogTank) &&
+      (pumpLogSource === 'all' || e.source === pumpLogSource)
+    ),
+    [pumpEvents, pumpLogTank, pumpLogSource]
+  );
+  const pumpLogPages = Math.max(1, Math.ceil(filteredPumpEvents.length / PUMP_LOG_PAGE_SIZE));
+  const pumpLogPageSafe = Math.min(pumpLogPage, pumpLogPages);
+  const pagedPumpEvents = filteredPumpEvents.slice(
+    (pumpLogPageSafe - 1) * PUMP_LOG_PAGE_SIZE,
+    pumpLogPageSafe * PUMP_LOG_PAGE_SIZE
   );
 
   // Setup processedTank with state buffering, stabilization rounding, and debounce timers
@@ -1206,6 +1244,134 @@ const Reports = () => {
           </div>
         </div>
       </div>
+
+      {/* PUMP ACTIVITY LOG: who switched which pump, when, and whether the controller did it */}
+      {pumpDemo && (
+        <div data-testid="pump-activity-log" className="bg-card/30 backdrop-blur-md p-6 rounded-xl border border-border/40 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Cpu size={18} className="text-emerald-500" /> Pump Activity Log
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Who turned each pump on or off, and when ({dateRange.toLowerCase()}). Automatic starts and stops by the controller are included.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 w-full lg:w-auto print:hidden">
+              <div className="space-y-1">
+                <label htmlFor="pump-log-tank" className="text-[10px] font-bold text-muted-foreground tracking-wider uppercase">Tank</label>
+                <select
+                  id="pump-log-tank"
+                  value={pumpLogTank}
+                  onChange={e => { setPumpLogTank(e.target.value); setPumpLogPage(1); }}
+                  className="w-full lg:w-48 text-sm bg-background border border-border/60 hover:border-primary/50 focus:border-primary px-3 py-2 rounded-lg outline-none transition text-foreground"
+                >
+                  <option value="all">All tanks</option>
+                  {SUPPORTED_TANK_IDS.map(id => (
+                    <option key={id} value={id}>{tankLabel(id)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="pump-log-source" className="text-[10px] font-bold text-muted-foreground tracking-wider uppercase">Activated by</label>
+                <select
+                  id="pump-log-source"
+                  value={pumpLogSource}
+                  onChange={e => { setPumpLogSource(e.target.value as 'all' | 'user' | 'automatic'); setPumpLogPage(1); }}
+                  className="w-full lg:w-44 text-sm bg-background border border-border/60 hover:border-primary/50 focus:border-primary px-3 py-2 rounded-lg outline-none transition text-foreground"
+                >
+                  <option value="all">Users and automatic</option>
+                  <option value="user">Users only</option>
+                  <option value="automatic">Automatic only</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-x-auto w-full">
+            <table className="w-full min-w-[720px] text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border/40 text-muted-foreground font-bold tracking-wide uppercase bg-secondary/30">
+                  <th className="py-3 px-4 rounded-l-lg">Date &amp; Time</th>
+                  <th className="py-3 px-4">Pump</th>
+                  <th className="py-3 px-4">Action</th>
+                  <th className="py-3 px-4">Activated By</th>
+                  <th className="py-3 px-4">Result</th>
+                  <th className="py-3 px-4 rounded-r-lg">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {pagedPumpEvents.map(event => {
+                  const result = PUMP_RESULT_STYLE[event.result];
+                  return (
+                    <tr key={event.id} className="hover:bg-secondary/10 transition-colors">
+                      <td className="py-3 px-4 font-mono text-foreground whitespace-nowrap">
+                        {new Date(event.timestamp).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-foreground whitespace-nowrap">
+                        {tankLabel(event.tankId)} pump
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {event.state ? (
+                          <span className={`px-2 py-0.5 rounded font-bold ${event.state === 'ON' ? 'bg-safe/10 text-safe' : 'bg-muted text-muted-foreground'}`}>
+                            Turn {event.state}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Toggle</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-foreground whitespace-nowrap">
+                        {pumpActorLabel(event)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-md border font-bold uppercase tracking-wider ${result.className}`}>
+                          {result.label}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground">{event.detail}</td>
+                    </tr>
+                  );
+                })}
+                {filteredPumpEvents.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <Cpu size={24} className="opacity-40" />
+                        <span className="font-semibold text-foreground text-sm">No pump activity</span>
+                        <span className="text-xs">
+                          No pump was turned on or off {pumpLogTank === 'all' ? 'on any tank' : `on ${tankLabel(pumpLogTank)}`} in the {dateRange.toLowerCase()}.
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {pumpLogPages > 1 && (
+            <div className="flex items-center justify-between pt-4 mt-4 border-t border-border/40 print:hidden">
+              <button
+                onClick={() => setPumpLogPage(Math.max(1, pumpLogPageSafe - 1))}
+                disabled={pumpLogPageSafe === 1}
+                className="flex items-center gap-1 text-xs border border-border/60 hover:border-primary/50 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors text-muted-foreground"
+              >
+                <ChevronLeft size={14} /> Previous
+              </button>
+              <span className="text-xs text-muted-foreground font-medium">
+                Page {pumpLogPageSafe} of {pumpLogPages} · {filteredPumpEvents.length} entries
+              </span>
+              <button
+                onClick={() => setPumpLogPage(Math.min(pumpLogPages, pumpLogPageSafe + 1))}
+                disabled={pumpLogPageSafe === pumpLogPages}
+                className="flex items-center gap-1 text-xs border border-border/60 hover:border-primary/50 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors text-muted-foreground"
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* EXPORT CONTROL BUTTONS PANEL (AVAILABLE TO ADMIN AND WORKER ROLES ONLY) */}
       {canExport && selectedTank && (

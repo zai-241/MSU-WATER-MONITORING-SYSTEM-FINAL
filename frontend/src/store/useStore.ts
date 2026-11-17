@@ -166,6 +166,8 @@ export interface Notification {
     details: string;
     /** Identifier of the user or system component that triggered the log */
     performedBy: string;
+    /** Role of the user in performedBy when the entry was written (pump commands; older entries omit it) */
+    performedByRole?: string;
     /** Unix timestamp (ms) when the log was created */
     timestamp: number;
     /** Severity level of the log entry */

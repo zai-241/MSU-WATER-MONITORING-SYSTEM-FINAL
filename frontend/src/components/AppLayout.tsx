@@ -120,16 +120,21 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <button onClick={() => setMobileOpen(true)} aria-label="Open menu" className="lg:hidden flex h-11 w-11 shrink-0 items-center justify-center text-foreground hover:opacity-80 transition">
               <Menu size={24} />
             </button>
-            {/* Phones show only the initial; the full name appears from 640px */}
+            {/* Phones show only the initial; "Name - ROLE" appears from 640px */}
             <div
               className="flex min-w-0 items-center gap-2 text-sm bg-secondary/30 p-1.5 sm:px-3 rounded-lg border border-border/40 animate-in fade-in duration-300"
-              title={currentUser?.username || 'Guest'}
+              title={currentUser?.role ? `${currentUser.username} - ${currentUser.role.toUpperCase()}` : (currentUser?.username || 'Guest')}
             >
               <div className="h-6 w-6 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs uppercase border border-primary/20">
                 {(currentUser?.username || 'G').charAt(0)}
               </div>
-              <span className="hidden sm:inline truncate max-w-[12rem] font-semibold text-foreground text-sm">
-                {currentUser?.username || 'Guest'}
+              <span className="hidden sm:flex min-w-0 items-baseline font-semibold text-foreground text-sm">
+                <span data-testid="header-username" className="truncate max-w-[12rem]">{currentUser?.username || 'Guest'}</span>
+                {currentUser?.role && (
+                  <span data-testid="header-role" className="shrink-0 whitespace-pre text-primary font-bold">
+                    {` - ${currentUser.role.toUpperCase()}`}
+                  </span>
+                )}
               </span>
             </div>
           </div>
