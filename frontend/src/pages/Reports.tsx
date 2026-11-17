@@ -66,6 +66,21 @@ function FaultTag({ what }: { what: string }) {
   );
 }
 
+/** Sensor health line on the live cards. A fault is shown, but the reading above keeps updating. */
+function SensorStatusRow({ ok }: { ok: boolean }) {
+  return (
+    <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+      <span>Status:</span>
+      <span
+        className={ok ? 'text-safe' : 'text-danger font-bold text-right'}
+        title={ok ? undefined : 'Monitoring continues; the reading may be inaccurate until the sensor is checked'}
+      >
+        {ok ? 'SENSOR OK' : 'SENSOR FAULT · still monitoring'}
+      </span>
+    </div>
+  );
+}
+
 const PIE_COLORS = ['#ef4444', '#f59e0b', '#a855f7', '#f97316', '#3b82f6'];
 
 export type { HistoryRawSample, GroupedTelemetryPoint } from '@/hooks/useTankHistory';
@@ -671,6 +686,8 @@ const Reports = () => {
                 </div>
                 <span className="text-[10px] text-muted-foreground block text-right font-medium">Cap: {capacityLiters.toLocaleString()} L Max</span>
               </div>
+
+              <SensorStatusRow ok={processedTank?.levelSensorOk !== false} />
             </motion.div>
 
             {/* CARD 2: PH LEVEL CARD */}
@@ -700,12 +717,7 @@ const Reports = () => {
                 </div>
               </div>
 
-              <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between text-xs font-medium text-muted-foreground">
-                <span>Status:</span>
-                <span className={processedTank?.phSensorOk ? 'text-safe' : 'text-danger animate-pulse font-bold'}>
-                  {processedTank?.phSensorOk ? 'SENSOR OK' : 'SENSOR FAULT'}
-                </span>
-              </div>
+              <SensorStatusRow ok={processedTank?.phSensorOk !== false} />
             </motion.div>
 
             {pumpDemo && (

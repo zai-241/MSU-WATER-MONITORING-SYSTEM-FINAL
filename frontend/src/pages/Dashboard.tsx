@@ -167,6 +167,23 @@ const TankCard = memo(({
             )}
           </div>
         </div>
+        {!isPlanned && !disabled && !isOffline && (processedTank.levelSensorOk === false || processedTank.phSensorOk === false) && (
+          <div
+            role="status"
+            data-testid="sensor-fault-notice"
+            className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger"
+          >
+            <span className="font-bold">
+              {processedTank.levelSensorOk === false && processedTank.phSensorOk === false
+                ? 'Water level and pH sensor fault'
+                : processedTank.levelSensorOk === false
+                ? 'Water level sensor fault'
+                : 'pH sensor fault'}
+            </span>
+            {' - monitoring continues; readings may be inaccurate until the sensor is checked.'}
+            {processedTank.levelSensorOk === false && isPumpDemoOn(config) && ' The pump stays off.'}
+          </div>
+        )}
         <div className="flex justify-between border-b border-border pb-2">
           <span className="text-muted-foreground">Last Seen:</span>
           <span className={`font-medium text-xs flex items-center gap-1 ${isPlanned ? 'text-muted-foreground' : isOffline ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-foreground'}`}>
