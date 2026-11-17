@@ -29,6 +29,12 @@
 // production operation
 #define DEBUG_MODE 0
 
+// Set to 1 to print the filtered level sensor voltage once per second on the
+// Serial Monitor (115200 baud). Use it to read Vmin and Vmax for the Admin
+// Panel calibration: Vmax with the sensor on the floor of the full drum,
+// Vmin with the sensor lifted out of the water. Set to 0 when done.
+#define LEVEL_VOLTAGE_PRINT 1
+
 #if DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.print(x)
 #define DEBUG_PRINTF(x, ...) Serial.printf(x, ##__VA_ARGS__)
@@ -1184,6 +1190,16 @@ void processLevelSensor() {
   if (abs(valRange) > 0.001) {
     height = (rawLevelVoltage - levelVmin) * (tankHeight / valRange);
   }
+
+#if LEVEL_VOLTAGE_PRINT
+  static unsigned long lastVoltagePrint = 0;
+  if (millis() - lastVoltagePrint >= 1000) {
+    lastVoltagePrint = millis();
+    Serial.printf("[LevelCal] V=%.3f V | height=%.3f m | Vmin=%.3f Vmax=%.3f "
+                  "tankHeight=%.2f m\n",
+                  rawLevelVoltage, height, levelVmin, levelVmax, tankHeight);
+  }
+#endif
 
   bool physicalValid = (height >= -0.5 && height <= (tankHeight + 0.5));
   bool readingValid = electricalValid && physicalValid;
