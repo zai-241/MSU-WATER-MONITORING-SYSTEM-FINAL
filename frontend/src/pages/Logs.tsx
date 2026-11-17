@@ -1,3 +1,4 @@
+import { formatDateTime } from '@/lib/dateFormat';
 import { useState, useMemo } from 'react';
 import { useLogs } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,15 +26,7 @@ const getFormattedDate = (timestamp: number): string => {
   try {
     const d = new Date(timestamp);
     if (isNaN(d.getTime())) return 'Invalid Date';
-    return d.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    });
+    return formatDateTime(d, { seconds: true });
   } catch {
     return 'Unknown Time';
   }

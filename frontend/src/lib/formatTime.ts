@@ -1,3 +1,5 @@
+import { formatDate } from '@/lib/dateFormat';
+
 /** Short "time ago" labels for the dashboard (kept out of Dashboard.tsx so it only exports components). */
 export const formatRelativeTime = (secs: number) => {
   if (secs < 5) return 'just now';
@@ -17,5 +19,5 @@ export const formatLastSeen = (timestamp?: number, currentServerTime?: number) =
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(timestamp).toLocaleDateString();
+  return formatDate(timestamp);
 };

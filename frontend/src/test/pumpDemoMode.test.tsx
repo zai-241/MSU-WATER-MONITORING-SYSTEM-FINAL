@@ -62,7 +62,7 @@ describe('Pump demo mode', () => {
       dateRange: 'Last 7 Days',
       days: 7,
       logs: [],
-      pumpActivityData: [{ date: 'Nov 14', activations: 2 }],
+      pumpActivityData: [{ date: '11/14/2026', activations: 2 }],
       selectedTank: liveTank,
       summaryMetrics: null,
       telemetryData: [],

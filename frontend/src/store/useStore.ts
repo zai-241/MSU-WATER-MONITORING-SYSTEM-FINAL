@@ -21,6 +21,7 @@
  * useStore (real‑time listeners) → React components. This ensures the UI always
  * reflects the latest telemetry while keeping the codebase modular and testable.
  */
+import { formatDate, formatTime } from '@/lib/dateFormat';
 import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { database, auth } from '@/config/firebase';
 import { ref, onValue, set, update, push, remove, runTransaction, query, orderByChild, limitToLast, endAt, get } from 'firebase/database';
@@ -1159,8 +1160,8 @@ export function useClock() {
     return () => clearInterval(interval);
   }, []);
 
-  const formatted = time.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) +
-    ' - ' + time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  // "mm/dd/yyyy - hh:mm:ss AM"; the header splits it on " - "
+  const formatted = `${formatDate(time)} - ${formatTime(time, { seconds: true })}`;
 
   return formatted;
 }

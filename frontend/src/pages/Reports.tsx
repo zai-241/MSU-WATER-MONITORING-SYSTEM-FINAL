@@ -46,6 +46,7 @@ import { useTankHistory, isLevelSampleFaulty, isPhSampleFaulty, type HistoryRawS
 // exceljs and jsPDF are large: reportExport is loaded only when an export button is clicked (see handleExport*)
 const loadReportExport = () => import('@/lib/reportExport');
 import { estimateVolumeLiters, tankCapacityLiters, SUPPORTED_TANK_IDS } from '@/lib/constants';
+import { formatDate, formatDateTime, formatTime } from '@/lib/dateFormat';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
@@ -348,9 +349,7 @@ const Reports = () => {
       }
 
       const d = new Date(timestamp);
-      const dateLabel = isHourly
-        ? `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const dateLabel = isHourly ? formatDateTime(d) : formatDate(d);
 
       return {
         date: dateLabel,
@@ -375,13 +374,10 @@ const Reports = () => {
     for (let i = days; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      
+      const dateStr = formatDate(d);
+
       // Count actual log events matching this specific date
-      const activationsCount = pumpLogs.filter(l => {
-        const logDate = new Date(l.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        return logDate === dateStr;
-      }).length;
+      const activationsCount = pumpLogs.filter(l => formatDate(l.timestamp) === dateStr).length;
       
       rangeData.push({
         date: dateStr,
@@ -823,7 +819,7 @@ const Reports = () => {
                   <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
                     <span>{isTankOffline ? 'Last Seen:' : 'Sync Timestamp:'}</span>
                     <span className="font-semibold text-foreground">
-                      {new Date(processedTank?.lastUpdate || Date.now()).toLocaleTimeString()}
+                      {formatTime(processedTank?.lastUpdate || Date.now(), { seconds: true })}
                     </span>
                   </div>
                 </motion.div>
@@ -1229,7 +1225,7 @@ const Reports = () => {
                       <span className="font-bold text-foreground block uppercase text-[10px] tracking-wide">{log.action}</span>
                       <p className="text-muted-foreground leading-tight">{log.details}</p>
                       <span className="text-[9px] text-muted-foreground/60 font-mono block">
-                        {new Date(log.timestamp).toLocaleString()}
+                        {formatDateTime(log.timestamp, { seconds: true })}
                       </span>
                     </div>
                   </div>
@@ -1306,7 +1302,7 @@ const Reports = () => {
                   return (
                     <tr key={event.id} className="hover:bg-secondary/10 transition-colors">
                       <td className="py-3 px-4 font-mono text-foreground whitespace-nowrap">
-                        {new Date(event.timestamp).toLocaleString()}
+                        {formatDateTime(event.timestamp, { seconds: true })}
                       </td>
                       <td className="py-3 px-4 font-semibold text-foreground whitespace-nowrap">
                         {tankLabel(event.tankId)} pump

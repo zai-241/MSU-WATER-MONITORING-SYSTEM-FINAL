@@ -26,6 +26,7 @@ import {
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { errorMessage } from '@/lib/utils';
+import { formatDateTime } from '@/lib/dateFormat';
 
 /**
  * Format a Unix timestamp to localized human-readable date + time.
@@ -35,16 +36,7 @@ const getFormattedDateTime = (timestamp?: number): string => {
   try {
     const d = new Date(timestamp);
     if (isNaN(d.getTime())) return 'Invalid Date';
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    }) + ' ' + d.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
+    return formatDateTime(d, { seconds: true });
   } catch {
     return 'Unknown Time';
   }

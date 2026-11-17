@@ -18,6 +18,7 @@ import { useIsPhone } from '@/hooks/useMediaQuery';
 import { alertSound } from '@/utils/alertSound';
 import { groupNotifications, type NotificationGroup } from '@/lib/notificationGroups';
 import { toast } from 'sonner';
+import { formatDateTime, formatTime } from '@/lib/dateFormat';
 import { getPushStatus, enablePush, disablePush, type PushStatus } from '@/utils/push';
 
 /** Every control in the panel is at least 44 × 44 px so it can be tapped reliably. */
@@ -25,12 +26,11 @@ const TAP = 'min-h-11 min-w-11';
 
 const isAlert = (n: Notification) => n.type === 'warning' || n.type === 'danger';
 
-const formatDateTime = (timestamp?: number) => {
+const formatNotifTime = (timestamp?: number) => {
   if (!timestamp) return '';
   const d = new Date(timestamp);
   const isToday = new Date().toDateString() === d.toDateString();
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-  return isToday ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+  return isToday ? formatTime(d) : formatDateTime(d);
 };
 
 const NotificationCenter = () => {
@@ -293,14 +293,14 @@ const NotificationCenter = () => {
                         </span>
                       )}
                       <time className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                        {formatDateTime(notif.timestamp)}
+                        {formatNotifTime(notif.timestamp)}
                       </time>
                       {unread && <span className="h-1.5 w-1.5 shrink-0 self-center rounded-full bg-blue-500" />}
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-2 break-words">{notif.message}</p>
                     {count > 1 && (
                       <p className="text-[11px] text-muted-foreground">
-                        Connection changed {count} times between {formatDateTime(group.members[count - 1].timestamp)} and {formatDateTime(notif.timestamp)}.
+                        Connection changed {count} times between {formatNotifTime(group.members[count - 1].timestamp)} and {formatNotifTime(notif.timestamp)}.
                       </p>
                     )}
                   </div>
@@ -313,7 +313,7 @@ const NotificationCenter = () => {
                       <span className="flex min-w-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
                         <Check className="h-3 w-3 shrink-0 text-emerald-500" />
                         <span className="break-words">
-                          Acknowledged by {acked?.acknowledgedBy || 'Operator'} at {formatDateTime(acked?.acknowledgedAt || acked?.timestamp)}
+                          Acknowledged by {acked?.acknowledgedBy || 'Operator'} at {formatNotifTime(acked?.acknowledgedAt || acked?.timestamp)}
                         </span>
                       </span>
                     ) : (
