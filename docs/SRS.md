@@ -46,6 +46,11 @@ mindmap
       Historical Charts Area / Line / Bar / Pie
       Multi-Format Export: Excel / PDF / CSV
       Browser Print Reports
+    Analytics & Leak Detection
+      Night Watch: Possible Leak or Open Faucet
+      Peak Hours & Peak Day of Use
+      Expected Use & Time to Low Level
+      pH Trend
 ```
 
 * **Real-Time Live Telemetry Monitoring**: Dynamic visualization of water tank volume (percentage 0–100% and depth in meters) and pH acidity.
@@ -53,6 +58,8 @@ mindmap
 * **Automated Pump Interlocks**: Deterministic relay control on Core 1 to refill when $\le 15\%$ and shut off when $\ge 95\%$, with 30-second anti-chatter protection.
 * **Administrative Access Controls**: Role-Based Access Control (RBAC) separating Administrators, Workers, and Viewers.
 * **Remote Sensor Calibration**: Dynamic tuning of sensor calibration coefficients ($V_{min}$, $V_{max}$, tank height, level offset, $V_{neutral}$, pH slope, pH offset) from the web dashboard without recompiling firmware.
+* **Leak Detection (Night Watch)**: Alerts on water loss between 10 PM and 3 AM, when no water is used (FR-04.5).
+* **Predictive Analytics**: Peak hours, peak day, expected daily use, time until the low level and pH trend from the stored history (FR-04.6).
 * **Historical Reporting**: Automated 10-minute historical telemetry sampling with interactive Recharts visualizations and export to Excel (.xlsx), PDF (.pdf), and CSV (.csv).
 
 ### 2.2 User Classes & Roles
@@ -92,8 +99,9 @@ mindmap
 * **FR-02.5**: Manual pump overrides must log the operator's identity and timestamp to the Firebase event log.
 
 ### 3.3 Remote Sensor Calibration (FR-03)
-* **FR-03.1**: The system must support remote calibration adjustments for the active tank node (`tanks/1`), updating $V_{min}$, $V_{max}$, tank height, level offset, $V_{neutral}$, pH slope, and pH offset. *(Multi-tank independent calibration: Planned for expansion nodes).*
+* **FR-03.1**: The system must support remote calibration adjustments for each tank (`tanks/1` to `tanks/4`, chosen with a Tank 1–4 selector), updating $V_{min}$, $V_{max}$, tank height, tank capacity, level offset, $V_{neutral}$, pH slope, and pH offset.
 * **FR-03.2**: Calibration adjustments committed in the Admin Panel must persist to Firebase RTDB and synchronize with the ESP32 node during its next polling cycle ($\le 1\text{ second}$).
+* **FR-03.3**: The Admin Panel must show live sensor readings for calibration (filtered level voltage, computed height, level percentage and pH voltage) once per second while an administrator has the view open, for at most 30 minutes, and let the administrator copy a reading into the $V_{min}$, $V_{max}$ or $V_{neutral}$ field before saving.
 
 ### 3.4 Alerts, Logs & Reports (FR-04)
 * **FR-04.1**: The system must track alert states (`NORMAL`, `WARNING`, `CRITICAL`, `RECOVERED`) with a 5-second validation window to prevent false alarms.

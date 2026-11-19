@@ -109,6 +109,7 @@ The sketches have no fallback credentials: a build without all five values in `s
 | Open issues and review status | `WEB_NOTIFICATION_RECOMMENDATIONS.md`, `docs/Code_Cleanup.md` |
 | Cloud setup steps (roles, worker, push, App Check) | `PHASE3_SETUP.md` |
 | Thesis tooling | `.claude/agents/` (thesis-code-checker, proofreader, etc.), `thesis-review/` |
+| What to change in the paper after a system change | `thesis-review/paper-changes-YYYY-MM-DD.md` (local only: `thesis-review/` is git-ignored) (one per batch; 2026-11-19: live calibration, night watch, predictive analytics), facts in `thesis-review/Paper_Facts.md` |
 
 ## Keeping this map current (team)
 

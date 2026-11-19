@@ -127,6 +127,19 @@ $$\text{pH} = 7.0 + \left( \frac{V_{neutral} - V_{raw}}{\text{Slope}} \right) + 
   - Slope Sensitivity (`phSlope`): `0.18 V/pH`
   - pH Offset (`phOffset`): `0.00`
 
+### 3.3 Live Sensor Readings for Calibration
+The Admin Panel (Sensor Calibration, `LiveCalibrationPanel.tsx`) replaces the USB Serial Monitor:
+1. **Start** writes `tanks/{id}/calibrationUntil` (server time, 10 minutes ahead; **+10 min** extends it,
+   at most 30 minutes ahead, also enforced by the database rules).
+2. While that time is in the future, the ESP32 adds `calibrationLive` to its normal sensor upload once per
+   second: filtered level voltage (V), height from the current $V_{min}$/$V_{max}$ (m, not clamped), level
+   percentage and filtered pH voltage. No extra request is made and no history is written.
+3. The firmware stops sending at `calibrationUntil`, after 30 minutes on its own (`CALIB_LIVE_MAX_MS`), or
+   while its NTP clock is not set. A reading older than 8 s is shown as "Waiting for readings".
+4. **Use as Vmin / Vmax / pH neutral** copies the live voltage into the form; **Save** applies it.
+
+All four sketches (Tanks 1–4) support it.
+
 ---
 
 ## 4. Control Rules, Safeguards & Network Failover
@@ -288,6 +301,8 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | rssi | NUMBER | Wi-Fi signal, dBm |
 | wifiConnected, ethConnected, firebaseConnected | BOOLEAN | link status |
 | controllerOffline | BOOLEAN | set by the offline watchdog |
+| calibrationUntil | TIMESTAMP | admin: live calibration view open until (at most 30 min ahead) |
+| calibrationLive | OBJECT | ESP32, while the view is open: `voltage`, `heightM`, `percent`, `phVoltage`, `at` |
 | lastUpdate | TIMESTAMP | missing = controller never reported ("Planned") |
 
 #### `config`: CONFIG

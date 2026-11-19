@@ -182,6 +182,10 @@ Sensor calibration parameters can be adjusted in real time via the **Admin Panel
    - **Neutral Voltage ($V_{neutral}$)**: Voltage reading when probe is immersed in pH 7.0 buffer solution (default `2.50 V`).
    - **Slope Sensitivity**: Voltage difference per pH unit (default `0.18 V/pH`).
    - **pH Offset**: Fine reading offset to calibrate against reference hand-held meters (default `0.00`).
+3. **Live sensor readings** (no USB cable needed): choose the tank (Tank 1–4) and press **Start**. The
+   panel shows the level voltage, height, percentage and pH voltage once per second for 10 minutes
+   (**+10 min** extends it, 30 minutes at most). Fill the tank to empty/full, press **Use as Vmin** /
+   **Use as Vmax** (or **Use as pH neutral** in pH 7 buffer), then **Save All Configurations**.
 
 ### 4.2 System Modes & Safeguards
 * **Automatic Pump Refill**: When water level drops $\le 15\%$ (`lowLevelThreshold`), the pump is started automatically. A 30-second anti-chatter cooldown prevents immediate restarts.
@@ -189,3 +193,28 @@ Sensor calibration parameters can be adjusted in real time via the **Admin Panel
 * **Maintenance Mode**: Activating Maintenance Mode via the Admin Panel forces the physical pump relay OFF, suppresses alarms, and prevents automatic or manual pump activation during physical maintenance.
 * **Pump Control Lock**: Restricts pump manual toggles exclusively to Administrators, preventing standard Workers from activating relays.
 * **Multi-Tank Infrastructure**: Tank 1 is the active IoT-connected reservoir. Tanks 2–4 are pre-configured expansion slots labeled **"Planned - IoT node not yet installed"** in the dashboard.
+
+### 4.3 Night Watch (Leak Detection)
+Admin Panel > **Night Watch (Leak Detection)**. No water should be used at night, so a falling level
+then means a leak or an open faucet.
+* **Hours**: 10 PM to 3 AM by default (Philippine time). Change *Starts at* / *Ends at*.
+* **Fast Drop**: default 5%. A drop this large within 30 minutes raises **"Possible Leak or Open Faucet"**
+  (danger, push notification). It clears after the level holds for 15 minutes.
+* **Total Night Drop**: default 3%. A total drop this large over the night raises **"Possible Slow Leak"**
+  (warning) when the window ends.
+* Values under 3% are refused (the level moves in 2% steps). The switch at the top turns it off.
+* Ignored: readings while the pump runs, during a level sensor fault, during live calibration, in
+  maintenance mode, and while the controller is offline.
+* **What to do on an alert**: check the faucets at the tank and the outlet valve, then the pipes. The
+  alert cannot tell a leak from an open faucet.
+
+### 4.4 Predictive Analytics
+Reports > **Predictive Analytics** (below the charts), for the selected tank and date range:
+* **Peak hours** and **Peak day**: when water is used most, with average liters, and bar charts per hour
+  and per day of the week (peaks highlighted).
+* **Expected use today**: the average for today's weekday, next to the use so far today.
+* **Time until 15%**: when the level is expected to reach the low threshold at the usual rate of use.
+  The same estimate is on each Dashboard tank card ("Est. time to 15%", last 7 days).
+* **pH trend**: rising, falling or stable over the last 24 hours, and when it would pass a limit.
+* Included in the Excel (sheet), PDF (section 3), CSV (blocks after the data) and print view.
+* Needs about a day of history; it is based on averages of past use, not machine learning.
