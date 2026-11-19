@@ -344,6 +344,47 @@ bool ethWaitRouted = false; // Wi-Fi pinned as the route while Ethernet has no I
 const uint32_t MINIMUM_SAFE_HEAP = 60000; // bytes
 
 // =================================================================================
+// Firebase request timeouts
+// At the Motor Pool a command poll often takes 1.5 to 3.8 s (logs of 13-17 Nov
+// 2026), so the old 1.5 s read timeout made many uploads fail (HTTP -11) and the
+// dashboard showed the controller offline. Each request is bounded: connect 5 s
+// (HTTPClient default) + TLS handshake TLS_HANDSHAKE_TIMEOUT_S + read
+// HTTP_TIMEOUT_MS, well under the 30 s task watchdog, which is fed before every
+// request (feedWatchdog) so a loop with several slow requests does not reset it.
+// =================================================================================
+const uint16_t HTTP_TIMEOUT_MS = 5000;
+const unsigned long TLS_HANDSHAKE_TIMEOUT_S = 10; // core default is 120 s
+// A command poll slower than ETH_SLOW_POLL_MS is counted, and the count is
+// logged at most once per SLOW_POLL_LOG_INTERVAL_MS (not one log per poll).
+const unsigned long SLOW_POLL_LOG_INTERVAL_MS = 600000UL; // 10 min
+unsigned long slowPollCount = 0;
+unsigned long slowestPollMs = 0;
+unsigned long lastSlowPollLog = 0;
+
+// =================================================================================
+// Last-resort restart (cloud watchdog)
+// If nothing has reached Firebase for NO_CLOUD_RESTART_MS, on Ethernet or Wi-Fi,
+// the board restarts itself. Before this, a stuck connection lasted until someone
+// unplugged the board (outages of up to 10 h in the 16-17 Nov 2026 logs) while its
+// power LED stayed on. The pump logic is local, so a running pump is never cut:
+// the restart waits until the pump is OFF. If the internet stays down, the wait
+// doubles after each such restart (3, 6, 12, 24 min) so the board does not keep
+// restarting; the first successful request resets it to 3 min.
+// =================================================================================
+const unsigned long NO_CLOUD_RESTART_MS = 180000UL; // 3 min
+const uint32_t NO_CLOUD_RESTART_MAX_DOUBLINGS = 3;  // 3 min x 2^3 = 24 min
+unsigned long lastCloudOkTime = 0; // 0 = nothing reached Firebase since boot
+
+// Kept in RTC memory, which survives a software or watchdog restart (not a
+// power cut), so the boot log can say why the controller restarted itself.
+#define RESTART_INFO_MAGIC 0x57A7E201UL
+RTC_NOINIT_ATTR uint32_t rtcRestartMagic;
+RTC_NOINIT_ATTR uint32_t rtcNoCloudRestarts;   // in a row, without a success
+RTC_NOINIT_ATTR uint32_t rtcLastRestartWasNoCloud;
+RTC_NOINIT_ATTR uint32_t rtcLastNoCloudSeconds;
+bool bootReported = false;
+
+// =================================================================================
 // Sensor Calibration Parameters (adjusted dynamically via Firebase)
 // =================================================================================
 float levelVmin = 0.25;
@@ -359,6 +400,26 @@ float phOffset = 0.00;
 // =================================================================================
 bool phSensorOk = true;
 bool levelSensorOk = true;
+
+// =================================================================================
+// Live calibration view (Admin Panel -> Calibration -> Live sensor readings)
+// =================================================================================
+// While tanks/{id}/calibrationUntil (epoch ms, set by an admin) is in the
+// future, every sensor upload (once per second) also writes
+// tanks/{id}/calibrationLive: the filtered level voltage, the unclamped height,
+// the level % and the pH voltage, the same values as the [LevelCal] Serial
+// Monitor line. It rides on the normal sensor upload (no extra request) and
+// overwrites one small record (no history). It stops on its own at
+// calibrationUntil, after CALIB_LIVE_MAX_MS even if the clock is wrong, and
+// while the clock is not set yet (no NTP). Off by default.
+const unsigned long CALIB_LIVE_MAX_MS = 30UL * 60UL * 1000UL;
+long calibUntilSec = 0;          // tanks/{id}/calibrationUntil in seconds
+unsigned long calibSeenAtMs = 0; // millis() when that value was first read
+bool calibLiveWasOn = false;
+volatile float liveLevelVoltage = 0.0;
+volatile float liveLevelHeight = 0.0;
+volatile int liveLevelPercent = 0;
+volatile float livePhVoltage = 0.0;
 
 // =================================================================================
 // Sensor Validation and Stabilization Rules
@@ -474,6 +535,121 @@ void pushRamLog(const String &payload);
 void flushRamLogBuffer();
 void updateFirebasePumpState(bool pumpState);
 void processAutomaticPumpControl();
+
+// Feeds the task watchdog before a network request, but only from a task that
+// is subscribed to it (networkTask); elsewhere it does nothing.
+void feedWatchdog() {
+  if (esp_task_wdt_status(NULL) == ESP_OK) {
+    esp_task_wdt_reset();
+  }
+}
+
+// Sets up a TLS client for Firebase: no certificate check (as before) and a
+// bounded handshake.
+void prepareTlsClient(WiFiClientSecure &client) {
+  client.setInsecure();
+  client.setHandshakeTimeout(TLS_HANDSHAKE_TIMEOUT_S);
+}
+
+// The persistent keep-alive TLS client, shared by command polling and the
+// sensor upload (one handshake instead of a new one every upload).
+WiFiClientSecure &firebaseClient() {
+  if (!commandClientConfigured) {
+    prepareTlsClient(commandClient);
+    commandClientConfigured = true;
+  }
+  return commandClient;
+}
+
+// Call after every request that Firebase answered.
+void markCloudOk() {
+  lastFirebaseSuccessTime = millis();
+  lastCloudOkTime = lastFirebaseSuccessTime;
+  rtcNoCloudRestarts = 0;
+}
+
+// How long the cloud watchdog waits now (doubles after each restart in a row).
+unsigned long noCloudRestartWaitMs() {
+  uint32_t doublings = rtcNoCloudRestarts;
+  if (doublings > NO_CLOUD_RESTART_MAX_DOUBLINGS)
+    doublings = NO_CLOUD_RESTART_MAX_DOUBLINGS;
+  return NO_CLOUD_RESTART_MS << doublings;
+}
+
+// Last-resort restart: see NO_CLOUD_RESTART_MS.
+void checkCloudWatchdog() {
+  unsigned long now = millis();
+  unsigned long silentMs = now - lastCloudOkTime; // since boot if never OK
+  if (silentMs < noCloudRestartWaitMs())
+    return;
+  if (currentPumpState)
+    return; // never cut a running pump; restart once it is OFF
+  Serial.printf("[CloudWatchdog] Nothing reached Firebase for %lu s. "
+                "Restarting the controller.\n",
+                silentMs / 1000);
+  rtcRestartMagic = RESTART_INFO_MAGIC;
+  rtcLastRestartWasNoCloud = 1;
+  rtcLastNoCloudSeconds = silentMs / 1000;
+  rtcNoCloudRestarts++;
+  Serial.flush();
+  ESP.restart();
+}
+
+// Readable reset reason for the boot log.
+String resetReasonText(esp_reset_reason_t reason) {
+  switch (reason) {
+  case ESP_RST_POWERON:
+    return "power-on (power restored, EN/reset button or firmware upload)";
+  case ESP_RST_EXT:
+    return "external reset pin";
+  case ESP_RST_SW:
+    return "software restart";
+  case ESP_RST_PANIC:
+    return "crash (panic or task watchdog)";
+  case ESP_RST_INT_WDT:
+    return "interrupt watchdog";
+  case ESP_RST_TASK_WDT:
+    return "task watchdog (a task hung for 30 s)";
+  case ESP_RST_WDT:
+    return "watchdog";
+  case ESP_RST_BROWNOUT:
+    return "brownout (supply voltage dropped: check the power supply and "
+           "relay wiring)";
+  case ESP_RST_DEEPSLEEP:
+    return "wake from deep sleep";
+  default:
+    return "unknown (" + String((int)reason) + ")";
+  }
+}
+
+// Logs once, after the first successful Firebase request, why the controller
+// started. Abnormal restarts are logged as ERROR so they are kept in the RAM
+// buffer if the log upload fails.
+void reportBootReason() {
+  bootReported = true;
+  esp_reset_reason_t reason = esp_reset_reason();
+  bool selfRestart = (reason == ESP_RST_SW &&
+                      rtcRestartMagic == RESTART_INFO_MAGIC &&
+                      rtcLastRestartWasNoCloud == 1);
+  String details;
+  LogLevel level = LEVEL_INFO;
+  if (selfRestart) {
+    details = "Controller restarted itself: nothing reached Firebase for " +
+              String(rtcLastNoCloudSeconds / 60) + " min " +
+              String(rtcLastNoCloudSeconds % 60) + " s.";
+    level = LEVEL_WARNING;
+  } else {
+    details = "Controller started. Reset reason: " + resetReasonText(reason) +
+              ".";
+    if (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT ||
+        reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT ||
+        reason == ESP_RST_BROWNOUT) {
+      level = LEVEL_ERROR;
+    }
+  }
+  rtcLastRestartWasNoCloud = 0;
+  logSystemEvent("System Power Tracker", details, level);
+}
 
 void updateAlertState(SystemAlert &alert, bool abnormalCondition,
                       String details) {
@@ -610,12 +786,13 @@ void flushRamLogBuffer() {
       break;
 
     WiFiClientSecure secureClient;
-    secureClient.setInsecure();
+    prepareTlsClient(secureClient);
     HTTPClient http;
     http.begin(secureClient, getLogsUrl());
-    http.setTimeout(1500);
+    http.setTimeout(HTTP_TIMEOUT_MS);
     http.addHeader("Content-Type", "application/json");
 
+    feedWatchdog(); // up to 20 buffered logs, each its own request
     int httpResponseCode = http.sendRequest("POST", payload);
 
     if (httpResponseCode == 401) {
@@ -705,12 +882,13 @@ void logSystemEvent(String action, String details, LogLevel level) {
     ensureFirebaseAuth();
 
     WiFiClientSecure secureClient;
-    secureClient.setInsecure();
+    prepareTlsClient(secureClient);
     HTTPClient http;
     http.begin(secureClient, getLogsUrl());
-    http.setTimeout(1500);
+    http.setTimeout(HTTP_TIMEOUT_MS);
     http.addHeader("Content-Type", "application/json");
 
+    feedWatchdog();
     int httpResponseCode = http.sendRequest("POST", jsonPayload);
     if (httpResponseCode == 401) {
       DEBUG_PRINTLN(
@@ -720,6 +898,7 @@ void logSystemEvent(String action, String details, LogLevel level) {
 
     if (httpResponseCode >= 200 && httpResponseCode < 300) {
       sentSuccessfully = true;
+      markCloudOk();
       DEBUG_PRINTF("Log seamlessly tracking on Web System. Firebase Code: %d\n",
                    httpResponseCode);
     } else {
@@ -916,13 +1095,28 @@ float readVoltageOversampled(int pin) {
   return ((float)sum / ADC_OVERSAMPLE / 4095.0) * 3.3;
 }
 
+// Level sensor: the same averaging, but with analogReadMilliVolts(), which applies
+// the factory ADC calibration stored in each ESP32 (eFuse). The plain
+// raw / 4095 * 3.3 conversion reads about 0.2 V low on Tank 1 (0.60 V vs 0.80 V
+// and 1.17 V vs 1.37 V on a multimeter), so Vmin/Vmax read with a meter did not
+// match what the firmware saw. With this, the Serial Monitor should match a
+// meter closely. The pH sensor still uses readVoltageOversampled() so its
+// existing calibration (phNeutralVoltage, phSlope) stays valid.
+float readLevelVoltageCalibrated() {
+  uint32_t sumMv = 0;
+  for (int i = 0; i < ADC_OVERSAMPLE; i++) {
+    sumMv += analogReadMilliVolts(LEVEL_SENSOR_PIN);
+  }
+  return (float)sumMv / ADC_OVERSAMPLE / 1000.0;
+}
+
 // Non-blocking sampling routine called every SENSOR_SAMPLE_INTERVAL ms.
 void sampleSensorsNonBlocking() {
   unsigned long now = millis();
   if (now - lastSensorSampleTime >= SENSOR_SAMPLE_INTERVAL) {
     lastSensorSampleTime = now;
 
-    levelRawSamples[levelRawIndex] = readVoltageOversampled(LEVEL_SENSOR_PIN);
+    levelRawSamples[levelRawIndex] = readLevelVoltageCalibrated();
     levelRawIndex = (levelRawIndex + 1) % FILTER_MEDIAN_WINDOW;
     if (levelRawIndex == 0) {
       levelBufferFilled = true;
@@ -938,7 +1132,7 @@ void sampleSensorsNonBlocking() {
 
 float readLevelVoltageStable() {
   if (!levelBufferFilled) {
-    return readVoltageOversampled(LEVEL_SENSOR_PIN);
+    return readLevelVoltageCalibrated();
   }
 
   float tempSamples[FILTER_MEDIAN_WINDOW];
@@ -1005,6 +1199,38 @@ bool getBoolFromJson(String json, String key) {
     return true;
   }
   return false;
+}
+
+// Reads a whole-number epoch in milliseconds (e.g. 1795007397317) and returns
+// it in seconds (0 if missing). getFloatFromJson() would round it by minutes.
+long getEpochSecFromJson(String json, String key) {
+  int keyIndex = json.indexOf("\"" + key + "\"");
+  if (keyIndex == -1)
+    return 0;
+  int colonIndex = json.indexOf(":", keyIndex);
+  if (colonIndex == -1)
+    return 0;
+  int i = colonIndex + 1;
+  while (i < (int)json.length() && json[i] == ' ')
+    i++;
+  String digits = "";
+  while (i < (int)json.length() && isDigit(json[i]))
+    digits += json[i++];
+  if (digits.length() <= 3)
+    return 0;
+  return digits.substring(0, digits.length() - 3).toInt();
+}
+
+// True while the admin's live calibration window is open (see CALIB_LIVE_MAX_MS).
+bool calibrationLiveOn() {
+  if (calibUntilSec <= 0)
+    return false;
+  time_t nowSec = time(nullptr);
+  if (nowSec < 1700000000) // clock not set yet (no NTP)
+    return false;
+  if (millis() - calibSeenAtMs > CALIB_LIVE_MAX_MS)
+    return false;
+  return (long)nowSec < calibUntilSec;
 }
 
 bool hasKeyInJson(String json, String key) {
@@ -1100,12 +1326,13 @@ bool firebaseSignIn() {
   payload += "}";
 
   WiFiClientSecure secureClient;
-  secureClient.setInsecure();
+  prepareTlsClient(secureClient);
   HTTPClient http;
   http.begin(secureClient, url);
   http.setTimeout(8000);
   http.addHeader("Content-Type", "application/json");
 
+  feedWatchdog();
   int code = http.POST(payload);
   if (code == 200) {
     String response = http.getString();
@@ -1162,12 +1389,13 @@ bool firebaseRefreshTokenFunc() {
       "grant_type=refresh_token&refresh_token=" + firebaseRefreshToken;
 
   WiFiClientSecure secureClient;
-  secureClient.setInsecure();
+  prepareTlsClient(secureClient);
   HTTPClient http;
   http.begin(secureClient, url);
   http.setTimeout(8000);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
+  feedWatchdog();
   int code = http.POST(body);
   if (code == 200) {
     String response = http.getString();
@@ -1230,6 +1458,7 @@ bool ensureFirebaseAuth() {
 // =================================================================================
 void processPhSensor() {
   float rawPhVoltage = readPhVoltageStable();
+  livePhVoltage = rawPhVoltage; // for the live calibration view
 
   bool electricalValid = (rawPhVoltage > 0.05 && rawPhVoltage < 3.25);
 
@@ -1409,6 +1638,10 @@ void processLevelSensor() {
     levelPercent = 0;
   if (levelPercent > 100)
     levelPercent = 100;
+
+  liveLevelVoltage = rawLevelVoltage; // for the live calibration view
+  liveLevelHeight = height;
+  liveLevelPercent = levelPercent;
 
   unsigned long now = millis();
 
@@ -1789,10 +2022,10 @@ bool sendPumpPatch(bool writePumpOn, bool pumpState,
     return false;
   }
   WiFiClientSecure secureClient;
-  secureClient.setInsecure();
+  prepareTlsClient(secureClient);
   HTTPClient http;
   http.begin(secureClient, getTanksUrl());
-  http.setTimeout(1500);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
   String patchPayload = "{";
   if (writePumpOn) {
@@ -1803,6 +2036,7 @@ bool sendPumpPatch(bool writePumpOn, bool pumpState,
     patchPayload += "\"pumpCommandAt\":{\".sv\":\"timestamp\"},";
   }
   patchPayload += "\"lastUpdate\":{\".sv\":\"timestamp\"}}";
+  feedWatchdog();
   int code = http.sendRequest("PATCH", patchPayload);
   if (code == 401) {
     DEBUG_PRINTLN("[FirebaseAuth] Received 401 in sendPumpPatch.");
@@ -1811,6 +2045,7 @@ bool sendPumpPatch(bool writePumpOn, bool pumpState,
   bool ok = (code >= 200 && code < 300);
   if (ok) {
     lastSensorWrite = millis();
+    markCloudOk();
     DEBUG_PRINTF("[Pump] Updated pump fields in tanks/%d (pumpOn %s, result "
                  "%s, HTTP %d)\n",
                  TANK_ID,
@@ -2004,18 +2239,20 @@ void postHistorySample() {
   jsonPayload += "}";
 
   WiFiClientSecure secureClient;
-  secureClient.setInsecure();
+  prepareTlsClient(secureClient);
   HTTPClient http;
   http.begin(secureClient, getHistoryUrl());
-  http.setTimeout(2000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
 
+  feedWatchdog();
   int httpResponseCode = http.sendRequest("POST", jsonPayload);
   if (httpResponseCode == 401) {
     DEBUG_PRINTLN("[FirebaseAuth] Received 401 Unauthorized in history post. "
                   "Invalidating token.");
     firebaseAuthValid = false;
   } else if (httpResponseCode >= 200 && httpResponseCode < 300) {
+    markCloudOk();
     DEBUG_PRINTF("[History] Sample successfully posted to /history/tanks/%d.\n",
                  TANK_ID);
   } else {
@@ -2038,7 +2275,7 @@ void sensorTask(void *pvParameters) {
 
   // Pre-fill filter buffers
   for (int i = 0; i < FILTER_MEDIAN_WINDOW; i++) {
-    levelRawSamples[i] = readVoltageOversampled(LEVEL_SENSOR_PIN);
+    levelRawSamples[i] = readLevelVoltageCalibrated();
     phRawSamples[i] = readVoltageOversampled(PH_SENSOR_PIN);
     vTaskDelay(pdMS_TO_TICKS(10));
   }
@@ -2143,6 +2380,9 @@ void networkTask(void *pvParameters) {
     // 2b. Back to Ethernet after a slow/no-internet switch to Wi-Fi
     checkEthernetRecovery();
 
+    // 2c. Last resort: restart if nothing has reached Firebase for minutes
+    checkCloudWatchdog();
+
     // 3. Low-heap guard
     {
       uint32_t freeHeap = ESP.getFreeHeap();
@@ -2179,15 +2419,11 @@ void networkTask(void *pvParameters) {
       unsigned long pollStartTime = millis();
 
       if (ensureFirebaseAuth()) {
-        if (!commandClientConfigured) {
-          commandClient.setInsecure();
-          commandClientConfigured = true;
-        }
-
         HTTPClient http;
         http.setReuse(true);
-        http.begin(commandClient, getTanksUrl());
-        http.setTimeout(1500);
+        http.begin(firebaseClient(), getTanksUrl());
+        http.setTimeout(HTTP_TIMEOUT_MS);
+        feedWatchdog();
         int httpResponseCode = http.GET();
 
         if (httpResponseCode == 401) {
@@ -2199,7 +2435,7 @@ void networkTask(void *pvParameters) {
         if (httpResponseCode > 0 && httpResponseCode != 401) {
           bool wasDisconnected = !firebaseConnected;
           firebaseConnected = true;
-          lastFirebaseSuccessTime = millis();
+          markCloudOk();
           firebaseErrorCount = 0;
           currentCommandPollInterval = COMMAND_POLL_INTERVAL;
 
@@ -2350,6 +2586,16 @@ void networkTask(void *pvParameters) {
             if (val != -999.0)
               phOffset = val;
           }
+
+          // --- LIVE CALIBRATION VIEW (calibrationUntil set by an admin) ---
+          long newCalibUntil =
+              hasKeyInJson(payload, "calibrationUntil")
+                  ? getEpochSecFromJson(payload, "calibrationUntil")
+                  : 0;
+          if (newCalibUntil != calibUntilSec) {
+            calibUntilSec = newCalibUntil;
+            calibSeenAtMs = millis();
+          }
         } else {
           commandClient.stop();
           firebaseConnected = false;
@@ -2367,8 +2613,9 @@ void networkTask(void *pvParameters) {
         // Poll /config for dynamic system-wide alert thresholds
         HTTPClient httpConfig;
         httpConfig.setReuse(true);
-        httpConfig.begin(commandClient, getConfigUrl());
-        httpConfig.setTimeout(1500);
+        httpConfig.begin(firebaseClient(), getConfigUrl());
+        httpConfig.setTimeout(HTTP_TIMEOUT_MS);
+        feedWatchdog();
         int configResponseCode = httpConfig.GET();
 
         if (configResponseCode == 401) {
@@ -2444,12 +2691,31 @@ void networkTask(void *pvParameters) {
       bool pollOk = firebaseConnected &&
                     (long)(lastFirebaseSuccessTime - pollStartTime) >= 0;
       checkEthernetQuality(pollOk, pollDuration);
-      if (pollDuration > 1500) {
-        logSystemEvent("System Performance",
-                       "Command poll took longer than expected: " +
-                           String(pollDuration) + "ms (Limit: 1500ms)",
-                       LEVEL_WARNING);
+      // Slow polls are counted and summarized at most every 10 min (one log
+      // per slow poll filled /logs: 4,265 entries in 4 days).
+      if (pollDuration > ETH_SLOW_POLL_MS) {
+        slowPollCount++;
+        if (pollDuration > slowestPollMs)
+          slowestPollMs = pollDuration;
       }
+      if (slowPollCount > 0 &&
+          millis() - lastSlowPollLog >= SLOW_POLL_LOG_INTERVAL_MS) {
+        lastSlowPollLog = millis();
+        logSystemEvent("System Performance",
+                       String(slowPollCount) +
+                           " command poll(s) took longer than " +
+                           String(ETH_SLOW_POLL_MS) +
+                           " ms in the last 10 min (slowest " +
+                           String(slowestPollMs) + " ms)",
+                       LEVEL_WARNING);
+        slowPollCount = 0;
+        slowestPollMs = 0;
+      }
+    }
+
+    // 7b. Once per boot, after Firebase answers: log why the controller started
+    if (!bootReported && firebaseConnected && !linkUploadFirst) {
+      reportBootReason();
     }
 
     // =============================================================
@@ -2491,12 +2757,23 @@ void networkTask(void *pvParameters) {
     bool heartbeatElapsed =
         (millis() - lastSensorWrite >= SENSOR_WRITE_HEARTBEAT);
     bool rateLimitElapsed = (millis() - lastSensorWrite >= MIN_WRITE_INTERVAL);
+    // Live calibration view: upload every MIN_WRITE_INTERVAL (1 s) while open.
+    bool calibLive = calibrationLiveOn();
+    if (calibLive != calibLiveWasOn) {
+      calibLiveWasOn = calibLive;
+      logSystemEvent("Calibration",
+                     calibLive ? "Live calibration readings started (sent "
+                                 "once per second)."
+                               : "Live calibration readings stopped.",
+                     LEVEL_INFO);
+    }
 
     if (isNetworkConnected()) {
       if (rateLimitElapsed &&
           (levelChangedSignificantly || phChangedSignificantly ||
            phHealthChanged || levelHealthChanged ||
-           alertStateChanged || linkChanged || heartbeatElapsed)) {
+           alertStateChanged || linkChanged || heartbeatElapsed ||
+           calibLive)) {
         if (ensureFirebaseAuth()) {
 
           // Compute overall status from alert states
@@ -2509,7 +2786,7 @@ void networkTask(void *pvParameters) {
           }
 
           String jsonPayload;
-          jsonPayload.reserve(512);
+          jsonPayload.reserve(704);
 
           jsonPayload = "{";
           jsonPayload += "\"waterLevel\":" + String(snapLevel) + ",";
@@ -2537,16 +2814,26 @@ void networkTask(void *pvParameters) {
           jsonPayload +=
               "\"ethConnected\":" + String(snapEth ? "true" : "false") +
               ",";
+          if (calibLive) {
+            jsonPayload += "\"calibrationLive\":{";
+            jsonPayload += "\"voltage\":" + String((float)liveLevelVoltage, 3) + ",";
+            jsonPayload += "\"heightM\":" + String((float)liveLevelHeight, 3) + ",";
+            jsonPayload += "\"percent\":" + String((int)liveLevelPercent) + ",";
+            jsonPayload += "\"phVoltage\":" + String((float)livePhVoltage, 3) + ",";
+            jsonPayload += "\"at\":{\".sv\":\"timestamp\"}},";
+          }
           jsonPayload += "\"lastUpdate\":{\".sv\":\"timestamp\"}";
           jsonPayload += "}";
 
-          WiFiClientSecure secureClient;
-          secureClient.setInsecure();
+          // Same keep-alive connection as the command poll: no new TLS
+          // handshake (1-2 s on this link) for every upload.
           HTTPClient http;
-          http.begin(secureClient, getTanksUrl());
-          http.setTimeout(1500);
+          http.setReuse(true);
+          http.begin(firebaseClient(), getTanksUrl());
+          http.setTimeout(HTTP_TIMEOUT_MS);
           http.addHeader("Content-Type", "application/json");
 
+          feedWatchdog();
           int httpResponseCode = http.sendRequest("PATCH", jsonPayload);
           if (httpResponseCode == 401) {
             DEBUG_PRINTLN("[FirebaseAuth] Received 401 Unauthorized in sensor "
@@ -2565,7 +2852,7 @@ void networkTask(void *pvParameters) {
                   LEVEL_INFO);
             }
             firebaseConnected = true;
-            lastFirebaseSuccessTime = millis();
+            markCloudOk();
             firebaseErrorCount = 0;
             currentCommandPollInterval = COMMAND_POLL_INTERVAL;
 
@@ -2585,6 +2872,9 @@ void networkTask(void *pvParameters) {
             lastSentWifiLink = snapWifi;
             lastSensorWrite = millis();
           } else {
+            if (httpResponseCode <= 0) {
+              commandClient.stop(); // broken socket: the next request reconnects
+            }
             firebaseConnected = false;
             firebaseErrorCount++;
             currentCommandPollInterval =
@@ -2640,8 +2930,19 @@ void setup() {
   digitalWrite(RELAY_PIN, LOW);
 #endif
 
-  commandClient.setInsecure();
+  prepareTlsClient(commandClient);
   commandClientConfigured = true;
+
+  // RTC memory holds garbage after a power cut: start the restart info fresh.
+  esp_reset_reason_t bootReason = esp_reset_reason();
+  Serial.println("Reset reason: " + resetReasonText(bootReason));
+  if (rtcRestartMagic != RESTART_INFO_MAGIC || bootReason == ESP_RST_POWERON ||
+      bootReason == ESP_RST_BROWNOUT) {
+    rtcRestartMagic = RESTART_INFO_MAGIC;
+    rtcNoCloudRestarts = 0;
+    rtcLastRestartWasNoCloud = 0;
+    rtcLastNoCloudSeconds = 0;
+  }
 
   // Create the shared sensor data mutex
   sensorDataMutex = xSemaphoreCreateMutex();

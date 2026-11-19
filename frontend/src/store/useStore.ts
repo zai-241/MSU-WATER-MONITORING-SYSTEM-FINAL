@@ -45,6 +45,20 @@ import { planRaise, planResolve, archiveOf, type RaisePlan, type RaiseOutcome } 
 export type UserRole = 'admin' | 'worker' | 'viewer';
 export type TankStatus = 'safe' | 'warning' | 'danger' | 'offline';
 
+/** One live calibration reading, the same values as the firmware's [LevelCal] Serial Monitor line */
+export interface CalibrationLive {
+  /** Filtered level sensor voltage (V) */
+  voltage: number;
+  /** Height from the current Vmin/Vmax, not clamped to the tank (m) */
+  heightM: number;
+  /** Level % as the dashboard shows it (0–100) */
+  percent: number;
+  /** Filtered pH sensor voltage (V) */
+  phVoltage?: number;
+  /** Server time of the reading (ms) */
+  at?: number;
+}
+
 export interface Tank {
   id: string;
   name: string;
@@ -80,6 +94,13 @@ export interface Tank {
   phSlope: number;
   /** Additional offset applied to pH calculation */
   phOffset: number;
+  /**
+   * Live calibration view: server time (ms) until which the controller sends
+   * calibrationLive once per second. Set by an admin; missing/null = off.
+   */
+  calibrationUntil?: number | null;
+  /** Latest live calibration reading from the controller (only while calibrationUntil is open) */
+  calibrationLive?: CalibrationLive | null;
 
   // Sensor Validation Status
   phSensorOk: boolean;

@@ -45,6 +45,12 @@
         "capacityLiters": {
           ".validate": "!newData.exists() || (newData.isNumber() && newData.val() > 0)"
         },
+        "calibrationUntil": {
+          ".validate": "!newData.exists() || (newData.isNumber() && newData.val() <= now + 1860000)"
+        },
+        "calibrationLive": {
+          ".validate": "!newData.exists() || newData.hasChildren(['voltage', 'heightM', 'percent'])"
+        },
         "controllerOffline": {
           ".write": "root.child('roles').child(auth.uid).exists()",
           ".validate": "newData.isBoolean()"

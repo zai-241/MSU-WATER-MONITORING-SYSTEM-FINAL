@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
 import { SUPPORTED_TANK_IDS } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
+import LiveCalibrationPanel from './LiveCalibrationPanel';
 import { errorMessage } from '@/lib/utils';
 
 // Validation schemas (E2 / R8)
@@ -367,6 +368,17 @@ const Configuration = () => {
 
         {localTank ? (
           <div className="space-y-6">
+            {selectedTank && (
+              <LiveCalibrationPanel
+                tank={selectedTank}
+                canEdit={isAdmin}
+                onUseValue={(field, value) => {
+                  setIsTankDirty(true);
+                  setLocalTank(prev => (prev ? { ...prev, [field]: value } : prev));
+                  toast.info(`Filled in ${value.toFixed(3)} V. Press Save to apply it.`);
+                }}
+              />
+            )}
             <div>
               <h4 className="font-semibold mb-3 text-sm text-muted-foreground uppercase tracking-wider">Water Level Sensor Calibration</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">

@@ -63,6 +63,17 @@ export const PUMP_COMMAND_TIMEOUT_MS = 15_000;
 /** How long the result of a pump command stays under the pump toggle. */
 export const PUMP_FEEDBACK_MS = 5_000;
 
+/**
+ * Live sensor readings (Admin Panel calibration): each Start or +10 min opens the
+ * window by this much; the window never reaches further than CALIBRATION_LIVE_MAX_MS
+ * ahead (the database rules enforce the same 30 min). The firmware also stops after
+ * 30 min on its own (CALIB_LIVE_MAX_MS).
+ */
+export const CALIBRATION_LIVE_STEP_MS = 10 * 60_000;
+export const CALIBRATION_LIVE_MAX_MS = 30 * 60_000;
+/** A live reading older than this is treated as missing ("Waiting for readings"). */
+export const CALIBRATION_LIVE_STALE_MS = 8_000;
+
 /** Minimum gap between writes of the tank list to the offline cache. */
 export const TANK_CACHE_WRITE_INTERVAL_MS = 5_000;
 

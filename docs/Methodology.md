@@ -46,7 +46,7 @@ graph TD
 ```
 
 ### 2.1 Execution Scheduling
-- **Raw Sampling Interval (`SENSOR_SAMPLE_INTERVAL`)**: `20 ms` (50 Hz). `sampleSensorsNonBlocking()` executes on Core 1, pushing raw 12-bit ADC conversions (`(analogRead(pin) / 4095.0) * 3.3`) into circular buffers.
+- **Raw Sampling Interval (`SENSOR_SAMPLE_INTERVAL`)**: `20 ms` (50 Hz). `sampleSensorsNonBlocking()` executes on Core 1, pushing voltages into circular buffers. Each sample is the average of 16 ADC conversions. The level sensor (GPIO 35) uses `analogReadMilliVolts()`, which applies the ESP32's factory ADC calibration (eFuse), so its voltage matches a multimeter; the plain `(analogRead(pin) / 4095.0) * 3.3` conversion read about 0.2 V low on Tank 1 (0.60 V vs 0.80 V empty, 1.17 V vs 1.37 V full). The pH sensor (GPIO 34) still uses the plain conversion so its existing calibration stays valid.
 - **Processing Interval (`SENSOR_PROCESSING_INTERVAL`)**: `200 ms` (5 Hz). Runs full filtering, calibration, spike evaluation, and alert checks.
 - **Telemetry Upload Rate Limit**:
   - Minimum write interval (`MIN_WRITE_INTERVAL`): `1,000 ms` (1 second).
@@ -156,7 +156,16 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
    - Measured on 17 Nov 2026 (Tank 1, cable unplugged about 2 min, three trials, times from the board's serial log): first sensor upload over Wi-Fi 0.7 s after the board saw the unplug (Wi-Fi poll confirmed at 1.4, 2.7 and 1.4 s); back on Ethernet 1.6, 8.3 (W5500 restart needed) and 2.3 s after re-plug. The board checks the Ethernet link every 2 s, so up to 2 s more passes between the actual unplug and the board noticing it.
 2. **Network Zombie-Socket Watchdog**:
    - If HTTPS requests fail continuously for $\ge 90\text{ seconds}$ despite `WL_CONNECTED`, `checkNetworkWatchdog()` tears down the TCP socket and triggers a full Wi-Fi reconnection. The new connection then gets a fresh 90 s before it is judged again.
-3. **Offline RAM Ring Buffer**:
+3. **Cloud Watchdog (last-resort restart)**:
+   - If nothing has reached Firebase for 3 minutes, on Ethernet or Wi-Fi, `checkCloudWatchdog()` restarts the ESP32. It waits while the pump is ON (the pump logic is local and must not be cut). If the internet stays down, the wait doubles after each such restart (3, 6, 12, 24 min); one successful request resets it to 3 min.
+   - Reason: the logs of 13 to 17 Nov 2026 showed 12 outages longer than 5 minutes (the longest about 10 h) that ended only when the board was power-cycled, while its power LED stayed on.
+   - After each start the controller logs the reset reason (`esp_reset_reason()`: power-on, task watchdog, brownout, or its own cloud-watchdog restart) under "System Power Tracker". Watchdog, crash and brownout resets are logged as ERROR.
+4. **Request Timeouts**:
+   - Every Firebase request has a 5 s read timeout and a 10 s TLS handshake limit (the core default is 120 s). The old 1.5 s read timeout was shorter than a normal command poll at the site (1.5 to 3.8 s), so many uploads failed with HTTP -11.
+   - The sensor upload uses the same keep-alive TLS connection as the command poll instead of a new handshake every upload.
+   - The 30 s task watchdog is fed before each request, so a loop with several slow requests (for example a RAM log flush) does not reset the board; a single hung request still does.
+   - Command polls slower than 4 s are counted and logged as one summary at most every 10 min (one log per slow poll above 1.5 s wrote 4,265 entries in 4 days).
+5. **Offline RAM Ring Buffer**:
    - Core 1 buffers up to 20 critical/error log entries in a RAM ring buffer (`ramLogBuffer[20]`).
    - When network connectivity is restored, `flushRamLogBuffer()` pushes all buffered events to Firebase `/logs`.
 
