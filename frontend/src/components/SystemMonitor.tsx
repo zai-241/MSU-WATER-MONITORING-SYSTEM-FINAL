@@ -12,7 +12,7 @@ import {
   isTankControllerOffline,
   syncTankOfflineState,
 } from '@/store/useStore';
-import { evaluateTank, createTankTrackers, evaluateNight, createNightState, offlineThresholdMs, ALERT_SERVICE_OFFLINE_ID, type TankTrackers, type NightState } from '@/lib/alertEngine';
+import { evaluateTank, createTankTrackers, evaluateNight, createNightState, offlineThresholdMs, isTankInMaintenance, ALERT_SERVICE_OFFLINE_ID, type TankTrackers, type NightState } from '@/lib/alertEngine';
 import { toast } from 'sonner';
 import { alertSound } from '@/utils/alertSound';
 
@@ -160,6 +160,8 @@ const SystemMonitor = () => {
 
       const isOffline = isTankControllerOffline(tank, serverTimeOffset, thresholdMs);
       if (isOffline === (tank.controllerOffline ?? false)) return;
+      // A tank under maintenance may be unplugged: never report it offline
+      if (isOffline && isTankInMaintenance(tank, config)) return;
       // Stale data after a sleep or reconnect must not raise a false "offline"
       if (isOffline && !dataIsFresh) return;
 

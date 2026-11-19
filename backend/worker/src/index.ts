@@ -36,6 +36,7 @@ import {
   createNightState,
   offlineThresholdMs,
   isControllerOffline,
+  isTankInMaintenance,
   alertNotifId,
   ALERT_SERVICE_OFFLINE_ID,
   planRaise,
@@ -147,6 +148,7 @@ function toEngineTank(id: string, raw: RawTank): EngineTank {
     phLevel: typeof raw.phLevel === 'number' ? raw.phLevel : NaN,
     phSensorOk: raw.phSensorOk !== false,
     levelSensorOk: raw.levelSensorOk !== false,
+    maintenanceMode: raw.maintenanceMode === true,
   };
 }
 
@@ -313,7 +315,9 @@ async function evaluateAll(): Promise<void> {
     if (tank.enabled === false || !tank.lastUpdate) continue; // disabled or planned
 
     const offline = isControllerOffline(tank.lastUpdate, serverNow(), thresholdMs);
-    if (offline !== (raw.controllerOffline === true) && !offlineInFlight.has(id)) {
+    // A tank under maintenance may be unplugged: never report it offline (coming back is still recorded)
+    const offlineAllowed = !(offline && isTankInMaintenance(tank, config));
+    if (offlineAllowed && offline !== (raw.controllerOffline === true) && !offlineInFlight.has(id)) {
       offlineInFlight.add(id);
       syncOffline(id, tank, offline, thresholdMs / 1000)
         .catch((err) => log(`offline sync failed for tank ${id}:`, err))

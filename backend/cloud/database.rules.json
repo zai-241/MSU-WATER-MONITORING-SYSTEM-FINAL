@@ -63,6 +63,9 @@
         "calibrationUntil": {
           ".validate": "!newData.exists() || (newData.isNumber() && newData.val() <= now + 1860000)"
         },
+        "maintenanceMode": {
+          ".validate": "newData.isBoolean() && (root.child('roles').child(auth.uid).val() === 'admin' || newData.val() === data.val())"
+        },
         "calibrationLive": {
           ".validate": "!newData.exists() || newData.hasChildren(['voltage', 'heightM', 'percent'])"
         },

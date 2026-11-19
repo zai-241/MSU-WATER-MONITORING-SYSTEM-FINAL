@@ -446,7 +446,11 @@ float lowLevelThreshold = 15.0;
 float overflowThreshold = 95.0;
 float minPh = 6.5;
 float maxPh = 8.5;
-bool maintenanceMode = false;
+bool maintenanceMode = false; // config/maintenanceMode: all tanks
+// tanks/{TANK_ID}/maintenanceMode: this tank only (set by an admin, read with the
+// 1 s command poll). Either one holds the pump off and refuses pump ON commands.
+bool tankMaintenanceMode = false;
+bool maintenanceActive() { return maintenanceMode || tankMaintenanceMode; }
 bool pumpControlLock = false;
 // Pump demo mode (config/pumpDemoMode, on unless an admin turns it off): when off, the
 // virtual pump stays OFF and every pump command is refused.
@@ -2089,8 +2093,9 @@ void processAutomaticPumpControl() {
     return;
   }
 
-  // Rule 1: maintenanceMode forces the pump OFF and blocks automatic starts.
-  if (maintenanceMode) {
+  // Rule 1: maintenance (system-wide or this tank) forces the pump OFF and
+  // blocks automatic starts.
+  if (maintenanceActive()) {
     if (currentPumpState) {
       currentPumpState = false;
       lastPumpStopTime = now;
@@ -2463,7 +2468,7 @@ void networkTask(void *pvParameters) {
                                LEVEL_WARNING);
                 updateFirebasePumpStateWithResult(false, "refused-overflow");
                 currentPumpState = false;
-              } else if (maintenanceMode) {
+              } else if (maintenanceActive()) {
                 DEBUG_PRINTLN("[Pump] Manual ON command refused: Maintenance "
                               "mode is active.");
                 logSystemEvent("Pump Controller",
@@ -2570,6 +2575,18 @@ void networkTask(void *pvParameters) {
           if (newCalibUntil != calibUntilSec) {
             calibUntilSec = newCalibUntil;
             calibSeenAtMs = millis();
+          }
+
+          // --- PER-TANK MAINTENANCE (tanks/{TANK_ID}/maintenanceMode) ---
+          bool newTankMaintenance =
+              hasKeyInJson(payload, "maintenanceMode") &&
+              getBoolFromJson(payload, "maintenanceMode");
+          if (newTankMaintenance != tankMaintenanceMode) {
+            tankMaintenanceMode = newTankMaintenance;
+            logSystemEvent("Pump Controller",
+                           String("Tank maintenance mode ") +
+                               (tankMaintenanceMode ? "enabled" : "disabled"),
+                           LEVEL_INFO);
           }
         } else {
           commandClient.stop();

@@ -101,6 +101,11 @@ export interface Tank {
   calibrationUntil?: number | null;
   /** Latest live calibration reading from the controller (only while calibrationUntil is open) */
   calibrationLive?: CalibrationLive | null;
+  /**
+   * This tank's own maintenance switch (admin only). While on, the tank raises no alerts and no
+   * offline notice, and its controller keeps the pump off. config.maintenanceMode does the same for all tanks.
+   */
+  maintenanceMode?: boolean;
 
   // Sensor Validation Status
   phSensorOk: boolean;
@@ -544,6 +549,7 @@ export function sanitizeTank(key: string, raw: unknown): Tank {
     phOffset: isNumber(r.phOffset) ? r.phOffset : 0.0,
     assignedWorker: r.assignedWorker ?? null,
     controllerOffline: !!r.controllerOffline,
+    maintenanceMode: r.maintenanceMode === true,
   };
 }
 

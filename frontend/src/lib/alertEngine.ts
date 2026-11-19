@@ -49,6 +49,8 @@ export interface EngineTank {
   phLevel: number;
   phSensorOk?: boolean;
   levelSensorOk?: boolean;
+  /** This tank's own maintenance switch (tanks/{id}/maintenanceMode, set by an admin) */
+  maintenanceMode?: boolean;
 }
 
 export interface EngineConfig {
@@ -97,6 +99,17 @@ export function repeatIntervalMs(config: Pick<EngineConfig, 'repeatIntervalSec'>
 export function offlineThresholdMs(config: Pick<EngineConfig, 'offlineThresholdSec'> | null | undefined): number {
   const sec = Number(config?.offlineThresholdSec);
   return Math.max(MIN_OFFLINE_THRESHOLD_SEC, Number.isFinite(sec) && sec > 0 ? sec : DEFAULT_OFFLINE_THRESHOLD_SEC) * 1000;
+}
+
+/**
+ * True while the tank is under maintenance: its own switch (tanks/{id}/maintenanceMode)
+ * or the system-wide one (config/maintenanceMode). No alerts, no offline watchdog, pump held off.
+ */
+export function isTankInMaintenance(
+  tank: { maintenanceMode?: boolean } | null | undefined,
+  config: { maintenanceMode?: boolean } | null | undefined,
+): boolean {
+  return config?.maintenanceMode === true || tank?.maintenanceMode === true;
 }
 
 /** A tank that has never reported is "planned", not offline. */
@@ -208,8 +221,8 @@ export interface EvaluateArgs {
 export function evaluateTank({ tank, config, trackers, now, getExisting }: EvaluateArgs): AlertEvent[] {
   const events: AlertEvent[] = [];
 
-  // Disabled tanks, tanks that never reported, and maintenance mode never alert
-  if (tank.enabled === false || !tank.lastUpdate || config.maintenanceMode) return events;
+  // Disabled tanks, tanks that never reported, and maintenance (system-wide or this tank) never alert
+  if (tank.enabled === false || !tank.lastUpdate || isTankInMaintenance(tank, config)) return events;
 
   const cooldown = repeatIntervalMs(config);
 
@@ -340,6 +353,7 @@ export interface NightTank {
   lastUpdate?: number;
   waterLevel: number;
   levelSensorOk?: boolean;
+  maintenanceMode?: boolean;
   pumpOn?: boolean;
   /** Server ms until which live calibration runs (readings are skipped meanwhile) */
   calibrationUntil?: number | null;
@@ -478,7 +492,7 @@ export function evaluateNight({ tank, config, state, now, getExisting }: Evaluat
   const window = settings.enabled ? nightWindowAt(now, settings.startHour, settings.endHour) : null;
   const hours = `${formatHour12(settings.startHour)} to ${formatHour12(settings.endHour)}`;
 
-  if (tank.enabled === false || !tank.lastUpdate || config.maintenanceMode) {
+  if (tank.enabled === false || !tank.lastUpdate || isTankInMaintenance(tank, config)) {
     state.lastEvalAt = 0;
     return events;
   }

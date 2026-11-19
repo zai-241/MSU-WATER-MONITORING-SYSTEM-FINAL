@@ -39,7 +39,7 @@ mindmap
       Automatic Refill & Overflow Protection
       Manual Relay Overrides
       30s Anti-Chatter Cooldown
-      Maintenance Mode Lockout
+      Maintenance Mode Lockout (all tanks or per tank)
       Pump Control Lock Toggles
     Data Diagnostics & Reports
       Categorized Event Logs INFO / WARN / ERR / CRIT
@@ -97,6 +97,10 @@ mindmap
 * **FR-02.3**: Automatic pump control must start the pump when water level $\le$ `lowLevelThreshold` (default 15%) and stop the pump when level $\ge$ `overflowThreshold` (default 95%).
 * **FR-02.4**: An anti-chatter cooldown of 30 seconds (`PUMP_MIN_OFF_TIME = 30000ms`) must elapse between consecutive pump activations.
 * **FR-02.5**: Manual pump overrides must log the operator's identity and timestamp to the Firebase event log.
+* **FR-02.6**: Administrators must be able to put a single tank (Tanks 1–4) under maintenance (`tanks/{id}/maintenanceMode`).
+  For that tank only, it does what FR-02.2 does system-wide: its controller stops the pump and refuses pump ON commands, and
+  its alerts, night watch and offline notice are paused. The Dashboard marks the tank "Under Maintenance", and each change
+  is logged with the admin's name and the tank.
 
 ### 3.3 Remote Sensor Calibration (FR-03)
 * **FR-03.1**: The system must support remote calibration adjustments for each tank (`tanks/1` to `tanks/4`, chosen with a Tank 1–4 selector), updating $V_{min}$, $V_{max}$, tank height, tank capacity, level offset, $V_{neutral}$, pH slope, and pH offset.

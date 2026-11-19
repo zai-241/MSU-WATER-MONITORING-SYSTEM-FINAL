@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTanks, useConfig, useWorkerStatus, addSystemLog, isPumpDemoOn, getPumpMode, SystemConfig, Tank, PumpMode } from '@/store/useStore';
-import { Power, Settings, Loader2, Bell, Hand, Moon } from 'lucide-react';
+import { Power, Settings, Loader2, Bell, Hand, Moon, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
@@ -100,6 +100,7 @@ const Configuration = () => {
   
   const [controlConfirm, setControlConfirm] = useState<{ key: ControlKey; label: string; newState: boolean } | null>(null);
   const [modeConfirm, setModeConfirm] = useState<PumpMode | null>(null);
+  const [tankMaintenanceConfirm, setTankMaintenanceConfirm] = useState<{ tankId: string; label: string; newState: boolean } | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const isAdmin = currentUser?.role === 'admin';
   const [isSaving, setIsSaving] = useState(false);
@@ -159,6 +160,25 @@ const Configuration = () => {
       setControlConfirm(null);
     } catch (err) {
       toast.error(errorMessage(err) || `Failed to update ${controlConfirm.label}`);
+    }
+  };
+
+  const confirmTankMaintenance = async () => {
+    if (!tankMaintenanceConfirm || !isAdmin) return;
+    const { tankId, label, newState } = tankMaintenanceConfirm;
+    try {
+      await updateTank(tankId, { maintenanceMode: newState });
+      addLog({
+        action: 'Configuration Updated',
+        details: `Maintenance mode ${newState ? 'enabled' : 'disabled'} for ${label}`,
+        performedBy: currentUser?.username || 'Administrator',
+        logLevel: newState ? 'WARNING' : 'INFO',
+        tankId,
+      });
+      toast.success(`Maintenance for ${label} ${newState ? 'enabled' : 'disabled'}`);
+      setTankMaintenanceConfirm(null);
+    } catch (err) {
+      toast.error(errorMessage(err) || `Failed to update maintenance for ${label}`);
     }
   };
 
@@ -738,7 +758,7 @@ const Configuration = () => {
             <div className="flex items-center gap-3">
               <Settings size={18} className={localConfig.maintenanceMode ? 'text-warning' : 'text-muted-foreground'} />
               <div>
-                <p className="font-medium text-sm">Maintenance Mode</p>
+                <p className="font-medium text-sm">Maintenance Mode (all tanks)</p>
                 <p className="text-xs text-muted-foreground">{isPumpDemoOn(localConfig as SystemConfig) ? 'Suppresses alerts system-wide and stops the pump' : 'Suppresses alerts system-wide'}</p>
                 {localConfig.maintenanceMode && <p className="text-xs text-warning font-medium mt-1">⚠️ Currently active — alerts are suppressed{isPumpDemoOn(localConfig as SystemConfig) ? ' and the pump is locked' : ''}</p>}
               </div>
@@ -748,6 +768,45 @@ const Configuration = () => {
               <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${localConfig.maintenanceMode ? 'translate-x-5' : ''}`} />
             </button>
           </div>
+          {isAdmin && (
+            <div data-testid="tank-maintenance-settings" className="p-4 rounded-lg border border-border">
+              <div className="flex items-center gap-3">
+                <Wrench size={18} className="text-muted-foreground" />
+                <div>
+                  <p className="font-medium text-sm">Tank Maintenance</p>
+                  <p className="text-xs text-muted-foreground">
+                    Put one tank under maintenance: only its alerts and offline notice are paused{isPumpDemoOn(localConfig as SystemConfig) ? ' and only its pump is held off' : ''}. The other tanks keep working.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SUPPORTED_TANK_IDS.map(tankId => {
+                  const tank = tanks.find(t => t.id === tankId);
+                  const label = tank?.name || `Tank ${tankId}`;
+                  const on = tank?.maintenanceMode === true;
+                  return (
+                    <div key={tankId} className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg border ${on ? 'border-warning bg-warning/5' : 'border-border'}`}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{label}</p>
+                        <p className={`text-xs ${on ? 'text-warning font-medium' : 'text-muted-foreground'}`}>{on ? 'Under maintenance' : 'Normal'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={`Maintenance for ${label}`}
+                        disabled={!tank}
+                        onClick={() => setTankMaintenanceConfirm({ tankId, label, newState: !on })}
+                        className={`relative h-6 w-11 rounded-full transition-colors shrink-0 disabled:opacity-50 ${on ? 'bg-warning' : 'bg-muted'}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {isPumpDemoOn(localConfig as SystemConfig) && (
           <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border ${localConfig.pumpControlLock ? 'border-danger bg-danger/5' : 'border-border'}`}>
             <div className="flex items-center gap-3">
@@ -855,6 +914,25 @@ const Configuration = () => {
               <button onClick={() => setModeConfirm(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground">Cancel</button>
               <button onClick={confirmPumpMode} className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 transition">
                 Switch to {modeConfirm === 'manual' ? 'Manual' : 'Auto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tankMaintenanceConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div role="alertdialog" aria-labelledby="tank-maintenance-title" className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 border border-border/40 space-y-4 animate-in zoom-in-95 duration-200">
+            <h4 id="tank-maintenance-title" className="text-lg font-semibold">{tankMaintenanceConfirm.newState ? 'Enable' : 'Disable'} maintenance for {tankMaintenanceConfirm.label}</h4>
+            <p className="text-sm text-muted-foreground">
+              {tankMaintenanceConfirm.newState
+                ? `Alerts and the offline notice for ${tankMaintenanceConfirm.label} will be paused${isPumpDemoOn(config) ? ', and its controller will stop the pump and refuse pump commands' : ''}. The other tanks are not affected.`
+                : `${tankMaintenanceConfirm.label} returns to normal: its alerts${isPumpDemoOn(config) ? ' and pump controls' : ''} are enabled again.`}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setTankMaintenanceConfirm(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground">Cancel</button>
+              <button onClick={confirmTankMaintenance} className={`flex-1 rounded-lg px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 transition ${tankMaintenanceConfirm.newState ? 'bg-danger' : 'bg-safe'}`}>
+                {tankMaintenanceConfirm.newState ? 'Enable' : 'Disable'}
               </button>
             </div>
           </div>

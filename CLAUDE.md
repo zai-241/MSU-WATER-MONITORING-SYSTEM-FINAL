@@ -35,6 +35,10 @@ message says the reading may be inaccurate). Only the pump is held off while the
 Besides out-of-range voltage, the level sensor is also flagged faulty when its reading swings 25 % or more within
 30 s (a floating GPIO 35 from a disconnected sensor stays in range but wanders); see `LEVEL_UNSTABLE_RANGE`.
 The pump UI no longer says "demo"; the Admin Panel switch is called "Pump System" (DB key still `pumpDemoMode`).
+Maintenance works system-wide (`config/maintenanceMode`, "Maintenance Mode (all tanks)") or per tank
+(`tanks/{id}/maintenanceMode`, Admin Panel → Tank Maintenance, admin only in the rules). Either one pauses that tank's alerts,
+night watch and offline notice (`isTankInMaintenance()` in `alertEngine.ts`), and its ESP32 (read with the 1 s command poll)
+stops the pump and refuses ON commands (`refused-maintenance`). The Dashboard card shows "Under Maintenance". All four sketches have it.
 All four sketches have `PUMP_RELAY_ENABLED 1`: GPIO 32 drives the pump relay (HIGH = ON). Set it to 0 to run the pump logic without switching a pin.
 Live sensor readings (Admin Panel → calibration, `LiveCalibrationPanel.tsx`) replace the USB Serial Monitor for calibration:
 an admin writes `tanks/{id}/calibrationUntil` (server ms, 10 min per Start/+10 min, 30 min max, also enforced by the rules), and while it is in
@@ -53,7 +57,7 @@ because the firmware level deadband is 2 %. No firmware change; details in `docs
 
 | Path | Written by | Contents |
 |---|---|---|
-| `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin). `pumpOn` is the pump command: the ESP32 writes it only when it changes the pump itself or refuses a command, never in its regular sensor upload (that overwrote commands). It acknowledges each command with `pumpCommandAt` + `pumpCommandResult`; the dashboard shows a spinner until then (15 s timeout, `PUMP_COMMAND_TIMEOUT_MS`). After a reboot the ESP32 writes its own state (OFF) before reading commands |
+| `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin), `maintenanceMode` (per-tank maintenance, admin). `pumpOn` is the pump command: the ESP32 writes it only when it changes the pump itself or refuses a command, never in its regular sensor upload (that overwrote commands). It acknowledges each command with `pumpCommandAt` + `pumpCommandResult`; the dashboard shows a spinner until then (15 s timeout, `PUMP_COMMAND_TIMEOUT_MS`). After a reboot the ESP32 writes its own state (OFF) before reading commands |
 | `/config` | Admin Panel | Thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5), night watch (`nightWatchEnabled`, `nightStartHour`/`nightEndHour`, `nightFastDropPercent`, `nightSlowDropPercent`), maintenance mode, locks, `pumpDemoMode` (shown as "Pump System"; missing = on: shows the pump UI and lets the ESP32 run the pump), `pumpMode` (`"auto"` / `"manual"`, admin-only; missing = auto; manual skips the low-level auto start, safety stops stay; Tank 1 sketch only so far) |
 | `/history/tanks/{id}` | ESP32 | One sample every 10 min, also during a sensor fault (with `levelSensorOk` / `phSensorOk` flags; Reports marks those "Fault") |
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1. Dashboard pump commands (`PUMP_ON` / `PUMP_OFF`) carry `tankId` and `performedByRole`; Reports → Pump Activity Log pairs them with the controller's accepted/refused entry (`buildPumpEvents` in `reportLogs.ts`) |

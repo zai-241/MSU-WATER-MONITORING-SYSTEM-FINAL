@@ -12,10 +12,10 @@ import {
   isPumpDemoOn,
   getPumpMode,
 } from '@/store/useStore';
-import { offlineThresholdMs } from '@/lib/alertEngine';
+import { offlineThresholdMs, isTankInMaintenance } from '@/lib/alertEngine';
 import type { UserProfile } from '@/services/authService';
 import { useProcessedTankData } from '@/hooks/useUIStabilization';
-import { WifiOff, User, Loader2 } from 'lucide-react';
+import { WifiOff, User, Loader2, Wrench } from 'lucide-react';
 import { PUMP_FEEDBACK_MS } from '@/lib/constants';
 import { resolvePumpCommand, type PendingPumpCommand, type PumpCommandOutcome } from '@/lib/pumpCommand';
 import { useAuth } from '@/hooks/useAuth';
@@ -70,7 +70,10 @@ const TankCard = memo(({
   const canTogglePump = isAdmin || (isWorker && !config.pumpControlLock && processedTank.assignedWorker === currentUser?.id);
   const pumpMode = getPumpMode(config);
   const isPumpWaiting = pumpPending !== undefined;
-  const pumpToggleDisabled = disabled || isOffline || config.maintenanceMode || !canTogglePump || isPumpWaiting;
+  // This tank's own maintenance switch (the system-wide one has a banner above the cards)
+  const tankMaintenance = !disabled && tank.maintenanceMode === true;
+  const inMaintenance = !disabled && isTankInMaintenance(tank, config);
+  const pumpToggleDisabled = disabled || isOffline || inMaintenance || !canTogglePump || isPumpWaiting;
 
   return (
     <div className={`rounded-xl bg-card p-6 shadow-sm border transition-all ${
@@ -83,7 +86,12 @@ const TankCard = memo(({
             <p className="text-xs text-muted-foreground mt-1 font-medium">{processedTank.location}</p>
           )}
         </div>
-        {isPlanned ? (
+        {tankMaintenance ? (
+          <span data-testid="tank-maintenance-badge" className="px-3 py-1 rounded-full text-xs font-semibold bg-warning/20 text-warning border border-warning/40 flex items-center gap-1.5">
+            <Wrench size={12} />
+            Under Maintenance
+          </span>
+        ) : isPlanned ? (
           <span className="px-3 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
             Planned - IoT not yet installed
           </span>
@@ -167,6 +175,15 @@ const TankCard = memo(({
             )}
           </div>
         </div>
+        {tankMaintenance && (
+          <div
+            role="status"
+            data-testid="tank-maintenance-notice"
+            className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning font-medium"
+          >
+            Maintenance: alerts for this tank are paused{isPumpDemoOn(config) ? ' and its pump is held off' : ''}.
+          </div>
+        )}
         {!isPlanned && !disabled && !isOffline && (processedTank.levelSensorOk === false || processedTank.phSensorOk === false) && (
           <div
             role="status"
@@ -236,7 +253,7 @@ const TankCard = memo(({
                   aria-busy={isPumpWaiting}
                   disabled={pumpToggleDisabled}
                   onClick={() => onPumpToggle(processedTank.id, processedTank.name, !processedTank.pumpOn)}
-                  title={isOffline ? 'Pump toggle disabled: Controller is offline' : isPumpWaiting ? 'Waiting for the controller to confirm' : undefined}
+                  title={isOffline ? 'Pump toggle disabled: Controller is offline' : inMaintenance ? 'Pump toggle disabled: Maintenance mode' : isPumpWaiting ? 'Waiting for the controller to confirm' : undefined}
                   className={`relative h-6 w-11 rounded-full transition-colors ${
                     isPumpWaiting
                       ? `cursor-wait ${processedTank.pumpOn ? 'bg-primary/60' : 'bg-muted'}`
@@ -267,7 +284,7 @@ const TankCard = memo(({
             {isPumpWaiting ? 'Waiting for the controller to confirm…' : pumpFeedback?.message}
           </p>
         )}
-        {!isPlanned && !disabled && pumpMode === 'auto' && (
+        {!isPlanned && !disabled && !inMaintenance && pumpMode === 'auto' && (
           <p data-testid="pump-auto-note" className="text-[11px] text-muted-foreground text-right">
             Auto: the pump may restart by itself at or below {config.lowLevelThreshold}%.
           </p>
@@ -291,6 +308,7 @@ const TankCard = memo(({
   if (prevProps.pumpPending !== nextProps.pumpPending) return false;
   if (prevProps.pumpFeedback !== nextProps.pumpFeedback) return false;
   if (p.enabled !== n.enabled) return false;
+  if (p.maintenanceMode !== n.maintenanceMode) return false;
   if (p.pumpOn !== n.pumpOn) return false;
   if (prevProps.assignedWorkerName !== nextProps.assignedWorkerName) return false;
   if (p.status !== n.status) return false;
@@ -455,6 +473,7 @@ const Dashboard = () => {
     if (!targetTank || isTankPlanned(targetTank) || isTankControllerOffline(targetTank, serverTimeOffset, offlineMs)) {
       return; // Cannot toggle pump on planned tanks or when controller is offline
     }
+    if (isTankInMaintenance(targetTank, config)) return; // the controller refuses commands during maintenance
     if (pumpPending[tankId]) return; // the last command is still waiting for the controller
     setPumpConfirm({ tankId, tankName, newState });
   };

@@ -152,7 +152,10 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
 2. **Overflow Shutoff Protection**:
    - When water level reaches $\ge \text{overflowThreshold}$ (default **95%**), the pump is **stopped** immediately.
 3. **Safety Interlocks**:
-   - If `maintenanceMode == true`, the pump is forced **OFF** and automatic/manual starts are locked out.
+   - If maintenance is on, the pump is forced **OFF** and automatic/manual starts are locked out. Maintenance is either
+     system-wide (`config/maintenanceMode`) or for this tank only (`tanks/{id}/maintenanceMode`, read with the 1 s command
+     poll). On the web side the same two switches pause the tank's alerts, night watch and offline notice
+     (`isTankInMaintenance()` in `alertEngine.ts`); the other tanks keep working.
    - If `levelSensorOk == false`, the pump is forced **OFF** to avoid dry-running or unmonitored filling.
    - If `pumpControlLock == true`, manual toggles by Worker operators are rejected; only Admins can override.
 
@@ -301,6 +304,7 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | rssi | NUMBER | Wi-Fi signal, dBm |
 | wifiConnected, ethConnected, firebaseConnected | BOOLEAN | link status |
 | controllerOffline | BOOLEAN | set by the offline watchdog |
+| maintenanceMode | BOOLEAN | admin: this tank is under maintenance (no alerts or offline notice, pump held off); missing = off |
 | calibrationUntil | TIMESTAMP | admin: live calibration view open until (at most 30 min ahead) |
 | calibrationLive | OBJECT | ESP32, while the view is open: `voltage`, `heightM`, `percent`, `phVoltage`, `at` |
 | lastUpdate | TIMESTAMP | missing = controller never reported ("Planned") |
