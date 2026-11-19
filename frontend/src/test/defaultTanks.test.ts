@@ -72,11 +72,24 @@ describe('Default tanks 1–4', () => {
     unmount();
   });
 
-  it('registers only Tanks 1–4', async () => {
-    await expect(addTank({ id: '5', name: 'Tank 5' })).rejects.toThrow(/Only Tanks 1, 2, 3, 4/);
+  it('registers any whole-number tank ID, also beyond Tank 4', async () => {
+    for (const id of ['0', '07', 'A', '2.5', '-1', '1000']) {
+      await expect(addTank({ id, name: `Tank ${id}` })).rejects.toThrow(/whole number from 1 to 999/);
+    }
     expect(mockSet).not.toHaveBeenCalled();
     await expect(addTank({ id: '2', name: 'Reservoir Tank 2' })).resolves.toBeUndefined();
-    expect(mockSet).toHaveBeenCalledTimes(1);
+    await expect(addTank({ id: '5', name: 'Reservoir Tank 5' })).resolves.toBeUndefined();
+    await expect(addTank({ id: '12', name: 'Reservoir Tank 12' })).resolves.toBeUndefined();
+    expect(mockSet).toHaveBeenCalledTimes(3);
+    expect(mockSet.mock.calls[1][0]).toEqual({ _path: 'tanks/5' });
+  });
+
+  it('keeps a registered Tank 5 and does not recreate it as a default', () => {
+    const { result, unmount } = renderHook(() => useTanks());
+    emitTanks({ '1': tank1, '2': { name: 'T2' }, '3': { name: 'T3' }, '4': { name: 'T4' }, '5': { name: 'Reservoir Tank 5' } });
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(result.current.tanks.map(t => t.id)).toEqual(['1', '2', '3', '4', '5']);
+    unmount();
   });
 
   it('refuses to delete Tanks 1–4 but can remove a stray tank', async () => {

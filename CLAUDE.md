@@ -1,6 +1,6 @@
 # MSU Water Monitoring System: System Map
 
-IoT water level and pH monitoring for up to four reservoir tanks (Tanks 1–4) at the MSU Motor Pool; only Tank 1
+IoT water level and pH monitoring for reservoir tanks at the MSU Motor Pool (Tanks 1–4 built in, more can be added); only Tank 1
 (tested on a 200 L drum model of Reservoir Tank No. 1) has hardware. This is also the
 capstone thesis project. This file is the single source of truth for how the parts fit together.
 **Update it whenever the system design changes** (new part, new database path, new deploy step).
@@ -9,7 +9,7 @@ capstone thesis project. This file is the single source of truth for how the par
 
 | Part | Where | What it does | How it ships |
 |---|---|---|---|
-| Firmware | `backend/firmware/esp32_firmware.ino` (Tank 1); `backend/firmware/tank2/`, `tank3/`, `tank4/` (same sketch, `TANK_ID` 2–4) | ESP32 reads level (GPIO 35) and pH (GPIO 34), filters, runs the pump logic and drives the pump relay on GPIO 32 (`PUMP_RELAY_ENABLED 1`; HIGH = ON, LOW at boot), writes to RTDB over HTTPS REST. Ethernet (W5500 over SPI: SCK 18, MISO 19, MOSI 23, CS 5, INT 4, RST 14; needs ESP32 Arduino core 3.x) first, Wi-Fi as hot-standby backup. Ethernet is the default route whenever it is up; traffic moves to Wi-Fi on cable unplug or after 3 failed/slow (>4 s) polls on Ethernet, and back to Ethernet when it returns (retried every 60 s). Wi-Fi is re-joined if it gets no reply within 10 s of a switch. After a re-plug the W5500 is restarted if it has no IP within 3 s; after any switch the sensor upload goes first. If nothing reaches Firebase for 3 min (any link) the ESP32 restarts itself, but never while the pump is ON (wait doubles to 24 min max while the internet stays down); each start logs its reset reason ("System Power Tracker"). Firebase requests: 5 s read timeout, 10 s TLS handshake limit, sensor upload on the keep-alive poll connection. Failover details and measured times: `docs/Methodology.md` 4.2. | Arduino IDE upload over USB |
+| Firmware | `backend/firmware/esp32_firmware.ino` (Tank 1); `backend/firmware/tank2/`, `tank3/`, `tank4/` (same sketch, `TANK_ID` 2–4); a sketch for Tank 5+ is made with `npm run firmware:new-tank -- <id>` | ESP32 reads level (GPIO 35) and pH (GPIO 34), filters, runs the pump logic and drives the pump relay on GPIO 32 (`PUMP_RELAY_ENABLED 1`; HIGH = ON, LOW at boot), writes to RTDB over HTTPS REST. Ethernet (W5500 over SPI: SCK 18, MISO 19, MOSI 23, CS 5, INT 4, RST 14; needs ESP32 Arduino core 3.x) first, Wi-Fi as hot-standby backup. Ethernet is the default route whenever it is up; traffic moves to Wi-Fi on cable unplug or after 3 failed/slow (>4 s) polls on Ethernet, and back to Ethernet when it returns (retried every 60 s). Wi-Fi is re-joined if it gets no reply within 10 s of a switch. After a re-plug the W5500 is restarted if it has no IP within 3 s; after any switch the sensor upload goes first. If nothing reaches Firebase for 3 min (any link) the ESP32 restarts itself, but never while the pump is ON (wait doubles to 24 min max while the internet stays down); each start logs its reset reason ("System Power Tracker"). Firebase requests: 5 s read timeout, 10 s TLS handshake limit, sensor upload on the keep-alive poll connection. Failover details and measured times: `docs/Methodology.md` 4.2. | Arduino IDE upload over USB |
 | Database rules | `backend/cloud/database.rules.json`, `firestore.rules` | Role-based access (admin / worker / viewer / device, read from `/roles`). On `tanks/{id}` a worker may write only `pumpOn`, on an assigned tank, while the pump lock is off | `npx firebase deploy --only database,firestore` |
 | Alert worker | `backend/worker/src/index.ts` | Always-on Node process: evaluates alerts, offline watchdog, night watch (leak / open faucet), push (FCM), 90-day retention, heartbeat to `/system/worker` | Render free Web Service, auto-deploys on push to `main` (key as a Render secret file, kept awake by UptimeRobot and cron-job.org, both pinging `/health`; Render's Auto-Deploy setting must be "On Commit"). Locally: `npm run worker` (needs `backend/worker/.env`). Run only one. |
 | Web app | `frontend/` (React 18 + TS + Vite + shadcn/ui) | Dashboard, Admin Panel, Reports, Logs, Notifications | `npm run deploy:hosting` → https://msu-water-monitoring-system.web.app |
@@ -66,12 +66,15 @@ because the firmware level deadband is 2 %. No firmware change; details in `docs
 | `/system` | Worker | Heartbeat (`/system/worker`). If it is gone for 60 s, an open dashboard raises the `alert-service-offline` notice; the worker resolves it on start. While it is gone, browsers run the offline watchdog, but mark a controller offline only after their own connection has been up and the page awake for 10 s (`OFFLINE_CHECK_SETTLE_MS`), so a resumed tab or APK does not raise a false offline |
 | `/roles/{uid}` | Admin | `admin`, `worker`, `viewer` or `device` |
 
-Tanks 2 to 4 exist in the UI as "Planned - IoT not yet installed" until their controller reports (no `lastUpdate`).
-Only Tank 1 has hardware. Their firmware is ready in `backend/firmware/tank2-4/`; each needs its own device account
-(Admin Panel → Device Accounts) and `secrets.h`. The web app creates any missing tank 1–4 record (never overwrites one),
-and the Admin Panel calibration form has a Tank 1–4 selector. The four-tank limit is enforced in the web app
-(`SUPPORTED_TANK_IDS` in `constants.ts`): Tank Assignment registers only IDs 1–4, and Tanks 1–4 cannot be deleted
-(disable them instead). The database rules do not enforce it.
+Tanks 2 to 4 (and any added tank) exist in the UI as "Planned - IoT not yet installed" until their controller reports
+(no `lastUpdate`). Only Tank 1 has hardware. Firmware for Tanks 2–4 is ready in `backend/firmware/tank2-4/`; each needs its
+own device account (Admin Panel → Device Accounts) and `secrets.h`. Tanks 1–4 are built in (`DEFAULT_TANK_IDS` in
+`constants.ts`): the web app creates any missing one (never overwrites one), and they cannot be deleted (disable them instead).
+There is no tank limit: Tank Assignment registers any free whole-number ID from 1 to 999 (`isValidTankId`, `MAX_TANK_ID`;
+the ID becomes the sketch's `TANK_ID`), and an added tank can be deleted. Everything per tank follows the registered tanks:
+Dashboard cards, calibration tabs, Tank Maintenance switches, Reports, alerts, night watch and the offline watchdog (worker
+and browser). The database rules accept any tank ID. For a new tank's controller: `npm run firmware:new-tank -- <id>`
+copies the Tank 4 sketch to `backend/firmware/tank<id>/` with that `TANK_ID`, then device account, `secrets.h`, upload.
 
 ## Shared logic: change it in one place
 

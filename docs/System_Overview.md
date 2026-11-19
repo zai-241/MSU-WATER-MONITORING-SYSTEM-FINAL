@@ -182,7 +182,7 @@ Sensor calibration parameters can be adjusted in real time via the **Admin Panel
    - **Neutral Voltage ($V_{neutral}$)**: Voltage reading when probe is immersed in pH 7.0 buffer solution (default `2.50 V`).
    - **Slope Sensitivity**: Voltage difference per pH unit (default `0.18 V/pH`).
    - **pH Offset**: Fine reading offset to calibrate against reference hand-held meters (default `0.00`).
-3. **Live sensor readings** (no USB cable needed): choose the tank (Tank 1–4) and press **Start**. The
+3. **Live sensor readings** (no USB cable needed): choose the tank and press **Start**. The
    panel shows the level voltage, height, percentage and pH voltage once per second for 10 minutes
    (**+10 min** extends it, 30 minutes at most). Fill the tank to empty/full, press **Use as Vmin** /
    **Use as Vmax** (or **Use as pH neutral** in pH 7 buffer), then **Save All Configurations**.
@@ -191,9 +191,9 @@ Sensor calibration parameters can be adjusted in real time via the **Admin Panel
 * **Automatic Pump Refill**: When water level drops $\le 15\%$ (`lowLevelThreshold`), the pump is started automatically. A 30-second anti-chatter cooldown prevents immediate restarts.
 * **Overflow Protection**: When water level reaches $\ge 95\%$ (`overflowThreshold`), the pump is immediately stopped.
 * **Maintenance Mode**: Activating Maintenance Mode via the Admin Panel forces the physical pump relay OFF, suppresses alarms, and prevents automatic or manual pump activation during physical maintenance.
-* **Tank Maintenance (per tank)**: Admin Panel → System Controls → Tank Maintenance has one switch for each of Tanks 1–4. It does the same as Maintenance Mode for that tank only (alerts, night watch and the offline notice paused; pump held off and pump commands refused), so a technician can work on one tank while the others stay monitored. The Dashboard card shows **"Under Maintenance"**.
+* **Tank Maintenance (per tank)**: Admin Panel → System Controls → Tank Maintenance has one switch for each registered tank. It does the same as Maintenance Mode for that tank only (alerts, night watch and the offline notice paused; pump held off and pump commands refused), so a technician can work on one tank while the others stay monitored. The Dashboard card shows **"Under Maintenance"**.
 * **Pump Control Lock**: Restricts pump manual toggles exclusively to Administrators, preventing standard Workers from activating relays.
-* **Multi-Tank Infrastructure**: Tank 1 is the active IoT-connected reservoir. Tanks 2–4 are pre-configured expansion slots labeled **"Planned - IoT node not yet installed"** in the dashboard.
+* **Multi-Tank Infrastructure**: Tank 1 is the active IoT-connected reservoir. Tanks 2–4 are pre-configured expansion slots labeled **"Planned - IoT node not yet installed"** in the dashboard. An admin can register more tanks (Tank 5, 6, ...) in Admin Panel → Tank Assignment; each gets its own card, calibration, maintenance switch, reports and alerts, and `npm run firmware:new-tank -- <id>` makes its controller sketch.
 
 ### 4.3 Night Watch (Leak Detection)
 Admin Panel > **Night Watch (Leak Detection)**. No water should be used at night, so a falling level

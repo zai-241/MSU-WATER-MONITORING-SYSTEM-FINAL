@@ -4,7 +4,7 @@ import { Power, Settings, Loader2, Bell, Hand, Moon, Wrench } from 'lucide-react
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
-import { SUPPORTED_TANK_IDS } from '@/lib/constants';
+import { DEFAULT_TANK_IDS, tankIdsInOrder } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
 import LiveCalibrationPanel from './LiveCalibrationPanel';
 import { errorMessage } from '@/lib/utils';
@@ -75,9 +75,6 @@ const calibrationSchema = z.object({
   path: ['levelVmin'],
 });
 
-/** Tanks whose sensor calibration can be edited here (Tank 1 live, Tanks 2–4 planned) */
-const CALIBRATION_TANK_IDS = SUPPORTED_TANK_IDS;
-
 type ControlKey = 'maintenanceMode' | 'pumpControlLock' | 'pumpDemoMode';
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -88,6 +85,8 @@ type Editable<T> = { [K in keyof T]: T[K] | string };
 const Configuration = () => {
   const { config, updateConfig } = useConfig();
   const { tanks, updateTank } = useTanks();
+  // Every registered tank (Tanks 1–4 and any added in Tank Assignment), in number order
+  const tankIds = tanks.length ? tankIdsInOrder(tanks.map(t => t.id)) : [...DEFAULT_TANK_IDS];
   const workerStatus = useWorkerStatus();
   const addLog = addSystemLog;
   const { currentUser } = useAuth();
@@ -106,7 +105,7 @@ const Configuration = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   // Tank whose calibration the form shows, and a tank the user picked while the form had unsaved edits
-  const [selectedTankId, setSelectedTankId] = useState<string>(CALIBRATION_TANK_IDS[0]);
+  const [selectedTankId, setSelectedTankId] = useState<string>(DEFAULT_TANK_IDS[0]);
   const [pendingTankId, setPendingTankId] = useState<string | null>(null);
 
   const selectedTank = tanks.find(t => t.id === selectedTankId);
@@ -405,7 +404,7 @@ const Configuration = () => {
 
       <div className="rounded-xl bg-card p-6 shadow-sm border border-border">
         <div role="tablist" aria-label="Tank to calibrate" className="mb-4 flex flex-wrap gap-2">
-          {CALIBRATION_TANK_IDS.map(id => {
+          {tankIds.map(id => {
             const active = id === selectedTankId;
             return (
               <button
@@ -780,7 +779,7 @@ const Configuration = () => {
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {SUPPORTED_TANK_IDS.map(tankId => {
+                {tankIds.map(tankId => {
                   const tank = tanks.find(t => t.id === tankId);
                   const label = tank?.name || `Tank ${tankId}`;
                   const on = tank?.maintenanceMode === true;

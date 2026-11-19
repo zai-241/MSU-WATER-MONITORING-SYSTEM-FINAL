@@ -4,7 +4,7 @@ import { Trash2, Power, Loader2, Plus, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import type { UserProfile } from '@/services/authService';
 import { errorMessage } from '@/lib/utils';
-import { SUPPORTED_TANK_IDS, isSupportedTankId } from '@/lib/constants';
+import { isDefaultTankId, isValidTankId, nextFreeTankId, MAX_TANK_ID } from '@/lib/constants';
 
 interface TankAssignmentProps {
   users: UserProfile[];
@@ -14,8 +14,8 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
   const { tanks, updateTank, addTank, deleteTank } = useTanks();
   // Include only active worker accounts in the operators listing
   const workers = users.filter(u => u.role === 'worker' && u.status === 'active');
-  // Only Tanks 1–4 can be registered, and only the ones missing from the database
-  const freeTankIds = SUPPORTED_TANK_IDS.filter(id => !tanks.some(t => t.id === id));
+  // Any whole-number ID that is not taken yet; the form suggests the lowest free one
+  const suggestedTankId = nextFreeTankId(tanks.map(t => t.id));
 
   // Modal and Form States for CRUD
   const [showAddTank, setShowAddTank] = useState(false);
@@ -52,30 +52,32 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
   };
 
   const handleAddTankSubmit = async () => {
-    if (!newTankData.id || !newTankData.name) {
+    const id = newTankData.id.trim();
+    const name = newTankData.name.trim();
+    if (!id || !name) {
       setAddTankError('Please fill in both Tank ID and Name.');
       return;
     }
 
-    if (!isSupportedTankId(newTankData.id)) {
-      setAddTankError(`Only Tanks ${SUPPORTED_TANK_IDS.join(', ')} are supported.`);
+    if (!isValidTankId(id)) {
+      setAddTankError(`Tank ID must be a whole number from 1 to ${MAX_TANK_ID} (it becomes TANK_ID in the tank's firmware).`);
       return;
     }
 
-    if (tanks.some(t => t.id === newTankData.id)) {
-      setAddTankError(`A tank with ID "${newTankData.id}" already exists.`);
+    if (tanks.some(t => t.id === id)) {
+      setAddTankError(`A tank with ID "${id}" already exists.`);
       return;
     }
 
     setIsAddingTank(true);
     try {
       await addTank({
-        id: newTankData.id,
-        name: newTankData.name,
-        location: newTankData.location || 'Unspecified',
+        id,
+        name,
+        location: newTankData.location.trim() || 'Unspecified',
         assignedWorker: null,
       });
-      toast.success(`Tank "${newTankData.name}" successfully registered!`);
+      toast.success(`Tank "${name}" successfully registered!`);
       setShowAddTank(false);
       setNewTankData({ id: '', name: '', location: '' });
     } catch (err) {
@@ -131,12 +133,10 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
         </h3>
         <button
           onClick={() => {
-            setNewTankData({ id: freeTankIds[0] ?? '', name: freeTankIds[0] ? `Reservoir Tank ${freeTankIds[0]}` : '', location: '' });
+            setNewTankData({ id: suggestedTankId, name: `Reservoir Tank ${suggestedTankId}`, location: '' });
             setAddTankError('');
             setShowAddTank(true);
           }}
-          disabled={freeTankIds.length === 0}
-          title={freeTankIds.length === 0 ? `All supported tanks (${SUPPORTED_TANK_IDS.join(', ')}) are registered` : undefined}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus size={14} /> Register New Tank
@@ -208,7 +208,7 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
                     </button>
 
                     {/* Tanks 1–4 cannot be deleted (the app recreates them); disable them instead */}
-                    {!isSupportedTankId(tank.id) ? (
+                    {!isDefaultTankId(tank.id) ? (
                       <button
                         onClick={() => setDeletingTank(tank)}
                         className="rounded-lg border border-danger/30 p-1.5 text-danger hover:bg-danger/5"
@@ -239,26 +239,35 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
             
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank ID (Tanks 1–4 only)</label>
-                <select
+                <label htmlFor="new-tank-id" className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank ID</label>
+                <input
+                  id="new-tank-id"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_TANK_ID}
+                  step={1}
                   value={newTankData.id}
                   onChange={e => {
-                    setNewTankData({ ...newTankData, id: e.target.value });
+                    const id = e.target.value;
+                    // Keep the suggested name in step with the ID unless the admin typed their own
+                    const autoName = newTankData.name === '' || newTankData.name === `Reservoir Tank ${newTankData.id}`;
+                    setNewTankData({ ...newTankData, id, name: autoName ? `Reservoir Tank ${id}` : newTankData.name });
                     setAddTankError('');
                   }}
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                >
-                  {freeTankIds.map(id => (
-                    <option key={id} value={id}>Tank {id}</option>
-                  ))}
-                </select>
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  A whole number from 1 to {MAX_TANK_ID}. The tank's controller uses the same number (TANK_ID in its firmware).
+                </p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank Name</label>
+                <label htmlFor="new-tank-name" className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Tank Name</label>
                 <input
+                  id="new-tank-name"
                   type="text"
-                  placeholder="e.g. Reservoir Tank 2"
+                  placeholder="e.g. Reservoir Tank 5"
                   value={newTankData.name}
                   onChange={e => {
                     setNewTankData({ ...newTankData, name: e.target.value });

@@ -86,7 +86,8 @@ mindmap
 * **FR-01.2**: The system must display live pH values on a color-coded gauge (Safe: Green [6.5–8.5], Warning/Critical: Amber/Red).
 * **FR-01.3**: The system must display network metrics (Ethernet/Wi-Fi active link, last update timestamp, and RSSI in dBm).
 * **FR-01.4**: The system must report individual sensor health status ("OK" vs "Fault").
-* **FR-01.5**: For expansion tanks without hardware nodes (Tanks 2–4), the UI must display a **"Planned - IoT node not yet installed"** indicator with placeholder values (`--`).
+* **FR-01.5**: For expansion tanks without hardware nodes (Tanks 2–4 and any added tank), the UI must display a **"Planned - IoT node not yet installed"** indicator with placeholder values (`--`).
+* **FR-01.6**: Administrators must be able to register additional tanks beyond Tanks 1–4 (any free whole-number ID from 1 to 999). Tanks 1–4 cannot be deleted (only disabled); added tanks can be deleted.
 
 ### 3.2 Pump & System Controls (FR-02)
 * **FR-02.1**: Administrators must be able to lock out manual pump toggling for Worker operators (`pumpControlLock = true`).
@@ -97,13 +98,13 @@ mindmap
 * **FR-02.3**: Automatic pump control must start the pump when water level $\le$ `lowLevelThreshold` (default 15%) and stop the pump when level $\ge$ `overflowThreshold` (default 95%).
 * **FR-02.4**: An anti-chatter cooldown of 30 seconds (`PUMP_MIN_OFF_TIME = 30000ms`) must elapse between consecutive pump activations.
 * **FR-02.5**: Manual pump overrides must log the operator's identity and timestamp to the Firebase event log.
-* **FR-02.6**: Administrators must be able to put a single tank (Tanks 1–4) under maintenance (`tanks/{id}/maintenanceMode`).
+* **FR-02.6**: Administrators must be able to put a single tank (any registered tank) under maintenance (`tanks/{id}/maintenanceMode`).
   For that tank only, it does what FR-02.2 does system-wide: its controller stops the pump and refuses pump ON commands, and
   its alerts, night watch and offline notice are paused. The Dashboard marks the tank "Under Maintenance", and each change
   is logged with the admin's name and the tank.
 
 ### 3.3 Remote Sensor Calibration (FR-03)
-* **FR-03.1**: The system must support remote calibration adjustments for each tank (`tanks/1` to `tanks/4`, chosen with a Tank 1–4 selector), updating $V_{min}$, $V_{max}$, tank height, tank capacity, level offset, $V_{neutral}$, pH slope, and pH offset.
+* **FR-03.1**: The system must support remote calibration adjustments for each tank (`tanks/{id}`, chosen with a tank selector that lists every registered tank), updating $V_{min}$, $V_{max}$, tank height, tank capacity, level offset, $V_{neutral}$, pH slope, and pH offset.
 * **FR-03.2**: Calibration adjustments committed in the Admin Panel must persist to Firebase RTDB and synchronize with the ESP32 node during its next polling cycle ($\le 1\text{ second}$).
 * **FR-03.3**: The Admin Panel must show live sensor readings for calibration (filtered level voltage, computed height, level percentage and pH voltage) once per second while an administrator has the view open, for at most 30 minutes, and let the administrator copy a reading into the $V_{min}$, $V_{max}$ or $V_{neutral}$ field before saving.
 

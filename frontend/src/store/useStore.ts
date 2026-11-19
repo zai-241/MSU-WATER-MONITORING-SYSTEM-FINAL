@@ -37,8 +37,9 @@ import {
   STORAGE_KEYS,
   DEFAULT_TANK_CAPACITY_LITERS,
   tankCapacityLiters,
-  SUPPORTED_TANK_IDS,
-  isSupportedTankId,
+  MAX_TANK_ID,
+  isDefaultTankId,
+  isValidTankId,
 } from '@/lib/constants';
 import { planRaise, planResolve, archiveOf, type RaisePlan, type RaiseOutcome } from '@/lib/alertEngine';
 
@@ -705,8 +706,8 @@ export function addTank(tank: Pick<Tank, 'id' | 'name'> & Partial<Tank>) {
   if (!tank.id || tank.id.trim() === '') {
     return Promise.reject(new Error('Tank ID is required for registration.'));
   }
-  if (!isSupportedTankId(tank.id)) {
-    return Promise.reject(new Error(`Only Tanks ${SUPPORTED_TANK_IDS.join(', ')} are supported.`));
+  if (!isValidTankId(tank.id)) {
+    return Promise.reject(new Error(`Tank ID must be a whole number from 1 to ${MAX_TANK_ID}.`));
   }
   const newTank: Tank = {
     waterLevel: 0,
@@ -761,7 +762,7 @@ export function deleteTank(id: string) {
   }
   // Tanks 1–4 are recreated on the next page load (addMissingDefaultTanks), so deleting one
   // would only wipe its calibration. Admins disable a tank instead.
-  if (isSupportedTankId(id)) {
+  if (isDefaultTankId(id)) {
     return Promise.reject(new Error(`Tank ${id} is one of the system's tanks and cannot be deleted. Disable it instead.`));
   }
   return remove(ref(database, `tanks/${id}`));

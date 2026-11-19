@@ -29,13 +29,34 @@ export const HISTORY_PAGE_SIZE = 200;
 export const RETENTION_DAYS = 90;
 
 /**
- * The tanks the system supports: Reservoir Tanks 1–4 (firmware exists only for these).
- * Registration accepts only these IDs, and they cannot be deleted (the app recreates a missing one).
+ * The system's own tanks: Reservoir Tanks 1–4. The app creates a missing one, and they cannot be
+ * deleted (disable them instead). An admin can register more tanks (5, 6, ...) in Tank Assignment.
  */
-export const SUPPORTED_TANK_IDS = ['1', '2', '3', '4'] as const;
+export const DEFAULT_TANK_IDS = ['1', '2', '3', '4'] as const;
 
-export function isSupportedTankId(id: string): boolean {
-  return (SUPPORTED_TANK_IDS as readonly string[]).includes(id);
+export function isDefaultTankId(id: string): boolean {
+  return (DEFAULT_TANK_IDS as readonly string[]).includes(id);
+}
+
+/** Highest tank ID that can be registered. IDs are whole numbers because the firmware's TANK_ID is an int. */
+export const MAX_TANK_ID = 999;
+
+/** A tank ID an admin may register: a whole number from 1 to MAX_TANK_ID, without leading zeros. */
+export function isValidTankId(id: string): boolean {
+  return /^[1-9]\d*$/.test(id) && Number(id) <= MAX_TANK_ID;
+}
+
+/** Tank IDs in number order (1, 2, ..., 10), not text order (1, 10, 2). */
+export function tankIdsInOrder(ids: readonly string[]): string[] {
+  return [...ids].sort((a, b) => (Number(a) || Infinity) - (Number(b) || Infinity) || a.localeCompare(b));
+}
+
+/** The lowest whole-number tank ID that is not taken yet. */
+export function nextFreeTankId(existingIds: readonly string[]): string {
+  const taken = new Set(existingIds);
+  let id = 1;
+  while (taken.has(String(id))) id++;
+  return String(id);
 }
 
 /**

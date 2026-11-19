@@ -45,7 +45,7 @@ import { toast } from 'sonner';
 import { useTankHistory, isLevelSampleFaulty, isPhSampleFaulty, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 // exceljs and jsPDF are large: reportExport is loaded only when an export button is clicked (see handleExport*)
 const loadReportExport = () => import('@/lib/reportExport');
-import { estimateVolumeLiters, tankCapacityLiters, SUPPORTED_TANK_IDS } from '@/lib/constants';
+import { estimateVolumeLiters, tankCapacityLiters, DEFAULT_TANK_IDS, tankIdsInOrder } from '@/lib/constants';
 import { formatDate, formatDateTime, formatTime } from '@/lib/dateFormat';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
@@ -189,7 +189,7 @@ const Reports = () => {
   );
 
   // Pump Activity Log: who turned which tank's pump on or off. Has its own tank filter
-  // (all tanks or Tank 1–4), independent of the reservoir picked above.
+  // (all tanks or one tank), independent of the reservoir picked above.
   const [pumpLogTank, setPumpLogTank] = useState<string>('all');
   const [pumpLogSource, setPumpLogSource] = useState<'all' | 'user' | 'automatic'>('all');
   const [pumpLogPage, setPumpLogPage] = useState(1);
@@ -1379,7 +1379,7 @@ const Reports = () => {
                   className="w-full lg:w-48 text-sm bg-background border border-border/60 hover:border-primary/50 focus:border-primary px-3 py-2 rounded-lg outline-none transition text-foreground"
                 >
                   <option value="all">All tanks</option>
-                  {SUPPORTED_TANK_IDS.map(id => (
+                  {(allTanks.length ? tankIdsInOrder(allTanks.map(t => t.id)) : [...DEFAULT_TANK_IDS]).map(id => (
                     <option key={id} value={id}>{tankLabel(id)}</option>
                   ))}
                 </select>
