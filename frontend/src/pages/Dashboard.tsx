@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 import WaterGauge from '@/components/WaterGauge';
 import {
   useTanks,
@@ -22,11 +22,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { firestore } from '@/config/firebase';
 import { formatLastSeen, formatRelativeTime } from '@/lib/formatTime';
-import { useTankHistory } from '@/hooks/useTankHistory';
-import { usageIntervals, usageProfile, predictTimeToLevel, durationLabel, clockLabel } from '@/lib/predictive';
-
-/** Days of history the tank card uses to learn the usual rate of use */
-const FORECAST_HISTORY_DAYS = 7;
 
 interface TankCardProps {
   tank: Tank;
@@ -70,21 +65,6 @@ const TankCard = memo(({
     processedTank.status === 'warning' ? 'warning' :
     'safe';
   const disabled = !processedTank.enabled;
-
-  // Predicted time until the low threshold, from the hour-of-day use pattern of the last 7 days
-  const showForecast = !isPlanned && !disabled && !isOffline && tank.levelSensorOk !== false;
-  const { historySamples } = useTankHistory(showForecast ? tank.id : '', FORECAST_HISTORY_DAYS);
-  const usage = useMemo(() => usageProfile(usageIntervals(historySamples), 100), [historySamples]);
-  const forecastMinute = Math.floor(nowServer / 60_000);
-  const timeToLow = useMemo(
-    () => (showForecast ? predictTimeToLevel(tank.waterLevel, config.lowLevelThreshold, usage, forecastMinute * 60_000) : null),
-    [showForecast, tank.waterLevel, config.lowLevelThreshold, usage, forecastMinute]
-  );
-  const timeToLowText = !timeToLow ? null
-    : timeToLow.kind === 'below' ? 'At or below now'
-    : timeToLow.kind === 'hours' ? `${durationLabel(timeToLow.hours)} (${clockLabel(timeToLow.at, forecastMinute * 60_000)})`
-    : timeToLow.kind === 'beyond' ? 'More than 3 days'
-    : 'Learning usage pattern';
 
   const isWorker = currentUser?.role === 'worker';
   const canTogglePump = isAdmin || (isWorker && !config.pumpControlLock && processedTank.assignedWorker === currentUser?.id);
@@ -202,14 +182,6 @@ const TankCard = memo(({
             </span>
             {' - monitoring continues; readings may be inaccurate until the sensor is checked.'}
             {processedTank.levelSensorOk === false && isPumpDemoOn(config) && ' The pump stays off.'}
-          </div>
-        )}
-        {timeToLowText && (
-          <div className="flex justify-between border-b border-border pb-2" data-testid="time-to-low">
-            <span className="text-muted-foreground">Est. time to {config.lowLevelThreshold}%:</span>
-            <span className="font-medium text-xs" title="Predicted from the usual water use for each hour of the day over the last 7 days">
-              {timeToLowText}
-            </span>
           </div>
         )}
         <div className="flex justify-between border-b border-border pb-2">

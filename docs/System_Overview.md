@@ -214,7 +214,6 @@ Reports > **Predictive Analytics** (below the charts), for the selected tank and
   and per day of the week (peaks highlighted).
 * **Expected use today**: the average for today's weekday, next to the use so far today.
 * **Time until 15%**: when the level is expected to reach the low threshold at the usual rate of use.
-  The same estimate is on each Dashboard tank card ("Est. time to 15%", last 7 days).
 * **pH trend**: rising, falling or stable over the last 24 hours, and when it would pass a limit.
 * Included in the Excel (sheet), PDF (section 3), CSV (blocks after the data) and print view.
 * Needs about a day of history; it is based on averages of past use, not machine learning.
