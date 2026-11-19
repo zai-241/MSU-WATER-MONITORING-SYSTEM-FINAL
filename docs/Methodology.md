@@ -201,6 +201,39 @@ is down), in `evaluateNight()` in `frontend/src/lib/alertEngine.ts`. The firmwar
 the drum faucet slightly, and record the time from opening to the alert; repeat with a slow drip and
 read the 3 AM (end-of-window) warning.
 
+### 4.4 Predictive Analytics (Usage Patterns and Forecasts)
+Computed in the web app from the 10-minute history (`frontend/src/lib/predictive.ts`); no firmware
+or database change. Shown in Reports (Predictive Analytics panel, for the selected range) and as
+"Est. time to 15%" on each live Dashboard tank card (last 7 days). All hours and days are Philippine
+time (UTC+8). These are averages of past use, not machine learning.
+
+1. **Water use per interval**: the level drop between two consecutive samples, in % of the tank
+   (liters = % x `capacityLiters`). An interval is left out (not counted as zero use) if the pump
+   is on in either sample, either sample has a level sensor fault, or the samples are more than
+   25 min apart. A reference level follows the lowest reading since the last refill, so a reading
+   that steps up and back by the 2 % deadband is not counted twice; a rise of 4 % or more without
+   the pump counts as a refill.
+2. **Glitch filters** (added after checking the real Tank 1 history, which had jumps such as
+   100 -> 30 -> 99 and 34 -> 100 -> 0 -> 71 during sensor tests): a single reading 8 % or more away
+   from both neighbours that comes back is skipped (`SPIKE_PERCENT`), and a drop of more than 25 %
+   in one 10-minute interval is treated as a sensor jump, not use (`MAX_DROP_PER_INTERVAL_PERCENT`).
+3. **Peak hours**: for each hour of the day, the average use over the days that had at least 3 of
+   that hour's 6 intervals (scaled to a full hour). The three highest hours are shown.
+4. **Peak day**: for each day of the week, the average daily use over the days with at least 60 %
+   of their 144 intervals (scaled to a full day). The highest is the peak day, the lowest the quietest.
+5. **Expected use today**: the average for today's weekday, or of all days if that weekday has no
+   complete day yet, next to the use measured so far today.
+6. **Time until the low threshold**: starting from the live level, the hour-of-day averages are
+   subtracted hour by hour (hours without data use the mean of the known hours) until the level
+   reaches `lowLevelThreshold`; not projected beyond 72 h. Needs at least 6 hours of the day seen.
+7. **pH trend**: a least-squares line through the last 24 h of pH readings (sensor faults left out,
+   at least 12 readings). Under 0.1 pH per day is "stable"; otherwise the panel shows when the line
+   would pass the limit it is heading to, if within 72 h.
+
+On the Tank 1 drum history (26 Oct to 19 Nov 2026, 20 complete days) this gave about 18.6 L per
+day, peak hour 2 to 3 PM and peak day Monday. The drum is used little, so the patterns will change
+once the real reservoir is monitored.
+
 ## 5. Database Schema & Data Models
 
 The system stores data in two Firebase databases. **Cloud Firestore** holds only user profiles. The **Firebase Realtime Database (RTDB)** holds everything that changes live: tank readings, settings, history, logs, alerts, roles and per-user state. The figures `docs/diagrams/images/Data_Model_1.png` (Firestore, the RTDB path tree and the smaller records) and `Data_Model_2.png` (tanks, history, notifications, logs) show this model; the ERD (Figure 3-12) shows the relationships between records.

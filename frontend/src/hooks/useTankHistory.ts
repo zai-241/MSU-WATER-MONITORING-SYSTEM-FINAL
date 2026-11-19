@@ -56,43 +56,52 @@ export function useTankHistory(selectedTankId: string, days: number) {
 
     setIsLoadingHistory(true);
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const historyRef = ref(database, `history/tanks/${selectedTankId}`);
-    const historyQuery = query(
-      historyRef,
-      orderByChild('timestamp'),
-      startAt(cutoff),
-      limitToLast(5000)
-    );
+    let unsubscribe: () => void;
+    try {
+      const historyRef = ref(database, `history/tanks/${selectedTankId}`);
+      const historyQuery = query(
+        historyRef,
+        orderByChild('timestamp'),
+        startAt(cutoff),
+        limitToLast(5000)
+      );
 
-    const unsubscribe = onValue(
-      historyQuery,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          const list: HistoryRawSample[] = Object.entries(data as Record<string, Partial<Record<keyof HistoryRawSample, unknown>> | null>).map(([key, val]) => ({
-            id: key,
-            waterLevel: typeof val?.waterLevel === 'number' ? val.waterLevel : null,
-            phLevel: typeof val?.phLevel === 'number' ? val.phLevel : null,
-            waterHeight: typeof val?.waterHeight === 'number' ? val.waterHeight : null,
-            pumpOn: typeof val?.pumpOn === 'boolean' ? val.pumpOn : false,
-            timestamp: typeof val?.timestamp === 'number' ? val.timestamp : 0,
-            levelSensorOk: val?.levelSensorOk !== false,
-            phSensorOk: val?.phSensorOk !== false,
-          })).filter((item) => item.timestamp >= cutoff);
+      unsubscribe = onValue(
+        historyQuery,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            const list: HistoryRawSample[] = Object.entries(data as Record<string, Partial<Record<keyof HistoryRawSample, unknown>> | null>).map(([key, val]) => ({
+              id: key,
+              waterLevel: typeof val?.waterLevel === 'number' ? val.waterLevel : null,
+              phLevel: typeof val?.phLevel === 'number' ? val.phLevel : null,
+              waterHeight: typeof val?.waterHeight === 'number' ? val.waterHeight : null,
+              pumpOn: typeof val?.pumpOn === 'boolean' ? val.pumpOn : false,
+              timestamp: typeof val?.timestamp === 'number' ? val.timestamp : 0,
+              levelSensorOk: val?.levelSensorOk !== false,
+              phSensorOk: val?.phSensorOk !== false,
+            })).filter((item) => item.timestamp >= cutoff);
 
-          list.sort((a, b) => a.timestamp - b.timestamp);
-          setHistorySamples(list);
-        } else {
+            list.sort((a, b) => a.timestamp - b.timestamp);
+            setHistorySamples(list);
+          } else {
+            setHistorySamples([]);
+          }
+          setIsLoadingHistory(false);
+        },
+        (error) => {
+          console.error('Error fetching historical telemetry:', error);
           setHistorySamples([]);
+          setIsLoadingHistory(false);
         }
-        setIsLoadingHistory(false);
-      },
-      (error) => {
-        console.error('Error fetching historical telemetry:', error);
-        setHistorySamples([]);
-        setIsLoadingHistory(false);
-      }
-    );
+      );
+    } catch (err) {
+      // Database not ready (or not available, as in tests): show no history instead of crashing the page
+      console.error('Error attaching history listener:', err);
+      setHistorySamples([]);
+      setIsLoadingHistory(false);
+      return;
+    }
 
     return () => unsubscribe();
   }, [selectedTankId, days]);

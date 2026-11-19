@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useTanks, useLogs, useConfig, Tank, isTankPlanned, isTankControllerOffline, isPumpDemoOn } from '@/store/useStore';
+import { useTanks, useLogs, useConfig, Tank, isTankPlanned, isTankControllerOffline, isPumpDemoOn, getPumpMode } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
 import { database } from '@/config/firebase';
 import { ref, query, orderByChild, endAt, get, update } from 'firebase/database';
@@ -50,6 +50,7 @@ import { formatDate, formatDateTime, formatTime } from '@/lib/dateFormat';
 import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
+import PredictiveAnalytics from '@/components/PredictiveAnalytics';
 import {
   ALERT_CATEGORIES,
   buildPumpEvents,
@@ -1088,6 +1089,26 @@ const Reports = () => {
           </>
         )}
       </div>
+
+      {/* PREDICTIVE ANALYTICS: peak hours, peak day, expected use, time to low, pH trend */}
+      {selectedTank && !isLoadingHistory && !isTankPlanned(selectedTank) && (() => {
+        const live = !isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs)
+          && selectedTank.levelSensorOk !== false
+          && Number.isFinite(selectedTank.waterLevel) && selectedTank.waterLevel >= 0 && selectedTank.waterLevel <= 100;
+        return (
+          <PredictiveAnalytics
+            samples={historySamples}
+            capacityLiters={capacityLiters}
+            liveLevel={live ? selectedTank.waterLevel : null}
+            lowLevelThreshold={config.lowLevelThreshold}
+            minPh={config.minPh}
+            maxPh={config.maxPh}
+            now={Date.now() + serverTimeOffset}
+            rangeLabel={dateRange}
+            pumpAuto={pumpDemo && getPumpMode(config) === 'auto'}
+          />
+        );
+      })()}
 
       {/* BOTTOM SECTION: REPORTS TABLE & PRINT LOGS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
