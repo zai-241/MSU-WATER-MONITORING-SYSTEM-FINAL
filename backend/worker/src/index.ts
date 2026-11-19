@@ -5,7 +5,8 @@
  *
  *   1. Evaluates threshold and sensor-fault alerts for every tank, using the same
  *      alert engine as the web app (frontend/src/lib/alertEngine.ts).
- *   2. Runs the "controller has not reported" watchdog.
+ *   2. Runs the "controller has not reported" watchdog and the night watch
+ *      (water lost between 10 PM and 3 AM: possible leak or open faucet).
  *   3. Sends push notifications (Firebase Cloud Messaging) to registered browsers
  *      and Android devices when an alert starts.
  *   4. Applies the 90-day retention policy to notifications, logs and history.
@@ -31,6 +32,8 @@ import admin from 'firebase-admin';
 import {
   evaluateTank,
   createTankTrackers,
+  evaluateNight,
+  createNightState,
   offlineThresholdMs,
   isControllerOffline,
   alertNotifId,
@@ -41,6 +44,10 @@ import {
   type AlertRecord,
   type EngineConfig,
   type EngineTank,
+  type NightConfig,
+  type NightEvent,
+  type NightState,
+  type NightTank,
   type RaiseOutcome,
   type RaisePlan,
   type TankTrackers,
@@ -113,15 +120,19 @@ const log = (...args: unknown[]) => console.log(new Date().toISOString(), '[work
 
 interface RawTank extends Partial<EngineTank> {
   controllerOffline?: boolean;
+  pumpOn?: boolean;
+  calibrationUntil?: number | null;
+  capacityLiters?: number;
 }
 
 let tanks: Record<string, RawTank> = {};
-let config: EngineConfig & { pushEnabled?: boolean } = { ...DEFAULT_CONFIG };
+let config: EngineConfig & NightConfig & { pushEnabled?: boolean } = { ...DEFAULT_CONFIG };
 let alerts: Record<string, AlertRecord> = {};
 let serverOffset = 0;
 let tanksLoaded = false;
 
 const trackers: Record<string, TankTrackers> = {};
+const nightStates: Record<string, NightState> = {};
 const offlineInFlight = new Set<string>();
 
 const serverNow = () => Date.now() + serverOffset;
@@ -136,6 +147,15 @@ function toEngineTank(id: string, raw: RawTank): EngineTank {
     phLevel: typeof raw.phLevel === 'number' ? raw.phLevel : NaN,
     phSensorOk: raw.phSensorOk !== false,
     levelSensorOk: raw.levelSensorOk !== false,
+  };
+}
+
+function toNightTank(tank: EngineTank, raw: RawTank): NightTank {
+  return {
+    ...tank,
+    pumpOn: raw.pumpOn === true,
+    calibrationUntil: typeof raw.calibrationUntil === 'number' ? raw.calibrationUntil : null,
+    capacityLiters: typeof raw.capacityLiters === 'number' ? raw.capacityLiters : undefined,
   };
 }
 
@@ -263,6 +283,27 @@ async function syncOffline(id: string, tank: EngineTank, offline: boolean, thres
   }
 }
 
+async function applyNightEvent(id: string, event: NightEvent): Promise<void> {
+  try {
+    if (event.kind === 'close') {
+      await resolveAlert(event.notifId);
+    } else if (event.kind === 'recover') {
+      const resolved = await resolveAlert(event.notifId);
+      if (resolved) await addInfoRow(event.tankId, event.title, event.message);
+      log(`tank ${id}: ${event.key} recovered`);
+    } else {
+      const outcome = await raiseAlert({ id: event.notifId, tankId: event.tankId, title: event.title, message: event.message, type: event.level });
+      if (outcome === 'created') {
+        await addLog(event.key === 'nightDrain' ? 'NIGHT_WATER_LOSS' : 'NIGHT_SLOW_LEAK', event.message, event.level === 'danger' ? 'CRITICAL' : 'WARNING');
+        await sendPush(event.title, event.message, event.notifId);
+      }
+      if (outcome !== 'skipped') log(`tank ${id}: ${event.key} ${outcome}`);
+    }
+  } catch (err) {
+    log(`failed to apply ${event.kind} for ${event.notifId}:`, err);
+  }
+}
+
 async function evaluateAll(): Promise<void> {
   if (!tanksLoaded || config.maintenanceMode) return;
   const thresholdMs = offlineThresholdMs(config);
@@ -282,6 +323,10 @@ async function evaluateAll(): Promise<void> {
 
     const tankTrackers = (trackers[id] ??= createTankTrackers());
     const events = evaluateTank({ tank, config, trackers: tankTrackers, now: Date.now(), getExisting: (notifId) => alerts[notifId] });
+
+    const nightState = (nightStates[id] ??= createNightState());
+    const nightEvents = evaluateNight({ tank: toNightTank(tank, raw), config, state: nightState, now: serverNow(), getExisting: (notifId) => alerts[notifId] });
+    for (const event of nightEvents) await applyNightEvent(id, event);
 
     for (const event of events) {
       try {
@@ -355,6 +400,7 @@ async function main(): Promise<void> {
     tanks = snap.val() ?? {};
     tanksLoaded = true;
     Object.keys(trackers).forEach((id) => { if (!tanks[id]) delete trackers[id]; });
+    Object.keys(nightStates).forEach((id) => { if (!tanks[id]) delete nightStates[id]; });
   });
   db.ref('config').on('value', (snap) => {
     config = { ...DEFAULT_CONFIG, ...(snap.val() ?? {}) };

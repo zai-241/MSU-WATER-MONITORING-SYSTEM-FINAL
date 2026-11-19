@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTanks, useConfig, useWorkerStatus, addSystemLog, isPumpDemoOn, getPumpMode, SystemConfig, Tank, PumpMode } from '@/store/useStore';
-import { Power, Settings, Loader2, Bell, Hand } from 'lucide-react';
+import { Power, Settings, Loader2, Bell, Hand, Moon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { z } from 'zod';
@@ -8,6 +8,12 @@ import { SUPPORTED_TANK_IDS } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
 import LiveCalibrationPanel from './LiveCalibrationPanel';
 import { errorMessage } from '@/lib/utils';
+import {
+  nightSettings,
+  formatHour12,
+  MIN_NIGHT_DROP_PERCENT,
+  NIGHT_FAST_WINDOW_MS,
+} from '@/lib/alertEngine';
 
 // Validation schemas (E2 / R8)
 const thresholdSchema = z.object({
@@ -33,6 +39,20 @@ const thresholdSchema = z.object({
     .optional(),
   soundEnabled: z.boolean().optional(),
   pushEnabled: z.boolean().optional(),
+  nightWatchEnabled: z.boolean().optional(),
+  nightStartHour: z.number().int().min(0).max(23).optional(),
+  nightEndHour: z.number().int().min(0).max(23).optional(),
+  nightFastDropPercent: z.number({ invalid_type_error: 'Fast drop must be a number' })
+    .min(MIN_NIGHT_DROP_PERCENT, `Fast drop must be at least ${MIN_NIGHT_DROP_PERCENT}% (the level changes in 2% steps)`)
+    .max(100, 'Fast drop cannot exceed 100%')
+    .optional(),
+  nightSlowDropPercent: z.number({ invalid_type_error: 'Total night drop must be a number' })
+    .min(MIN_NIGHT_DROP_PERCENT, `Total night drop must be at least ${MIN_NIGHT_DROP_PERCENT}% (the level changes in 2% steps)`)
+    .max(100, 'Total night drop cannot exceed 100%')
+    .optional(),
+}).refine(data => data.nightStartHour === undefined || data.nightStartHour !== data.nightEndHour, {
+  message: 'Night watch start and end hours must be different',
+  path: ['nightStartHour'],
 }).refine(data => data.lowLevelThreshold < data.overflowThreshold, {
   message: 'Low-level threshold must be strictly less than overflow threshold',
   path: ['lowLevelThreshold'],
@@ -59,6 +79,8 @@ const calibrationSchema = z.object({
 const CALIBRATION_TANK_IDS = SUPPORTED_TANK_IDS;
 
 type ControlKey = 'maintenanceMode' | 'pumpControlLock' | 'pumpDemoMode';
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 /** Form state: while typing, number fields hold the raw text; saving converts them with Number(). */
 type Editable<T> = { [K in keyof T]: T[K] | string };
@@ -159,6 +181,9 @@ const Configuration = () => {
   };
 
 
+  // Night watch values as saved (defaults filled in), shown until the form changes them
+  const night = nightSettings(config);
+
   const handleSaveAll = async () => {
     if (!localConfig) return;
     setIsSaving(true);
@@ -175,6 +200,11 @@ const Configuration = () => {
         repeatIntervalSec: localConfig.repeatIntervalSec !== undefined ? Number(localConfig.repeatIntervalSec) : 60,
         soundEnabled: localConfig.soundEnabled !== false,
         pushEnabled: localConfig.pushEnabled !== false,
+        nightWatchEnabled: localConfig.nightWatchEnabled !== false,
+        nightStartHour: Number(localConfig.nightStartHour ?? night.startHour),
+        nightEndHour: Number(localConfig.nightEndHour ?? night.endHour),
+        nightFastDropPercent: Number(localConfig.nightFastDropPercent ?? night.fastDrop),
+        nightSlowDropPercent: Number(localConfig.nightSlowDropPercent ?? night.slowDrop),
       };
 
       // Validate thresholds with zod (E2 / R8)
@@ -204,6 +234,19 @@ const Configuration = () => {
       }
       if (config.repeatIntervalSec !== parsedConfig.repeatIntervalSec) {
         changes.push(`Repeat Interval (${config.repeatIntervalSec || 60}s -> ${parsedConfig.repeatIntervalSec}s)`);
+      }
+      const savedNight = nightSettings(config);
+      if (savedNight.enabled !== parsedConfig.nightWatchEnabled) {
+        changes.push(`Night Watch (${savedNight.enabled ? 'On' : 'Off'} -> ${parsedConfig.nightWatchEnabled ? 'On' : 'Off'})`);
+      }
+      if (savedNight.startHour !== parsedConfig.nightStartHour || savedNight.endHour !== parsedConfig.nightEndHour) {
+        changes.push(`Night Hours (${formatHour12(savedNight.startHour)}-${formatHour12(savedNight.endHour)} -> ${formatHour12(parsedConfig.nightStartHour ?? 0)}-${formatHour12(parsedConfig.nightEndHour ?? 0)})`);
+      }
+      if (savedNight.fastDrop !== parsedConfig.nightFastDropPercent) {
+        changes.push(`Night Fast Drop (${savedNight.fastDrop}% -> ${parsedConfig.nightFastDropPercent}%)`);
+      }
+      if (savedNight.slowDrop !== parsedConfig.nightSlowDropPercent) {
+        changes.push(`Night Total Drop (${savedNight.slowDrop}% -> ${parsedConfig.nightSlowDropPercent}%)`);
       }
       if (config.soundEnabled !== parsedConfig.soundEnabled) {
         changes.push(`Sound Alerts (${config.soundEnabled !== false ? 'Enabled' : 'Disabled'} -> ${parsedConfig.soundEnabled ? 'Enabled' : 'Disabled'})`);
@@ -567,6 +610,80 @@ const Configuration = () => {
         </div>
       </div>
 
+      <div className="rounded-xl bg-card p-6 shadow-sm border border-border" data-testid="night-watch-settings">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Moon size={18} className="text-primary" /> Night Watch (Leak Detection)
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              No water should be used during these hours (Philippine time). If a tank loses water then, everyone gets a
+              &quot;Possible Leak or Open Faucet&quot; alert. Readings while the pump runs, during a level sensor fault or during
+              live calibration are ignored.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Night Watch"
+            onClick={() => {
+              setIsConfigDirty(true);
+              setLocalConfig({ ...localConfig, nightWatchEnabled: localConfig.nightWatchEnabled === false });
+            }}
+            className={`relative h-6 w-11 rounded-full transition-colors shrink-0 ${localConfig.nightWatchEnabled !== false ? 'bg-primary' : 'bg-muted'}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${localConfig.nightWatchEnabled !== false ? 'translate-x-5' : ''}`} />
+          </button>
+        </div>
+        <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 ${localConfig.nightWatchEnabled === false ? 'opacity-50' : ''}`}>
+          <div>
+            <label htmlFor="night-start" className="block text-sm font-semibold mb-1">Starts at</label>
+            <select
+              id="night-start"
+              value={localConfig.nightStartHour ?? night.startHour}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, nightStartHour: Number(e.target.value) }); }}
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
+            >
+              {HOURS.map(h => <option key={h} value={h}>{formatHour12(h)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="night-end" className="block text-sm font-semibold mb-1">Ends at</label>
+            <select
+              id="night-end"
+              value={localConfig.nightEndHour ?? night.endHour}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, nightEndHour: Number(e.target.value) }); }}
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
+            >
+              {HOURS.map(h => <option key={h} value={h}>{formatHour12(h)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="night-fast" className="block text-sm font-semibold mb-1">Fast Drop (%)</label>
+            <input
+              id="night-fast"
+              type="number"
+              min={MIN_NIGHT_DROP_PERCENT}
+              value={localConfig.nightFastDropPercent ?? night.fastDrop}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, nightFastDropPercent: e.target.value }); }}
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Alert right away if the level falls this much within {NIGHT_FAST_WINDOW_MS / 60_000} min (open faucet)</p>
+          </div>
+          <div>
+            <label htmlFor="night-slow" className="block text-sm font-semibold mb-1">Total Night Drop (%)</label>
+            <input
+              id="night-slow"
+              type="number"
+              min={MIN_NIGHT_DROP_PERCENT}
+              value={localConfig.nightSlowDropPercent ?? night.slowDrop}
+              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, nightSlowDropPercent: e.target.value }); }}
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Warn when the night ends if the level fell this much in total (slow leak)</p>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl bg-card p-6 shadow-sm">
         <h3 className="text-lg font-semibold mb-4">System Controls</h3>
         <div className="space-y-4">
@@ -670,6 +787,7 @@ const Configuration = () => {
               <div className="bg-secondary/40 p-3 rounded-lg text-xs space-y-1.5 border border-border/50 font-medium text-foreground/80">
                 <p>📊 <strong>Water Level Thresholds:</strong> Low: {localConfig.lowLevelThreshold}% | Overflow: {localConfig.overflowThreshold}%</p>
                 <p>🧪 <strong>pH Safety Range:</strong> Min: {localConfig.minPh} | Max: {localConfig.maxPh}</p>
+                <p>🌙 <strong>Night Watch:</strong> {localConfig.nightWatchEnabled === false ? 'Off' : `${formatHour12(Number(localConfig.nightStartHour ?? night.startHour))} to ${formatHour12(Number(localConfig.nightEndHour ?? night.endHour))} | Fast: ${localConfig.nightFastDropPercent ?? night.fastDrop}% in ${NIGHT_FAST_WINDOW_MS / 60_000} min | Total: ${localConfig.nightSlowDropPercent ?? night.slowDrop}%`}</p>
                 <p>🔔 <strong>Watchdog & Sound:</strong> Offline: {localConfig.offlineThresholdSec ?? 30}s | Repeat: {localConfig.repeatIntervalSec ?? 60}s | Audio: {localConfig.soundEnabled !== false ? 'Enabled' : 'Disabled'}</p>
                 {localTank && (
                   <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {localTank.levelVmin}V | Vmax: {localTank.levelVmax}V | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L</p>

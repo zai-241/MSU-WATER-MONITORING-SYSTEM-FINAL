@@ -12,7 +12,7 @@ import {
   isTankControllerOffline,
   syncTankOfflineState,
 } from '@/store/useStore';
-import { evaluateTank, createTankTrackers, offlineThresholdMs, ALERT_SERVICE_OFFLINE_ID, type TankTrackers } from '@/lib/alertEngine';
+import { evaluateTank, createTankTrackers, evaluateNight, createNightState, offlineThresholdMs, ALERT_SERVICE_OFFLINE_ID, type TankTrackers, type NightState } from '@/lib/alertEngine';
 import { toast } from 'sonner';
 import { alertSound } from '@/utils/alertSound';
 
@@ -42,6 +42,7 @@ const SystemMonitor = () => {
   const { active: workerActive, loaded: workerLoaded } = useWorkerStatus();
 
   const trackers = useRef<Record<string, TankTrackers>>({});
+  const nightStates = useRef<Record<string, NightState>>({});
   const inFlightOffline = useRef<Set<string>>(new Set());
   const announced = useRef<Map<string, number>>(new Map());
   const serviceDownSince = useRef<number | null>(null);
@@ -172,6 +173,7 @@ const SystemMonitor = () => {
   useEffect(() => {
     if (workerActive) {
       trackers.current = {}; // the worker owns state; start clean if we ever take over
+      nightStates.current = {};
       return;
     }
     const now = Date.now();
@@ -185,6 +187,37 @@ const SystemMonitor = () => {
       if (isTankControllerOffline(tank, serverTimeOffset, thresholdMs)) return;
       const tankTrackers = (trackers.current[tank.id] ??= createTankTrackers());
       const events = evaluateTank({ tank, config, trackers: tankTrackers, now, getExisting: id => byId.get(id) });
+
+      // Night watch (possible leak or open faucet). The window follows server time.
+      const nightState = (nightStates.current[tank.id] ??= createNightState());
+      evaluateNight({ tank, config, state: nightState, now: now + serverTimeOffset, getExisting: id => byId.get(id) })
+        .forEach((event) => {
+          if (event.kind === 'close' || event.kind === 'recover') {
+            Promise.resolve(resolveNotification(event.notifId))
+              .then((resolved) => {
+                // close: no message. recover: only the client that resolved it writes the row
+                if (event.kind === 'close' || !resolved) return;
+                return addNotification({ tankId: event.tankId, title: event.title, message: event.message, type: 'info', acknowledged: true, resolved: true });
+              })
+              .catch((err) => console.error('Error resolving night alert:', err));
+          } else {
+            Promise.resolve(addNotification({
+              id: event.notifId, tankId: event.tankId, title: event.title, message: event.message,
+              type: event.level, acknowledged: false, resolved: false,
+            }))
+              .then((outcome) => {
+                if (outcome !== 'created') return;
+                return addSystemLog({
+                  action: event.key === 'nightDrain' ? 'NIGHT_WATER_LOSS' : 'NIGHT_SLOW_LEAK',
+                  details: event.message,
+                  performedBy: 'System Monitor',
+                  logLevel: event.level === 'danger' ? 'CRITICAL' : 'WARNING',
+                  tankId: event.tankId,
+                });
+              })
+              .catch((err) => console.error('Error raising night alert:', err));
+          }
+        });
 
       events.forEach((event) => {
         if (event.kind === 'recover') {

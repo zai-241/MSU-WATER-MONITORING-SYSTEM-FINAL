@@ -144,6 +144,16 @@ export interface SystemConfig {
    * Missing or any other value counts as "auto".
    */
   pumpMode?: PumpMode;
+  /**
+   * Night watch (possible leak or open faucet): no water should be used between
+   * nightStartHour and nightEndHour (Philippine time). Missing values use the defaults
+   * in alertEngine.ts (on, 10 PM to 3 AM, fast drop 5 % in 30 min, slow drop 3 % per night).
+   */
+  nightWatchEnabled?: boolean;
+  nightStartHour?: number;
+  nightEndHour?: number;
+  nightFastDropPercent?: number;
+  nightSlowDropPercent?: number;
 }
 
 export type PumpMode = 'auto' | 'manual';

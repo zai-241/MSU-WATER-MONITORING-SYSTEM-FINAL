@@ -104,6 +104,7 @@ mindmap
   2. **PDF (.pdf)** formatted tables via `jspdf` & `jspdf-autotable`
   3. **CSV (.csv)** raw comma-separated records
   4. Direct browser printing capability
+* **FR-04.5**: The system must watch for water loss during night hours, when no water is used (default 10 PM to 3 AM, Philippine time, set by an admin). A level drop of 5 % or more within 30 minutes must raise a "Possible Leak or Open Faucet" alert with a push notification; a total drop of 3 % or more over the night must raise a "Possible Slow Leak" warning when the window ends. Readings while the pump runs, during a level sensor fault, or during calibration are ignored.
 
 ---
 

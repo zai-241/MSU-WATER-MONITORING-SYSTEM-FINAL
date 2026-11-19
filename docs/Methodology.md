@@ -171,6 +171,36 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
 
 ---
 
+### 4.3 Night Watch: Leak and Open-Faucet Detection
+No water is used at the MSU Motor Pool at night, so between `nightStartHour` and `nightEndHour`
+(default **10 PM to 3 AM**, Philippine time, UTC+8) any fall in the water level means water is
+leaving the tank: a leak or a faucet left open. A level sensor alone cannot tell the two apart, so
+the alerts name both. The check runs in the alert worker (and in an open dashboard while the worker
+is down), in `evaluateNight()` in `frontend/src/lib/alertEngine.ts`. The firmware is not changed.
+
+1. **Fast drop (open faucet, burst pipe)**: the level is compared with the highest level of the last
+   **30 min** (`NIGHT_FAST_WINDOW_MS`). A drop of `nightFastDropPercent` (default **5 %**) or more that
+   is still there after **60 s** (`NIGHT_DRAIN_CONFIRM_MS`) raises **"Possible Leak or Open Faucet"**
+   (danger, push notification, repeated until acknowledged). It recovers ("Night Water Loss Stopped")
+   once the level has not fallen further for **15 min** (`NIGHT_STEADY_MS`).
+2. **Slow drop (small leak, dripping faucet)**: the drops of the whole window are added up. If the
+   total reaches `nightSlowDropPercent` (default **3 %**), **"Possible Slow Leak"** (warning) is raised
+   when the window ends, unless the fast alert already fired that night. It is closed when the next
+   night window starts.
+3. **Readings left out**: while the pump runs (it refills the tank; the drops before and after a
+   refill are both counted), during a level sensor fault, during live calibration, in maintenance
+   mode, while the controller is offline, and before any pause in evaluation longer than 60 s.
+   Readings from before the window starts are never compared, so evening use does not count.
+4. **Threshold floor**: the firmware sends a new level only after it changes by 2 %
+   (`WATER_LEVEL_DEADBAND`), so both thresholds must be at least **3 %**; the Admin Panel and the
+   database rules refuse lower values. On the 200 L test drum, 5 % is 10 L and 3 % is 6 L.
+5. **Limits**: the worker keeps the night totals in memory, so a worker restart during the night
+   counts the slow drop only from the restart. A drip smaller than about 6 L per night is not detected.
+
+**Suggested test** (drum model): set the window to include the current hour in the Admin Panel, open
+the drum faucet slightly, and record the time from opening to the alert; repeat with a slow drip and
+read the 3 AM (end-of-window) warning.
+
 ## 5. Database Schema & Data Models
 
 The system stores data in two Firebase databases. **Cloud Firestore** holds only user profiles. The **Firebase Realtime Database (RTDB)** holds everything that changes live: tank readings, settings, history, logs, alerts, roles and per-user state. The figures `docs/diagrams/images/Data_Model_1.png` (Firestore, the RTDB path tree and the smaller records) and `Data_Model_2.png` (tanks, history, notifications, logs) show this model; the ERD (Figure 3-12) shows the relationships between records.
@@ -239,6 +269,10 @@ Written by the Admin Panel.
 | repeatIntervalSec | NUMBER | 60 |
 | soundEnabled | BOOLEAN | true |
 | pushEnabled | BOOLEAN | missing = on |
+| nightWatchEnabled | BOOLEAN | missing = on |
+| nightStartHour, nightEndHour | NUMBER (0–23, Philippine time) | 22, 3 |
+| nightFastDropPercent | NUMBER (3–100) | 5 % |
+| nightSlowDropPercent | NUMBER (3–100) | 3 % |
 
 #### `history/tanks/{tankId}/{pushKey}`: HISTORY
 Written by the ESP32 every 10 minutes. Indexed on `timestamp`.

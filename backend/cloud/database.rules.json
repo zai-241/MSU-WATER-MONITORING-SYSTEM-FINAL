@@ -26,6 +26,21 @@
       },
       "pumpMode": {
         ".validate": "newData.isString() && newData.val().matches(/^(auto|manual)$/)"
+      },
+      "nightWatchEnabled": {
+        ".validate": "newData.isBoolean()"
+      },
+      "nightStartHour": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 23"
+      },
+      "nightEndHour": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 23"
+      },
+      "nightFastDropPercent": {
+        ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 100"
+      },
+      "nightSlowDropPercent": {
+        ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 100"
       }
     },
     "tanks": {
