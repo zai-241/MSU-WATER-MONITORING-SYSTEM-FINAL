@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { UserPlus, Trash2, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { UserPlus, Loader2, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import type { UserProfile } from '@/services/authService';
 import { resolveLoginEmail, isValidEmail } from '@/lib/email';
 import { errorMessage } from '@/lib/utils';
+import { usePresence, lastSeenLabel, presenceStatus } from '@/lib/presence';
+import { useServerTimeOffset } from '@/store/useStore';
 
 export interface NewOperator {
   email: string;
@@ -19,11 +21,21 @@ interface UserManagementProps {
   loading: boolean;
   addUser: (user: NewOperator) => Promise<UserProfile>;
   updateUser: (id: string, updates: Partial<UserProfile>) => Promise<void>;
-  deleteUser: (id: string) => Promise<void>;
 }
 
-const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: UserManagementProps) => {
+/** How often the "Last seen ... ago" labels are refreshed */
+const LAST_SEEN_REFRESH_MS = 30_000;
+
+const UserManagement = ({ users, loading, addUser, updateUser }: UserManagementProps) => {
   const { currentUser } = useAuth();
+  const presence = usePresence(currentUser?.role === 'admin');
+  const serverTimeOffset = useServerTimeOffset();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), LAST_SEEN_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, []);
+  const statusOf = (id: string) => presence[id] ?? presenceStatus(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newUser, setNewUser] = useState({ 
     username: '', 
@@ -35,7 +47,6 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
   const [isAdding, setIsAdding] = useState(false);
   const [confirmUser, setConfirmUser] = useState<typeof newUser | null>(null);
   const [formError, setFormError] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<UserProfile | null>(null);
 
   const handleAdd = () => {
     if (!newUser.username || !newUser.email || !newUser.password) {
@@ -102,17 +113,9 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
     }
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    try {
-      await deleteUser(userId);
-      toast.success('User account successfully removed');
-    } catch (err) {
-      toast.error(errorMessage(err) || 'Failed to delete user profile');
-    }
-  };
-
   const activeUsers = users.filter(u => u.status === 'active').length;
   const inactiveUsers = users.filter(u => u.status === 'inactive').length;
+  const onlineUsers = users.filter(u => statusOf(u.id).online).length;
 
   return (
     <div className="space-y-6">
@@ -204,6 +207,7 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
                   <th className="pb-3 font-bold text-base">Email Address</th>
                   <th className="pb-3 font-bold text-base">System Role</th>
                   <th className="pb-3 font-bold text-base">Status</th>
+                  <th className="pb-3 font-bold text-base">Account</th>
                   <th className="pb-3 font-bold text-base text-right">Actions</th>
                 </tr>
               </thead>
@@ -223,6 +227,31 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
                         {user.role === 'admin' ? 'Admin' : user.role === 'viewer' ? 'Viewer' : user.jobTitle}
                       </span>
                     </td>
+                    <td className="py-3" data-testid={`presence-${user.id}`}>
+                      {(() => {
+                        const p = statusOf(user.id);
+                        return p.online ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-sm font-bold bg-safe/10 text-safe">
+                              <span className="h-2 w-2 rounded-full bg-safe" aria-hidden="true" /> Online
+                            </span>
+                            <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                              {p.apps.includes('android') && <Smartphone size={12} aria-hidden="true" />}
+                              {p.apps.includes('web') && <Monitor size={12} aria-hidden="true" />}
+                              {p.apps.map(a => (a === 'android' ? 'App' : 'Web')).join(' + ')}
+                              {p.devices > 1 ? ` (${p.devices} open)` : ''}
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-sm font-bold bg-muted text-muted-foreground">
+                              <span className="h-2 w-2 rounded-full bg-muted-foreground/50" aria-hidden="true" /> Offline
+                            </span>
+                            <p className="mt-1 text-xs text-muted-foreground">{lastSeenLabel(p.lastSeen, now + serverTimeOffset)}</p>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="py-3">
                       <span className={`px-2 py-1 rounded-full text-sm font-bold ${user.status === 'active' ? 'bg-safe/10 text-safe' : 'bg-muted text-muted-foreground'
                         }`}>{user.status === 'active' ? 'Active' : 'Inactive'}</span>
@@ -239,11 +268,6 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
                           <span className="text-xs text-muted-foreground italic px-2 py-1 bg-secondary/30 rounded border border-border/40">No Permission</span>
                         )}
 
-                        {(currentUser?.role === 'admin' && user.role !== 'admin' && user.id !== currentUser?.id) && (
-                          <button onClick={() => setDeleteConfirm(user)} className="rounded-lg border border-danger/30 p-1.5 text-danger">
-                            <Trash2 size={18} />
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -253,31 +277,18 @@ const UserManagement = ({ users, loading, addUser, updateUser, deleteUser }: Use
           )}
         </div>
 
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50">
-            <div className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 space-y-4">
-              <h4 className="text-lg font-semibold">Delete User</h4>
-              <div className="text-sm space-y-1">
-                <p><span className="text-muted-foreground">Operator Name:</span> <span className="font-bold">{deleteConfirm.username}</span></p>
-                <p><span className="text-muted-foreground">Email:</span> <span className="font-bold">{deleteConfirm.email}</span></p>
-                <p><span className="text-muted-foreground">Role:</span> <span className="font-bold">{deleteConfirm.role === 'admin' ? 'Administrator' : deleteConfirm.jobTitle}</span></p>
-              </div>
-              <p className="text-sm text-danger font-medium">⚠️ This action cannot be undone. Are you sure you want to delete this user profile?</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteConfirm(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-secondary transition">Cancel</button>
-                <button onClick={() => { handleDeleteUser(deleteConfirm.id); setDeleteConfirm(null); }} className="flex-1 rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-danger-foreground hover:opacity-90 transition">Delete</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="rounded-xl bg-card p-6 shadow-sm">
         <h3 className="text-lg font-semibold mb-4">User Statistics</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div className="rounded-lg border border-border p-4">
             <p className="text-xs text-muted-foreground">Total Users</p>
             <p className="text-2xl font-bold">{users.length}</p>
+          </div>
+          <div className="rounded-lg border border-safe/30 p-4" data-testid="online-users">
+            <p className="text-xs text-safe">Online Now</p>
+            <p className="text-2xl font-bold">{onlineUsers}</p>
           </div>
           <div className="rounded-lg border border-safe/30 p-4">
             <p className="text-xs text-safe">Active Users</p>

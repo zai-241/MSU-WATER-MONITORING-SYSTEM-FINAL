@@ -11,7 +11,9 @@ import {
   isTankPlanned,
   isTankControllerOffline,
   syncTankOfflineState,
+  fetchWorkerLastSeen,
 } from '@/store/useStore';
+import { WORKER_STALE_MS } from '@/lib/constants';
 import { evaluateTank, createTankTrackers, evaluateNight, createNightState, offlineThresholdMs, isTankInMaintenance, ALERT_SERVICE_OFFLINE_ID, type TankTrackers, type NightState } from '@/lib/alertEngine';
 import { toast } from 'sonner';
 import { alertSound } from '@/utils/alertSound';
@@ -256,24 +258,43 @@ const SystemMonitor = () => {
   //    notifications pause until it is back. Raised once per outage by this browser after
   //    SERVICE_DOWN_GRACE_MS (so a restart or redeploy stays quiet; the database transaction keeps
   //    several browsers to one record) and resolved when the heartbeat returns.
+  //    The grace only counts while this page is visible, connected and awake (OFFLINE_CHECK_SETTLE_MS):
+  //    a sleeping tab or a backgrounded APK stops receiving heartbeats and would see a false
+  //    outage. Before raising, the heartbeat is read once more from the server itself.
   useEffect(() => {
     if (!workerLoaded) return;
     const existing = notifications.find(n => n.id === ALERT_SERVICE_OFFLINE_ID);
     const open = !!existing && !existing.resolved;
     if (!workerActive) {
       const now = Date.now();
+      const pageVisible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+      if (!pageVisible || !canJudgeControllerOffline(isConnected, freshSince.current, now)) {
+        serviceDownSince.current = null; // start the grace again once this page is up to date
+        return;
+      }
       serviceDownSince.current ??= now;
       if (open || config?.maintenanceMode || serviceNoticeRaised.current) return;
       if (now - serviceDownSince.current < SERVICE_DOWN_GRACE_MS) return;
       serviceNoticeRaised.current = true;
-      Promise.resolve(addNotification({
-        id: ALERT_SERVICE_OFFLINE_ID,
-        title: 'Alert Service Offline',
-        message: 'The cloud-hosted Alert Service stopped sending its heartbeat. Open dashboards keep checking alerts, but push notifications are paused until it is back.',
-        type: 'warning',
-        acknowledged: false,
-        resolved: false,
-      })).catch((err) => console.error('Error raising Alert Service notice:', err));
+      fetchWorkerLastSeen()
+        .then((lastSeen) => {
+          const confirmedDown = lastSeen === null || (typeof lastSeen === 'number' && serverNow() - lastSeen >= WORKER_STALE_MS);
+          if (!confirmedDown) {
+            // The server has a fresh heartbeat (or could not be asked): this view was stale
+            serviceNoticeRaised.current = false;
+            serviceDownSince.current = null;
+            return;
+          }
+          return addNotification({
+            id: ALERT_SERVICE_OFFLINE_ID,
+            title: 'Alert Service Offline',
+            message: 'The cloud-hosted Alert Service stopped sending its heartbeat. Open dashboards keep checking alerts, but push notifications are paused until it is back.',
+            type: 'warning',
+            acknowledged: false,
+            resolved: false,
+          });
+        })
+        .catch((err) => console.error('Error raising Alert Service notice:', err));
     } else {
       serviceDownSince.current = null;
       serviceNoticeRaised.current = false;
@@ -282,7 +303,7 @@ const SystemMonitor = () => {
           .catch((err) => console.error('Error resolving Alert Service notice:', err));
       }
     }
-  }, [workerActive, workerLoaded, notifications, tick, config?.maintenanceMode, addNotification, resolveNotification]);
+  }, [workerActive, workerLoaded, notifications, tick, isConnected, config?.maintenanceMode, addNotification, resolveNotification]);
 
   return null;
 };

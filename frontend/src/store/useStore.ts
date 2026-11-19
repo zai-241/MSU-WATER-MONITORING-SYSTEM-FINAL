@@ -1103,6 +1103,22 @@ const workerSource = createShared<number | null | undefined>(
 );
 
 /**
+ * Reads the worker heartbeat from the server once, for a last check before telling users the
+ * Alert Service is down. Returns undefined when it cannot be read (this browser is offline):
+ * then nothing should be raised, because this browser is the one out of touch.
+ */
+export async function fetchWorkerLastSeen(): Promise<number | null | undefined> {
+  if (!dbUsable()) return undefined;
+  try {
+    const snap = await get(ref(database, 'system/worker/lastSeen'));
+    const val = snap.val();
+    return typeof val === 'number' ? val : null;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Reports whether the server-side alert worker (backend/worker) is running.
  * The worker writes a heartbeat every few seconds. While it is fresh the worker owns
  * alert evaluation and browsers only display; when it goes stale, browsers take over

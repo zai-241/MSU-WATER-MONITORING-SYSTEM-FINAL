@@ -410,8 +410,19 @@ async function main(): Promise<void> {
     config = { ...DEFAULT_CONFIG, ...(snap.val() ?? {}) };
   });
   // Live alert records all share the "alert-" key prefix
+  let closingServiceNotice = false;
   db.ref('notifications').orderByKey().startAt('alert-').endAt('alert-').on('value', (snap) => {
     alerts = snap.val() ?? {};
+    // This process is running, so an open "Alert Service Offline" notice is wrong: a dashboard
+    // that missed the heartbeat (asleep, poor signal) raised it. Close it right away.
+    const notice = alerts[ALERT_SERVICE_OFFLINE_ID];
+    if (notice && !notice.resolved && !closingServiceNotice) {
+      closingServiceNotice = true;
+      resolveAlert(ALERT_SERVICE_OFFLINE_ID)
+        .then((closed) => { if (closed) log('closed an Alert Service Offline notice raised while running'); })
+        .catch((err) => log('could not close the Alert Service Offline notice:', err))
+        .finally(() => { closingServiceNotice = false; });
+    }
   });
 
   // Heartbeat. onDisconnect clears it the moment this process loses its connection,

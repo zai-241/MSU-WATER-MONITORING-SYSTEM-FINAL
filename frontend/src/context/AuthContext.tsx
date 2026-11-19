@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -10,6 +10,7 @@ import { ref, get, set, update } from 'firebase/database';
 import { auth, firestore, database } from '@/config/firebase';
 import { getUserProfile, UserProfile } from '@/services/authService';
 import { disablePush } from '@/utils/push';
+import { startPresence } from '@/lib/presence';
 import { resolveLoginEmail } from '@/lib/email';
 import { errorMessage, errorCode } from '@/lib/utils';
 
@@ -31,6 +32,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Online status for Admin Panel → User Management. Ended before every sign-out: signing out
+  // keeps the database connection open, so the server would not mark the user offline itself.
+  const stopPresence = useRef<(() => Promise<void>) | null>(null);
+  const endPresence = async () => {
+    const stop = stopPresence.current;
+    stopPresence.current = null;
+    if (stop) await stop();
+  };
+  const currentUserId = currentUser?.id;
+  useEffect(() => {
+    if (!currentUserId) return;
+    try {
+      stopPresence.current = startPresence(currentUserId);
+    } catch {
+      stopPresence.current = null; // no database (tests, offline start): stay offline
+    }
+    return () => {
+      const stop = stopPresence.current;
+      stopPresence.current = null;
+      if (stop) void stop();
+    };
+  }, [currentUserId]);
 
   // Sync auth state in real-time
   useEffect(() => {
@@ -55,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const profile = docSnap.data() as UserProfile;
               if (profile.status === 'inactive') {
                 // If deactivated in real-time, log them out immediately
+                await endPresence();
                 await signOut(auth);
                 setCurrentUser(null);
                 setError('Your account is deactivated. Please contact an administrator.');
@@ -93,6 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             } else {
               // Missing-profile fallback: sign out and show error
+              await endPresence();
               await signOut(auth);
               setCurrentUser(null);
               setError('Your account has no profile. Contact an administrator.');
@@ -177,6 +203,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (currentUser?.id) {
         await disablePush(currentUser.id).catch(() => {});
       }
+      await endPresence();
       await signOut(auth);
       setCurrentUser(null);
     } catch (err) {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { UserPlus, Power, WifiOff, Settings } from 'lucide-react';
 import { firestore } from '@/config/firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
-import { registerOperator, updateUserProfile, deleteUserProfile, type UserProfile } from '@/services/authService';
+import { registerOperator, updateUserProfile, type UserProfile } from '@/services/authService';
 import UserManagement, { type NewOperator } from './admin/UserManagement';
 import TankAssignment from './admin/TankAssignment';
 import Configuration from './admin/Configuration';
@@ -39,16 +39,12 @@ function useFirestoreUsers() {
     await updateUserProfile(id, updates);
   };
 
-  const deleteUser = async (id: string) => {
-    await deleteUserProfile(id);
-  };
-
-  return { users, loading, addUser, updateUser, deleteUser };
+  return { users, loading, addUser, updateUser };
 }
 
 const AdminPanel = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'tanks' | 'config'>('users');
-  const { users, loading, addUser, updateUser, deleteUser } = useFirestoreUsers();
+  const { users, loading, addUser, updateUser } = useFirestoreUsers();
 
   return (
     <div>
@@ -76,7 +72,7 @@ const AdminPanel = () => {
         ))}
       </div>
 
-      {activeTab === 'users' && <UserManagement users={users} loading={loading} addUser={addUser} updateUser={updateUser} deleteUser={deleteUser} />}
+      {activeTab === 'users' && <UserManagement users={users} loading={loading} addUser={addUser} updateUser={updateUser} />}
       {activeTab === 'tanks' && <TankAssignment users={users} />}
       {activeTab === 'config' && <Configuration />}
     </div>
