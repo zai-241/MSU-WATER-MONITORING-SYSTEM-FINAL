@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import type { Tank, Log } from '@/store/useStore';
 import { estimateVolumeLiters, tankCapacityLiters } from './constants';
 import { emptyProblemCounts, PROBLEM_COLUMNS, type TelemetryTableRow } from './reportLogs';
+import { hourRangeLabel, type PredictiveReport } from './predictive';
 
 /** jspdf-autotable records where the last table ended on the document */
 type DocWithTable = jsPDF & { lastAutoTable: { finalY: number } };
@@ -46,7 +47,24 @@ export interface ReportExportData {
   includePump?: boolean;
   /** Configured alert thresholds, shown as the benchmarks in the summary */
   thresholds: { lowLevel: number; overflow: number; minPh: number; maxPh: number };
+  /** Predictive analytics (same object as the Reports panel); omitted = no predictive sheet/section */
+  predictive?: PredictiveReport;
 }
+
+/** The five forecast rows shown in both exports: [forecast, result, details] */
+export function predictiveSummaryRows(p: PredictiveReport, lowLevel: number): string[][] {
+  return [
+    ['Peak hours', p.peakHours.value, p.peakHours.detail],
+    ['Peak day', p.peakDay.value, p.peakDay.detail],
+    ['Expected use today', p.today.value, p.today.detail],
+    [`Time until ${lowLevel}%`, p.timeToLow.value, p.timeToLow.detail],
+    ['pH trend', p.phTrend.value, p.phTrend.detail],
+  ];
+}
+
+const PREDICTIVE_NOTE =
+  'Water use is the level drop while the pump is off, from the 10-minute history. Intervals with the pump on, ' +
+  'sensor faults, data gaps or sensor glitches are left out. Forecasts are averages of past use, in Philippine time.';
 
 /**
  * Sensor status of one history row. Readings recorded during a fault are kept
@@ -164,6 +182,49 @@ export async function buildExcelWorkbook(data: ReportExportData): Promise<ExcelJ
       ...(item.problems ?? emptyProblemCounts()),
     });
   });
+
+  if (data.predictive) {
+    // PREDICTIVE ANALYTICS SHEET
+    const p = data.predictive;
+    const sheet = workbook.addWorksheet('Predictive Analytics', { views: [{ showGridLines: true }] });
+    sheet.columns = [{ width: 24 }, { width: 24 }, { width: 70 }, { width: 14 }];
+    const title = sheet.addRow(['PREDICTIVE ANALYTICS']);
+    title.font = { name: 'Segoe UI', size: 14, bold: true, color: { argb: 'FF1E3A8A' } };
+    sheet.addRow([`${selectedTank.name}, ${dateRange}, ${p.profile.coveredDays} complete day(s) of history`]);
+    sheet.addRow([PREDICTIVE_NOTE]);
+    sheet.addRow([]);
+
+    const header = (labels: string[]) => {
+      const row = sheet.addRow(labels);
+      row.eachCell((cell) => { cell.fill = navyFill; cell.font = headerFont; });
+    };
+    const highlight = (row: ExcelJS.Row) => row.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+      cell.font = { bold: true };
+    });
+
+    header(['Forecast', 'Result', 'Details']);
+    predictiveSummaryRows(p, thresholds.lowLevel).forEach(r => sheet.addRow(r));
+    sheet.addRow([]);
+
+    const peakHours = new Set(p.profile.peakHours.map(h => h.hour));
+    sheet.addRow(['Average water use by hour of the day']).font = sectionFont;
+    header(['Hour', 'Average Use (L)', 'Average Use (% of tank)', 'Days']);
+    p.profile.hours.forEach(h => {
+      const row = sheet.addRow([hourRangeLabel(h.hour), h.avgLiters ?? 'No data', h.avgPercent ?? 'No data', h.days]);
+      if (peakHours.has(h.hour)) highlight(row);
+    });
+    sheet.addRow([]);
+
+    sheet.addRow(['Average water use by day of the week']).font = sectionFont;
+    header(['Day', 'Average Use (L/day)', 'Average Use (% of tank)', 'Days']);
+    p.profile.weekdays.forEach(w => {
+      const row = sheet.addRow([w.name, w.avgLiters ?? 'No complete day', w.avgPercent ?? 'No complete day', w.days]);
+      if (p.profile.peakWeekday?.weekday === w.weekday) highlight(row);
+    });
+    sheet.addRow([]);
+    sheet.addRow(['Highlighted rows: the peak hours and the peak day.']);
+  }
 
   if (includePump) {
     // 3. PUMP ACTIVITY SHEET
@@ -357,8 +418,95 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
 
   currentY = (doc as DocWithTable).lastAutoTable.finalY + 10;
 
+  let section = 3;
+
+  if (data.predictive) {
+    // PREDICTIVE ANALYTICS: summary, then use by hour (two columns of 12) and by day
+    const p = data.predictive;
+    if (currentY > 200) {
+      doc.addPage();
+      currentY = 20;
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...primaryColor);
+    doc.text(`${section++}. Predictive Analytics`, 14, currentY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...grayColor);
+    const note: string[] = doc.splitTextToSize(`${PREDICTIVE_NOTE} Based on ${p.profile.coveredDays} complete day(s).`, 182);
+    doc.text(note, 14, currentY + 5);
+    currentY += 5 + note.length * 3.2;
+
+    autoTable(doc, {
+      startY: currentY + 1,
+      head: [['Forecast', 'Result', 'Details']],
+      body: predictiveSummaryRows(p, thresholds.lowLevel),
+      theme: 'striped',
+      headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8.5, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 36 }, 1: { cellWidth: 36 } },
+      margin: { left: 14, right: 14 },
+    });
+    currentY = (doc as DocWithTable).lastAutoTable.finalY + 6;
+
+    const peakHours = new Set(p.profile.peakHours.map(h => h.hour));
+    const fmt = (v: number | null, empty: string) => (v === null ? empty : `${v} L`);
+    if (p.enoughData) {
+      if (currentY > 200) {
+        doc.addPage();
+        currentY = 20;
+      }
+      const hourRows = Array.from({ length: 12 }, (_, i) => {
+        const a = p.profile.hours[i];
+        const b = p.profile.hours[i + 12];
+        return [hourRangeLabel(a.hour), fmt(a.avgLiters, '-'), hourRangeLabel(b.hour), fmt(b.avgLiters, '-')];
+      });
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Hour', 'Avg. Use', 'Hour', 'Avg. Use']],
+        body: hourRows,
+        theme: 'grid',
+        headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
+        bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+        // Peak hours highlighted, as on the page
+        didParseCell: (cell) => {
+          if (cell.section !== 'body') return;
+          const hour = cell.row.index + (cell.column.index >= 2 ? 12 : 0);
+          if (peakHours.has(hour)) {
+            cell.cell.styles.fillColor = [254, 243, 199];
+            cell.cell.styles.fontStyle = 'bold';
+          }
+        },
+        margin: { left: 14, right: 14 },
+      });
+      currentY = (doc as DocWithTable).lastAutoTable.finalY + 6;
+    }
+
+    if (currentY > 230) {
+      doc.addPage();
+      currentY = 20;
+    }
+    autoTable(doc, {
+      startY: currentY,
+      head: [['Day of the Week', 'Avg. Use per Day', 'Days']],
+      body: p.profile.weekdays.map(w => [w.name, fmt(w.avgLiters, 'No complete day'), String(w.days)]),
+      theme: 'grid',
+      headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      didParseCell: (cell) => {
+        if (cell.section === 'body' && p.profile.weekdays[cell.row.index].weekday === p.profile.peakWeekday?.weekday) {
+          cell.cell.styles.fillColor = [254, 243, 199];
+          cell.cell.styles.fontStyle = 'bold';
+        }
+      },
+      margin: { left: 14, right: 14 },
+    });
+    currentY = (doc as DocWithTable).lastAutoTable.finalY + 10;
+  }
+
   if (includePump) {
-    // 3. PUMP ACTIVITY TABLE
+    // PUMP ACTIVITY TABLE
     if (currentY > 230) {
       doc.addPage();
       currentY = 20;
@@ -367,7 +515,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(...primaryColor);
-    doc.text('3. Pump Activity', 14, currentY);
+    doc.text(`${section++}. Pump Activity`, 14, currentY);
 
     const pumpRows = pumpActivityData.map(p => [
       p.date,
@@ -388,7 +536,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
     currentY = (doc as DocWithTable).lastAutoTable.finalY + 10;
   }
 
-  // 4. ALARM & INCIDENT LOGS TABLE
+  // ALARM & INCIDENT LOGS TABLE
   if (currentY > 230) {
     doc.addPage();
     currentY = 20;
@@ -397,7 +545,7 @@ export function buildPdfDocument(data: ReportExportData): jsPDF {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...primaryColor);
-  doc.text(`${includePump ? 4 : 3}. System Alarms & Incident Logs`, 14, currentY);
+  doc.text(`${section}. System Alarms & Incident Logs`, 14, currentY);
 
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const relevantLogs = logs.filter(l => {

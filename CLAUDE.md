@@ -73,8 +73,8 @@ and the Admin Panel calibration form has a Tank 1–4 selector. The four-tank li
 
 - `frontend/src/lib/alertEngine.ts` is imported by **both** the web app and the worker. Alert rules change here only.
 - `frontend/src/lib/predictive.ts` (web app only) turns the 10-minute history into peak hours, peak day of the week,
-  expected use today, time until the low threshold and the pH trend (Reports → Predictive Analytics; Dashboard
-  "Est. time to 15%"). Philippine time; skips pump-on, fault, gap and glitch intervals. Details: `docs/Methodology.md` 4.4.
+  expected use today, time until the low threshold and the pH trend (Reports → Predictive Analytics, also in the
+  Excel sheet and PDF section via `buildPredictiveReport()`; Dashboard "Est. time to 15%"). Philippine time; skips pump-on, fault, gap and glitch intervals. Details: `docs/Methodology.md` 4.4.
 - `frontend/src/lib/constants.ts` holds web-app timings, retention (90 days), and the default tank capacity (200 L);
   each tank's own capacity is `tanks/{id}/capacityLiters` and drives the estimated volume in Reports and exports.
 - Firmware constants (filter windows, deadbands, pump cooldown 30 s, history 10 min) live at the top of

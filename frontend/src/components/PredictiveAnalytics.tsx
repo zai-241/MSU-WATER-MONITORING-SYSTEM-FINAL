@@ -1,32 +1,13 @@
-import { useMemo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import { Clock, CalendarDays, Droplets, TimerReset, FlaskConical, Sparkles } from 'lucide-react';
-import {
-  usageIntervals,
-  usageProfile,
-  forecastToday,
-  predictTimeToLevel,
-  phTrend,
-  hourLabel,
-  hourRangeLabel,
-  durationLabel,
-  clockLabel,
-  type UsageSample,
-} from '@/lib/predictive';
+import { hourLabel, hourRangeLabel, type PredictiveReport } from '@/lib/predictive';
 
 interface Props {
-  samples: UsageSample[];
-  capacityLiters: number;
-  /** Live level for the time-to-low forecast; null when offline, faulty or unknown */
-  liveLevel: number | null;
+  /** From buildPredictiveReport(); the Excel and PDF exports use the same object */
+  report: PredictiveReport;
   lowLevelThreshold: number;
-  minPh: number;
-  maxPh: number;
-  /** Server time (ms) */
-  now: number;
   rangeLabel: string;
-  /** Pump auto mode: the pump refills at the low threshold */
-  pumpAuto: boolean;
 }
 
 const PEAK = '#f59e0b';
@@ -42,66 +23,13 @@ const Tile = ({ icon, title, value, detail, testId }: { icon: ReactNode; title: 
 
 /**
  * Predictive analytics panel in Reports: peak hours, peak day of the week, expected use today,
- * time until the low level, and the pH trend. All numbers come from lib/predictive.ts.
+ * time until the low level, and the pH trend. The numbers and texts come from lib/predictive.ts.
  */
-const PredictiveAnalytics = ({ samples, capacityLiters, liveLevel, lowLevelThreshold, minPh, maxPh, now, rangeLabel, pumpAuto }: Props) => {
-  const intervals = useMemo(() => usageIntervals(samples), [samples]);
-  const profile = useMemo(() => usageProfile(intervals, capacityLiters), [intervals, capacityLiters]);
-  // Recompute the time-based forecasts once a minute, not on every render
-  const minute = Math.floor(now / 60_000);
-  const today = useMemo(() => forecastToday(profile, intervals, minute * 60_000, capacityLiters), [profile, intervals, minute, capacityLiters]);
-  const toLow = useMemo(
-    () => (liveLevel === null ? null : predictTimeToLevel(liveLevel, lowLevelThreshold, profile, minute * 60_000)),
-    [liveLevel, lowLevelThreshold, profile, minute]
-  );
-  const ph = useMemo(() => phTrend(samples, minPh, maxPh, minute * 60_000), [samples, minPh, maxPh, minute]);
-
-  const hoursSeen = profile.hours.filter(h => h.avgPercent !== null).length;
-  const enoughData = hoursSeen >= 6;
+const PredictiveAnalytics = ({ report, lowLevelThreshold, rangeLabel }: Props) => {
+  const { profile, enoughData } = report;
   const peakHourSet = new Set(profile.peakHours.map(h => h.hour));
   const hourData = profile.hours.map(h => ({ label: hourLabel(h.hour), liters: h.avgLiters ?? 0, hour: h.hour, days: h.days }));
   const dayData = profile.weekdays.map(w => ({ label: w.name.slice(0, 3), name: w.name, liters: w.avgLiters ?? 0, days: w.days, weekday: w.weekday }));
-
-  const [peak, ...others] = profile.peakHours;
-  const peakHourValue = peak ? hourRangeLabel(peak.hour) : 'No use yet';
-  const peakHourDetail = peak
-    ? `About ${peak.avgLiters} L on average${others.length ? `. Next: ${others.map(h => hourLabel(h.hour)).join(', ')}` : ''}`
-    : enoughData ? 'No water use measured in this period' : undefined;
-
-  const peakDayValue = profile.peakWeekday ? profile.peakWeekday.name : 'Not enough days yet';
-  const peakDayDetail = profile.peakWeekday
-    ? `About ${profile.peakWeekday.avgLiters} L per day${profile.lowWeekday ? `. Quietest: ${profile.lowWeekday.name} (${profile.lowWeekday.avgLiters} L)` : ''}`
-    : 'Needs at least one mostly complete day of readings';
-
-  const todayValue = today.expectedLiters !== null ? `About ${today.expectedLiters} L` : 'Not enough days yet';
-  const todayDetail = today.basis === 'none'
-    ? `Used so far today: ${today.usedSoFarLiters} L`
-    : `${today.basis === 'weekday' ? `Average for a ${today.weekday}` : 'Average of all days'}. Used so far today: ${today.usedSoFarLiters} L`;
-
-  let lowValue = 'Unavailable';
-  let lowDetail = 'Needs a live level reading from the controller';
-  if (toLow?.kind === 'below') {
-    lowValue = 'At or below now';
-    lowDetail = `The level is at or under ${lowLevelThreshold}%`;
-  } else if (toLow?.kind === 'hours') {
-    lowValue = durationLabel(toLow.hours);
-    lowDetail = `Around ${clockLabel(toLow.at, now)} at the usual rate of use${pumpAuto ? '; the pump starts then (Auto mode)' : ''}`;
-  } else if (toLow?.kind === 'beyond') {
-    lowValue = 'More than 3 days';
-    lowDetail = 'Use in this period is too low to reach the threshold soon';
-  } else if (toLow?.kind === 'no-data') {
-    lowValue = 'Learning';
-    lowDetail = 'Needs more history to know the usual rate of use';
-  }
-
-  let phValue = 'Not enough readings';
-  let phDetail = 'Needs at least 2 hours of pH readings in the last day';
-  if (ph) {
-    phValue = ph.direction === 'stable' ? 'Stable' : ph.direction === 'rising' ? 'Rising' : 'Falling';
-    phDetail = ph.hoursToLimit !== null
-      ? `${ph.perDay > 0 ? '+' : ''}${ph.perDay} per day; may pass ${ph.limit} in ${durationLabel(ph.hoursToLimit)}`
-      : `${ph.perDay > 0 ? '+' : ''}${ph.perDay} per day over the last 24 h; stays within ${minPh} to ${maxPh}`;
-  }
 
   return (
     <section data-testid="predictive-analytics" className="bg-card/30 backdrop-blur-md p-6 rounded-xl border border-border/40 shadow-sm print:break-inside-avoid">
@@ -114,11 +42,11 @@ const PredictiveAnalytics = ({ samples, capacityLiters, liveLevel, lowLevelThres
       </p>
 
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-        <Tile testId="peak-hours" icon={<Clock size={14} />} title="Peak hours" value={peakHourValue} detail={peakHourDetail} />
-        <Tile testId="peak-day" icon={<CalendarDays size={14} />} title="Peak day" value={peakDayValue} detail={peakDayDetail} />
-        <Tile testId="today-forecast" icon={<Droplets size={14} />} title="Expected use today" value={todayValue} detail={todayDetail} />
-        <Tile testId="time-to-low" icon={<TimerReset size={14} />} title={`Time until ${lowLevelThreshold}%`} value={lowValue} detail={lowDetail} />
-        <Tile testId="ph-trend" icon={<FlaskConical size={14} />} title="pH trend" value={phValue} detail={phDetail} />
+        <Tile testId="peak-hours" icon={<Clock size={14} />} title="Peak hours" {...report.peakHours} />
+        <Tile testId="peak-day" icon={<CalendarDays size={14} />} title="Peak day" {...report.peakDay} />
+        <Tile testId="today-forecast" icon={<Droplets size={14} />} title="Expected use today" {...report.today} />
+        <Tile testId="time-to-low" icon={<TimerReset size={14} />} title={`Time until ${lowLevelThreshold}%`} {...report.timeToLow} />
+        <Tile testId="ph-trend" icon={<FlaskConical size={14} />} title="pH trend" {...report.phTrend} />
       </div>
 
       {!enoughData ? (

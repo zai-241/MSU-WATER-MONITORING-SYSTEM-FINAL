@@ -380,3 +380,90 @@ export function durationLabel(hours: number): string {
   const h = Math.round(hours - d * 24);
   return `about ${d} day${d > 1 ? 's' : ''}${h ? ` ${h} h` : ''}`;
 }
+
+// ---------------------------------------------------------------------------
+// Report summary: one set of texts for the Reports panel and the Excel/PDF exports
+// ---------------------------------------------------------------------------
+
+export interface PredictiveInput {
+  samples: UsageSample[];
+  capacityLiters: number;
+  /** Live level for the time-to-low forecast; null when offline, faulty or unknown */
+  liveLevel: number | null;
+  lowLevelThreshold: number;
+  minPh: number;
+  maxPh: number;
+  /** Server time (ms) */
+  now: number;
+  /** Pump auto mode: the pump refills at the low threshold */
+  pumpAuto: boolean;
+}
+
+export interface PredictiveItem {
+  /** Short result, e.g. "7 AM to 8 AM" */
+  value: string;
+  /** One-line explanation */
+  detail: string;
+}
+
+export interface PredictiveReport {
+  profile: UsageProfile;
+  /** At least a quarter of the day's hours have data, so the patterns can be shown */
+  enoughData: boolean;
+  peakHours: PredictiveItem;
+  peakDay: PredictiveItem;
+  today: PredictiveItem;
+  timeToLow: PredictiveItem;
+  phTrend: PredictiveItem;
+}
+
+/** Everything the Predictive Analytics panel and the exports show, as data and ready-made text. */
+export function buildPredictiveReport(input: PredictiveInput): PredictiveReport {
+  const { samples, capacityLiters, liveLevel, lowLevelThreshold, minPh, maxPh, now, pumpAuto } = input;
+  const intervals = usageIntervals(samples);
+  const profile = usageProfile(intervals, capacityLiters);
+  const today = forecastToday(profile, intervals, now, capacityLiters);
+  const toLow = liveLevel === null ? null : predictTimeToLevel(liveLevel, lowLevelThreshold, profile, now);
+  const ph = phTrend(samples, minPh, maxPh, now);
+  const enoughData = profile.hours.filter(h => h.avgPercent !== null).length >= 6;
+
+  const [peak, ...others] = profile.peakHours;
+  const peakHours: PredictiveItem = peak
+    ? { value: hourRangeLabel(peak.hour), detail: `About ${peak.avgLiters} L on average${others.length ? `. Next: ${others.map(h => hourLabel(h.hour)).join(', ')}` : ''}` }
+    : { value: 'No use yet', detail: enoughData ? 'No water use measured in this period' : 'Needs about a day of readings' };
+
+  const peakDay: PredictiveItem = profile.peakWeekday
+    ? { value: profile.peakWeekday.name, detail: `About ${profile.peakWeekday.avgLiters} L per day${profile.lowWeekday ? `. Quietest: ${profile.lowWeekday.name} (${profile.lowWeekday.avgLiters} L)` : ''}` }
+    : { value: 'Not enough days yet', detail: 'Needs at least one mostly complete day of readings' };
+
+  const todayItem: PredictiveItem = {
+    value: today.expectedLiters !== null ? `About ${today.expectedLiters} L` : 'Not enough days yet',
+    detail: today.basis === 'none'
+      ? `Used so far today: ${today.usedSoFarLiters} L`
+      : `${today.basis === 'weekday' ? `Average for a ${today.weekday}` : 'Average of all days'}. Used so far today: ${today.usedSoFarLiters} L`,
+  };
+
+  let timeToLow: PredictiveItem = { value: 'Unavailable', detail: 'Needs a live level reading from the controller' };
+  if (toLow?.kind === 'below') {
+    timeToLow = { value: 'At or below now', detail: `The level is at or under ${lowLevelThreshold}%` };
+  } else if (toLow?.kind === 'hours') {
+    timeToLow = { value: durationLabel(toLow.hours), detail: `Around ${clockLabel(toLow.at, now)} at the usual rate of use${pumpAuto ? '; the pump starts then (Auto mode)' : ''}` };
+  } else if (toLow?.kind === 'beyond') {
+    timeToLow = { value: 'More than 3 days', detail: 'Use in this period is too low to reach the threshold soon' };
+  } else if (toLow?.kind === 'no-data') {
+    timeToLow = { value: 'Learning', detail: 'Needs more history to know the usual rate of use' };
+  }
+
+  let phItem: PredictiveItem = { value: 'Not enough readings', detail: 'Needs at least 2 hours of pH readings in the last day' };
+  if (ph) {
+    const rate = `${ph.perDay > 0 ? '+' : ''}${ph.perDay} per day`;
+    phItem = {
+      value: ph.direction === 'stable' ? 'Stable' : ph.direction === 'rising' ? 'Rising' : 'Falling',
+      detail: ph.hoursToLimit !== null
+        ? `${rate}; may pass ${ph.limit} in ${durationLabel(ph.hoursToLimit)}`
+        : `${rate} over the last 24 h; stays within ${minPh} to ${maxPh}`,
+    };
+  }
+
+  return { profile, enoughData, peakHours, peakDay, today: todayItem, timeToLow, phTrend: phItem };
+}

@@ -51,6 +51,7 @@ import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import PredictiveAnalytics from '@/components/PredictiveAnalytics';
+import { buildPredictiveReport } from '@/lib/predictive';
 import {
   ALERT_CATEGORIES,
   buildPumpEvents,
@@ -552,6 +553,30 @@ const Reports = () => {
     }
   };
 
+  // Predictive analytics for the panel and the exports (recomputed at most once a minute)
+  const forecastMinute = Math.floor((Date.now() + serverTimeOffset) / 60_000);
+  const liveLevelForForecast = selectedTank
+    && !isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs)
+    && selectedTank.levelSensorOk !== false
+    && Number.isFinite(selectedTank.waterLevel) && selectedTank.waterLevel >= 0 && selectedTank.waterLevel <= 100
+    ? selectedTank.waterLevel : null;
+  const pumpAuto = pumpDemo && getPumpMode(config) === 'auto';
+  const predictiveReport = useMemo(
+    () => (selectedTank && !isTankPlanned(selectedTank)
+      ? buildPredictiveReport({
+          samples: historySamples,
+          capacityLiters,
+          liveLevel: liveLevelForForecast,
+          lowLevelThreshold: config.lowLevelThreshold,
+          minPh: config.minPh,
+          maxPh: config.maxPh,
+          now: forecastMinute * 60_000,
+          pumpAuto,
+        })
+      : null),
+    [selectedTank, historySamples, capacityLiters, liveLevelForForecast, config.lowLevelThreshold, config.minPh, config.maxPh, forecastMinute, pumpAuto]
+  );
+
   // Everything the document builders need, in one place
   const exportData = {
     currentUser,
@@ -564,6 +589,7 @@ const Reports = () => {
     summaryMetrics,
     // Table rows: telemetry plus the problem counts (and problem-only periods)
     telemetryData: tableRows,
+    predictive: predictiveReport ?? undefined,
     thresholds: {
       lowLevel: config.lowLevelThreshold,
       overflow: config.overflowThreshold,
@@ -1091,24 +1117,9 @@ const Reports = () => {
       </div>
 
       {/* PREDICTIVE ANALYTICS: peak hours, peak day, expected use, time to low, pH trend */}
-      {selectedTank && !isLoadingHistory && !isTankPlanned(selectedTank) && (() => {
-        const live = !isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs)
-          && selectedTank.levelSensorOk !== false
-          && Number.isFinite(selectedTank.waterLevel) && selectedTank.waterLevel >= 0 && selectedTank.waterLevel <= 100;
-        return (
-          <PredictiveAnalytics
-            samples={historySamples}
-            capacityLiters={capacityLiters}
-            liveLevel={live ? selectedTank.waterLevel : null}
-            lowLevelThreshold={config.lowLevelThreshold}
-            minPh={config.minPh}
-            maxPh={config.maxPh}
-            now={Date.now() + serverTimeOffset}
-            rangeLabel={dateRange}
-            pumpAuto={pumpDemo && getPumpMode(config) === 'auto'}
-          />
-        );
-      })()}
+      {selectedTank && !isLoadingHistory && predictiveReport && (
+        <PredictiveAnalytics report={predictiveReport} lowLevelThreshold={config.lowLevelThreshold} rangeLabel={dateRange} />
+      )}
 
       {/* BOTTOM SECTION: REPORTS TABLE & PRINT LOGS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
