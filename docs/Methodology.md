@@ -204,7 +204,8 @@ read the 3 AM (end-of-window) warning.
 ### 4.4 Predictive Analytics (Usage Patterns and Forecasts)
 Computed in the web app from the 10-minute history (`frontend/src/lib/predictive.ts`); no firmware
 or database change. Shown in Reports (Predictive Analytics panel, for the selected range), in the Excel export (a
-"Predictive Analytics" sheet) and the PDF export (section 3, with the hourly and weekday tables),
+"Predictive Analytics" sheet) the PDF export (section 3, with the hourly and weekday tables) and the CSV export (titled
+blocks after the telemetry rows, "Yes" in a Peak column),
 and as "Est. time to 15%" on each live Dashboard tank card (last 7 days). The panel and both
 exports use the same `buildPredictiveReport()` result, so their texts match. All hours and days are Philippine
 time (UTC+8). These are averages of past use, not machine learning.

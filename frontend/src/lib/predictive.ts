@@ -467,3 +467,49 @@ export function buildPredictiveReport(input: PredictiveInput): PredictiveReport 
 
   return { profile, enoughData, peakHours, peakDay, today: todayItem, timeToLow, phTrend: phItem };
 }
+
+/** The five forecast rows shown in the exports: [forecast, result, details] */
+export function predictiveSummaryRows(p: PredictiveReport, lowLevel: number): string[][] {
+  return [
+    ['Peak hours', p.peakHours.value, p.peakHours.detail],
+    ['Peak day', p.peakDay.value, p.peakDay.detail],
+    ['Expected use today', p.today.value, p.today.detail],
+    [`Time until ${lowLevel}%`, p.timeToLow.value, p.timeToLow.detail],
+    ['pH trend', p.phTrend.value, p.phTrend.detail],
+  ];
+}
+
+/** How the numbers are made, printed with them in the exports */
+export const PREDICTIVE_NOTE =
+  'Water use is the level drop while the pump is off, from the 10-minute history. Intervals with the pump on, ' +
+  'sensor faults, data gaps or sensor glitches are left out. Forecasts are averages of past use, in Philippine time.';
+
+/** One CSV cell: quoted when it holds a comma, quote or line break (RFC 4180) */
+export function csvCell(value: string | number | null | undefined): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * The predictive analytics as CSV lines, appended to the telemetry rows of the CSV export:
+ * a titled block each for the forecasts, use by hour and use by day of the week,
+ * separated by blank lines. Peak rows say "Yes" in the Peak column.
+ */
+export function predictiveCsvLines(p: PredictiveReport, lowLevel: number): string[] {
+  const row = (cells: Array<string | number | null>) => cells.map(csvCell).join(',');
+  const peakHours = new Set(p.profile.peakHours.map(h => h.hour));
+  return [
+    row(['PREDICTIVE ANALYTICS']),
+    row([`${PREDICTIVE_NOTE} Based on ${p.profile.coveredDays} complete day(s).`]),
+    row(['Forecast', 'Result', 'Details']),
+    ...predictiveSummaryRows(p, lowLevel).map(row),
+    '',
+    row(['AVERAGE WATER USE BY HOUR OF THE DAY']),
+    row(['Hour', 'Average Use (L)', 'Average Use (% of tank)', 'Days', 'Peak']),
+    ...p.profile.hours.map(h => row([hourRangeLabel(h.hour), h.avgLiters ?? 'No data', h.avgPercent ?? 'No data', h.days, peakHours.has(h.hour) ? 'Yes' : ''])),
+    '',
+    row(['AVERAGE WATER USE BY DAY OF THE WEEK']),
+    row(['Day', 'Average Use (L/day)', 'Average Use (% of tank)', 'Days', 'Peak']),
+    ...p.profile.weekdays.map(w => row([w.name, w.avgLiters ?? 'No complete day', w.avgPercent ?? 'No complete day', w.days, p.profile.peakWeekday?.weekday === w.weekday ? 'Yes' : ''])),
+  ];
+}

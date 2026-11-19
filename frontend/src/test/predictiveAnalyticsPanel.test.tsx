@@ -5,7 +5,7 @@ import type { Tank } from '@/store/useStore';
 vi.mock('@/config/firebase', () => ({ database: {}, firestore: {}, auth: {} }));
 
 import PredictiveAnalytics from '@/components/PredictiveAnalytics';
-import { buildPredictiveReport, phParts, type PredictiveInput, type UsageSample } from '@/lib/predictive';
+import { buildPredictiveReport, predictiveCsvLines, csvCell, phParts, type PredictiveInput, type UsageSample } from '@/lib/predictive';
 import { buildExcelWorkbook, buildPdfDocument, type ReportExportData } from '@/lib/reportExport';
 
 // Recharts needs ResizeObserver, which jsdom does not have
@@ -110,5 +110,51 @@ describe('Exports: predictive analytics', () => {
     const withoutPredictive = buildPdfDocument({ ...data, predictive: undefined }).output();
     expect(withoutPredictive).toContain('3. Pump Activity');
     expect(withoutPredictive).not.toContain('Predictive Analytics');
+  });
+});
+
+describe('CSV export: predictive analytics', () => {
+  const report = buildPredictiveReport(input);
+  const lines = predictiveCsvLines(report, 15);
+
+  /** Minimal RFC 4180 parser for one line */
+  const parse = (line: string) => {
+    const cells: string[] = [];
+    let cur = '';
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quoted) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else cur += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === ',') { cells.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    cells.push(cur);
+    return cells;
+  };
+
+  it('adds the forecasts, the 24 hours and the 7 days as titled blocks', () => {
+    expect(lines[0]).toBe('PREDICTIVE ANALYTICS');
+    expect(lines).toContain('AVERAGE WATER USE BY HOUR OF THE DAY');
+    expect(lines).toContain('AVERAGE WATER USE BY DAY OF THE WEEK');
+    const rows = lines.map(parse);
+    expect(rows).toContainEqual(['Peak hours', report.peakHours.value, report.peakHours.detail]);
+    expect(rows).toContainEqual(['Peak day', 'Wednesday', report.peakDay.detail]);
+    expect(rows.filter(r => / to /.test(r[0]) && /M$/.test(r[0]))).toHaveLength(24);
+    expect(rows.find(r => r[0] === '8 AM to 9 AM')?.[4]).toBe('Yes');
+    expect(rows.find(r => r[0] === 'Wednesday')?.[4]).toBe('Yes');
+    expect(rows.find(r => r[0] === 'Tuesday')?.[4]).toBe('');
+  });
+
+  it('quotes cells with commas or quotes so the columns stay in place', () => {
+    expect(csvCell('About 6 L. Next: 1 PM, 2 PM')).toBe('"About 6 L. Next: 1 PM, 2 PM"');
+    expect(csvCell('say "hi"')).toBe('"say ""hi"""');
+    expect(csvCell(12.5)).toBe('12.5');
+    expect(csvCell(null)).toBe('');
+    // Every forecast row parses back to exactly 3 cells
+    lines.slice(3, 8).forEach(l => expect(parse(l)).toHaveLength(3));
   });
 });

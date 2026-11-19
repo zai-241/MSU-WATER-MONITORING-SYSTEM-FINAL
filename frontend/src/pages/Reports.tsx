@@ -51,7 +51,7 @@ import { offlineThresholdMs } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import PredictiveAnalytics from '@/components/PredictiveAnalytics';
-import { buildPredictiveReport } from '@/lib/predictive';
+import { buildPredictiveReport, predictiveCsvLines } from '@/lib/predictive';
 import {
   ALERT_CATEGORIES,
   buildPumpEvents,
@@ -534,7 +534,11 @@ const Reports = () => {
         return `${d.date},${lvl},${height},${ph},${estVolume},${d.sampleCount},${problems}`;
       }).join('\n');
       
-      const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
+      // Predictive analytics after the telemetry rows, as titled blocks
+      const csvPredictive = predictiveReport
+        ? `\n\n${predictiveCsvLines(predictiveReport, config.lowLevelThreshold).join('\n')}`
+        : '';
+      const blob = new Blob([csvHeader + csvRows + csvPredictive], { type: 'text/csv' });
       const filename = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
       setExportingType('csv');
       try {

@@ -12,7 +12,7 @@ import autoTable from 'jspdf-autotable';
 import type { Tank, Log } from '@/store/useStore';
 import { estimateVolumeLiters, tankCapacityLiters } from './constants';
 import { emptyProblemCounts, PROBLEM_COLUMNS, type TelemetryTableRow } from './reportLogs';
-import { hourRangeLabel, type PredictiveReport } from './predictive';
+import { hourRangeLabel, predictiveSummaryRows, PREDICTIVE_NOTE, type PredictiveReport } from './predictive';
 
 /** jspdf-autotable records where the last table ended on the document */
 type DocWithTable = jsPDF & { lastAutoTable: { finalY: number } };
@@ -51,20 +51,6 @@ export interface ReportExportData {
   predictive?: PredictiveReport;
 }
 
-/** The five forecast rows shown in both exports: [forecast, result, details] */
-export function predictiveSummaryRows(p: PredictiveReport, lowLevel: number): string[][] {
-  return [
-    ['Peak hours', p.peakHours.value, p.peakHours.detail],
-    ['Peak day', p.peakDay.value, p.peakDay.detail],
-    ['Expected use today', p.today.value, p.today.detail],
-    [`Time until ${lowLevel}%`, p.timeToLow.value, p.timeToLow.detail],
-    ['pH trend', p.phTrend.value, p.phTrend.detail],
-  ];
-}
-
-const PREDICTIVE_NOTE =
-  'Water use is the level drop while the pump is off, from the 10-minute history. Intervals with the pump on, ' +
-  'sensor faults, data gaps or sensor glitches are left out. Forecasts are averages of past use, in Philippine time.';
 
 /**
  * Sensor status of one history row. Readings recorded during a fault are kept
