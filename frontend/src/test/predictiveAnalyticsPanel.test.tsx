@@ -158,3 +158,26 @@ describe('CSV export: predictive analytics', () => {
     lines.slice(3, 8).forEach(l => expect(parse(l)).toHaveLength(3));
   });
 });
+
+describe('Print view: predictive analytics', () => {
+  it('starts on a new page and prints tables in place of the charts', () => {
+    show();
+    expect(screen.getByTestId('predictive-analytics').className).toContain('print:break-before-page');
+    // Charts are hidden in print, the tables only show in print
+    expect(screen.getByTestId('usage-charts').className).toContain('print:hidden');
+    expect(screen.getByTestId('print-tables').className).toMatch(/(^| )hidden( |$)/);
+    expect(screen.getByTestId('print-tables').className).toContain('print:grid');
+
+    const hourRows = screen.getByTestId('print-hour-table').querySelectorAll('tbody tr');
+    expect(hourRows).toHaveLength(12); // 24 hours in two columns
+    expect(screen.getByTestId('print-hour-table')).toHaveTextContent('8 AM to 9 AM (Peak)');
+    expect(screen.getByTestId('print-day-table').querySelectorAll('tbody tr')).toHaveLength(7);
+    expect(screen.getByTestId('print-day-table')).toHaveTextContent('Wednesday (Peak)');
+  });
+
+  it('prints only the "not enough history" note when there is no history', () => {
+    show({ samples: [], liveLevel: 50 });
+    expect(screen.queryByTestId('print-tables')).toBeNull();
+    expect(screen.getByText(/Not enough history yet/)).toBeInTheDocument();
+  });
+});
