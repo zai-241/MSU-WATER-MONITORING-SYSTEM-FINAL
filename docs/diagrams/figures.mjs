@@ -224,7 +224,7 @@ function fig35() {
   b += box(L, 535, 290, 100, 'Convert to Height,\nLevel % & pH\n(Calibration Values)', { size: F });
   b += dec(L, 725, 330, 190, 'Changed ≥ 2% or\n≥ 0.15 pH, or 10 s\nHeartbeat Due?', { size: F });
   b += dec(L, 950, 320, 150, 'Primary Ethernet\nLink Active?', { size: F });
-  b += box(500, 950, 212, 128, 'Transmit via\nLAN8720 Ethernet\n& CPE210 P2P\nBridge', { size: 19 });
+  b += box(500, 950, 212, 128, 'Transmit via\nW5500 Ethernet\n& CPE210 P2P\nBridge', { size: 19 });
   b += dec(L, 1150, 280, 140, 'Backup Wi-Fi\nConnected?', { size: F });
   b += box(500, 1150, 212, 102, 'Transmit via\n2.4GHz Wi-Fi\nBackup', { size: 19 });
   b += box(L, 1325, 320, 100, 'Buffer Critical Logs in\nRAM (20 Entries) &\nReconnect (90 s Watchdog)', { size: F });
@@ -260,7 +260,7 @@ function fig36() {
   let b = '';
   b += layer(75, 525, 'Input Layer (Perception)', 'One ESP32 Edge Node per Reservoir Tank (Tanks 1–4)');
   b += inner(157, 262, 563, 300, 'Sensors', 'Submersible Hydrostatic Level\nSensor (via Current-to-Voltage\nModule) & PH-4502C pH Sensor');
-  b += inner(757, 262, 563, 300, 'Processing & Network\nHardware', 'ESP32-WROOM-32\nMicrocontroller + LAN8720 PHY\nEthernet Module');
+  b += inner(757, 262, 563, 300, 'Processing & Network\nHardware', 'ESP32-WROOM-32\nMicrocontroller, W5500\nEthernet & Pump Relay');
   b += blockArrow(600);
   b += layer(712, 470, 'Process Layer (Network & Application)', 'Connectivity, Cloud Database, Alert Service & Logic');
   b += inner(115, 900, 405, 245, 'Connectivity', 'TP-Link CPE210 2.4GHz\nP2P Wireless Bridge;\nWi-Fi Standby Link', 32, 26);
@@ -401,7 +401,7 @@ function fig310() {
   uc('cal', BX, row(3), 'Calibrate Sensors\n& Set Capacity', 'green');
   uc('awc', BX, row(4), 'Assign Water\nController', 'green');
   uc('loc', BX, row(5), 'Set Location', 'green');
-  uc('pdm', BX, row(6), 'Set Pump\nDemo Mode', 'green');
+  uc('pdm', BX, row(6), 'Set Pump System\n& Pump Mode', 'green');
   uc('add', BX, row(7), 'Add User\n(with Role)', 'green');
   uc('del', BX, row(8), 'Delete User', 'green');
   uc('act', BX, row(9), 'Activate/Deactivate\nAccount', 'green');
@@ -416,7 +416,7 @@ function fig310() {
   // column C and the system use cases
   uc('sel', CX, row(3), 'Select Tank\n(Tank 1–4)', 'green');
   uc('vdd', CX, row(14), 'View\nDashboard Data', 'green');
-  uc('pump', CX, row(15), 'Switch Pump\n(Demo Mode)');
+  uc('pump', CX, row(15), 'Switch Pump');
   uc('pd', SX, row(13), 'Provide\nData');
   uc('ra', SX, row(16), 'Raise Alert');
   uc('spn', SX, row(17), 'Send Push\nNotification');
@@ -708,7 +708,7 @@ function dmKit() {
 }
 
 function figDataModel1() {
-  const { W, TW, COL, FS, RT, MONO } = DM, H = 1680;
+  const { W, TW, COL, FS, RT, MONO } = DM, H = 1850;
   const k = dmKit();
   // ---- column 1: Firestore, ROLES, USER_STATE, legend
   let x = COL[0];
@@ -758,27 +758,32 @@ function figDataModel1() {
   const cfgEnd = k.tbl(x, 30 + tH + 40, 'CONFIG', 'config', 'Admin Panel (one record for all tanks)', [
     ['lowLevelThreshold (%, default 15)', 'NUMBER'], ['overflowThreshold (%, default 95)', 'NUMBER'],
     ['minPh (default 6.5)', 'NUMBER'], ['maxPh (default 8.5)', 'NUMBER'], ['maintenanceMode', 'BOOLEAN'],
-    ['pumpControlLock', 'BOOLEAN'], ['pumpDemoMode (missing = on)', 'BOOLEAN'], ['offlineThresholdSec (default 30)', 'NUMBER'],
-    ['repeatIntervalSec (default 60)', 'NUMBER'], ['soundEnabled', 'BOOLEAN'], ['pushEnabled', 'BOOLEAN']]);
+    ['pumpControlLock', 'BOOLEAN'], ['pumpDemoMode (Pump System)', 'BOOLEAN'], ['pumpMode (auto or manual)', 'STRING'],
+    ['offlineThresholdSec (default 30)', 'NUMBER'], ['repeatIntervalSec (default 60)', 'NUMBER'], ['soundEnabled', 'BOOLEAN'], ['pushEnabled', 'BOOLEAN'],
+    ['nightWatchEnabled (missing = on)', 'BOOLEAN'], ['nightStartHour, nightEndHour (22, 3)', 'NUMBER'],
+    ['nightFastDropPercent (default 5)', 'NUMBER'], ['nightSlowDropPercent (default 3)', 'NUMBER']]);
   k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system/worker', 'Alert Service heartbeat', [
     ['lastSeen', 'TIMESTAMP'], ['startedAt', 'TIMESTAMP']]);
   return svg(W, H, k.b);
 }
 
 function figDataModel2() {
-  const { W, COL, RT } = DM, H = 1860;
+  const { W, COL, RT } = DM, H = 2090;
   const k = dmKit();
   let x = COL[0];
   const tnkEnd = k.tbl(x, 30, 'TANKS', 'tanks/{tankId}', ['ESP32 (live readings), Admin (setup,', 'calibration, capacity), Worker (pumpOn),', 'Alert Service (controllerOffline)'], [
     ['id ("1" to "4")', 'STRING'], ['name', 'STRING'], ['location', 'STRING'], ['enabled', 'BOOLEAN'], ['assignedWorker (user UID)', 'STRING'],
     ['waterLevel (%)', 'NUMBER'], ['waterHeight (m)', 'NUMBER'], ['phLevel', 'NUMBER'], ['status (safe|warning|danger|offline)', 'STRING'],
-    ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn', 'BOOLEAN'],
+    ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn (state and command)', 'BOOLEAN'],
+    ['pumpCommandAt', 'TIMESTAMP'], ['pumpCommandResult', 'STRING'],
     ['levelSensorOk', 'BOOLEAN'], ['phSensorOk', 'BOOLEAN'], ['levelVmin (V)', 'NUMBER'], ['levelVmax (V)', 'NUMBER'],
     ['tankHeight (m)', 'NUMBER'], ['capacityLiters (default 200)', 'NUMBER'], ['levelOffset', 'NUMBER'], ['phNeutralVoltage (V)', 'NUMBER'],
     ['phSlope', 'NUMBER'], ['phOffset', 'NUMBER'], ['rssi (dBm)', 'NUMBER'], ['wifiConnected', 'BOOLEAN'], ['ethConnected', 'BOOLEAN'],
-    ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['lastUpdate', 'TIMESTAMP']]);
+    ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['calibrationUntil (max 30 min ahead)', 'TIMESTAMP'],
+    ['calibrationLive (V, m, %, pH V)', 'OBJECT'], ['lastUpdate', 'TIMESTAMP']]);
   k.tbl(x, tnkEnd + 40, 'HISTORY', 'history/tanks/{tankId}/{pushKey}', 'ESP32, one sample every 10 minutes', [
-    ['waterLevel', 'NUMBER'], ['waterHeight', 'NUMBER'], ['phLevel', 'NUMBER'], ['pumpOn', 'BOOLEAN'], ['timestamp (indexed)', 'TIMESTAMP']]);
+    ['waterLevel', 'NUMBER'], ['waterHeight', 'NUMBER'], ['phLevel', 'NUMBER'], ['pumpOn', 'BOOLEAN'],
+    ['levelSensorOk, phSensorOk', 'BOOLEAN'], ['timestamp (indexed)', 'TIMESTAMP']]);
 
   x = COL[1];
   const ntfEnd = k.tbl(x, 30, 'NOTIFICATIONS', 'notifications/{alertId}', ['Alert Service (or open dashboards while', 'it is down); users acknowledge'], [
@@ -851,10 +856,10 @@ function fig313() {
   b += `<rect x="286" y="127" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="330" y="129" width="44" height="18" rx="2" fill="#111"/>`;
   for (let i = 0; i < 4; i++) b += `<rect x="${292 + i * 20}" y="165" width="10" height="16" fill="#E2B33B"/>`;
   b += serverIcon(800, 690) + bellIcon(520, 690);
-  // relay output reserved for future pump control (GPIO 32): dashed because it is not installed
-  b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#555', sw: 2, dash: '6 4' });
-  b += A([[594, 322], [620, 322]], { dash: '6 4' });
-  b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Future\nPump)', 16);
+  // pump relay on GPIO 32 (installed on the Tank 1 drum model)
+  b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#111', sw: 2 });
+  b += A([[594, 322], [620, 322]]);
+  b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Refill\nPump)', 16);
   // one sensor node per tank: the group is repeated at Tanks 1–4
   b += rect(8, 50, 682, 452, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
   b += P(349, 28, 'One Sensor Node per Tank (Tanks 1–4)');
@@ -863,7 +868,7 @@ function fig313() {
   b += P(330, 85, 'Current-to-Voltage\nModule');
   b += P(110, 469, 'pH Sensor\n(PH-4502C)');
   b += P(508, 436, 'ESP32\nMicrocontroller');
-  b += P(572, 85, 'LAN8720 PHY\nEthernet Module');
+  b += P(572, 85, 'W5500\nEthernet Module');
   b += P(855, 45, 'TP-Link CPE210\nP2P Bridge (2.4GHz)');
   b += P(725, 152, 'RJ45', 17);
   b += P(1088, 60, 'Internet\nConnection\n(Wireless Router)');
@@ -894,7 +899,7 @@ function fig314() {
   b += A([[1022, 210], [1022, 282]], { start: true }) + P(1008, 246, 'Internet /\nWAN Link', 17, { anchor: 'end' });
   // sensor site to the office
   b += A([[192, 360], [272, 360], [272, 235], [880, 235], [880, 360], [947, 360]], { start: true });
-  b += lbl(576, 235, 'Primary Link: LAN8720 PHY Ethernet + P2P Wireless Bridge', { size: 17, family: POPPINS, weight: 600 });
+  b += lbl(576, 235, 'Primary Link: W5500 Ethernet + P2P Wireless Bridge', { size: 17, family: POPPINS, weight: 600 });
   b += A([[192, 400], [296, 400]], { start: true }) + A([[800, 400], [947, 400]], { start: true });
   b += A([[100, 458], [100, 590], [985, 590], [985, 450]], { dash: '9 7', start: true });
   b += lbl(542, 590, 'Standby Link: Built-in 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', { size: 17, family: POPPINS, weight: 600 });
