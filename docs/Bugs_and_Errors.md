@@ -4,8 +4,8 @@ First checked on 2026-11-14 against `main` at `2c05cd1`. **Updated 2026-11-20 ag
 **Open now** below for everything still open. Groups 1–8 further down are the record of the 14 Nov work.
 
 **Status on 2026-11-20:** `npm test` 238 passed (35 files), `npm run typecheck` 0 errors, `npm run lint` 0 errors
-and 0 warnings. Open: 6 code items (2 security, 1 firmware consistency, 3 low/cleanup), 2 manual steps (B1, B3; B2 done), and the
-thesis items.
+and 0 warnings. Open: 6 code items (2 security, 1 firmware consistency, 3 low/cleanup) and the thesis items.
+All manual steps (B1–B3) are done.
 
 **Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
 (deploy the database rules, change the router's Wi-Fi password). Group 8 (thesis) is partly done.
@@ -18,7 +18,7 @@ references are `file:line` in the current code. After a group, run `npm test` an
 | Group | Topic | Items | Priority |
 |---|---|---|---|
 | 1 | Pump: virtual pump + Pump Demo Mode | 5 | **Done** (2026-11-14) |
-| 2 | Security and access | 2 | **Code done** (2026-11-14); deploy rules + change Wi-Fi password |
+| 2 | Security and access | 2 | **Done** (code 2026-11-14; rules deployed and Wi-Fi password changed 2026-11-20) |
 | 3 | Tanks 1–4 consistency | 2 | **Done** (2026-11-14) |
 | 4 | Reports correctness | 2 | **Done** (2026-11-14) |
 | 5 | Settings and alerting | 3 | **Done** (2026-11-14) |
@@ -60,16 +60,16 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 
 ### B. Manual steps (cannot be checked from the code)
 
-- [ ] **B1 Change the router's Wi-Fi password** and put the new one in each tank's `secrets.h` (Group 2.1). The old
-  one is still in git history (commits `9133053`, `a70e646`).
+- [x] **B1 Change the router's Wi-Fi password** and put the new one in each tank's `secrets.h` (Group 2.1).
+  *Done 2026-11-20.* The old password in git history (commits `9133053`, `a70e646`) no longer works.
 - [x] **B2 Deploy the database rules.** *Done 2026-11-20* (`npx firebase deploy --only database,firestore` after
   commit `08fbded`). Live now: the worker `pumpOn` limit (Group 2.2), the `calibrationUntil` limit, per-tank
   maintenance, `/presence`, and the checks on per-tank thresholds (`tanks/{id}/thresholds`: admin only, all four
   values, in range, low < overflow, min pH < max pH) and `config/nightWatchTanks` (true/false per tank).
   Repeat this step after any later change to `database.rules.json` or `firestore.rules`.
-- [ ] **B3 Flash every installed controller** with the current sketch (Tank 1: RC filter fault limit 0.30 V, per-tank
-  maintenance, live calibration, per-tank thresholds from 20 Nov). Until Tank 1 is re-flashed its pump keeps
-  using the shared thresholds even if the tank has its own (alerts and Reports already use the tank's own).
+- [x] **B3 Flash every installed controller** with the current sketch (Tank 1: RC filter fault limit 0.30 V, per-tank
+  maintenance, live calibration, per-tank thresholds from 20 Nov). *Done 2026-11-20:* Tank 1 runs the sketch from
+  commit `08fbded`, so its pump uses the tank's own thresholds when set. Re-flash after any later firmware change.
 
 ### C. Thesis (before the defense)
 
@@ -131,9 +131,8 @@ decide whether Chapter 1.4 / Chapter 5 should mention the demo mode.
 
 ## Group 2: Security and access (code done 2026-11-14)
 
-**Still to do by hand:** (1) change the router's Wi-Fi password and put the new one in each tank's `secrets.h`;
-(2) deploy the database rules with `npx firebase deploy --only database` (the `/roles` entries already exist, since
-the current rules need them too). Until the rules are deployed, 2.2 is only fixed in git, not in the live database.
+**Done by hand on 2026-11-20:** the router's Wi-Fi password was changed (new one in each tank's `secrets.h`), and
+the database rules were deployed, so 2.2 is live (see B1 and B2 above).
 
 - [x] **2.1 Wi-Fi password in the code.** A fallback SSID and password are hard-coded in all four sketches
   (`backend/firmware/esp32_firmware.ino:16` and `:20`; same lines in `tank2/tank2.ino`, `tank3/tank3.ino`,
@@ -143,7 +142,7 @@ the current rules need them too). Until the rules are deployed, 2.2 is only fixe
   *Done (code):* the fallback block is replaced in all four sketches by `#error` checks, so a build without the five
   values in `secrets.h` stops with a message naming them. Checked with the ESP32 toolchain's preprocessor (fails with an
   empty `secrets.h`, passes with `secrets.example.h`). A test in `phase1.test.ts` fails if a sketch defines a credential
-  again. **The router password still has to be changed** (it stays in commits `9133053` and `a70e646`).
+  again. The router password was changed on 2026-11-20, so the old one in commits `9133053` and `a70e646` no longer works.
 - [x] **2.2 Workers can change tank settings in the database.** The rules let the `worker` role write any field of
   `tanks/{id}`: calibration, capacity and assignment (`backend/cloud/database.rules.json:31`). Only the web page
   stops them.
