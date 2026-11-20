@@ -1,8 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useTanks, useLogs, useConfig, Tank, isTankPlanned, isTankControllerOffline, isPumpDemoOn, getPumpMode } from '@/store/useStore';
 import { useAuth } from '@/hooks/useAuth';
-import { database } from '@/config/firebase';
-import { ref, query, orderByChild, endAt, get, update } from 'firebase/database';
 import { useProcessedTankData, useThrottledValue } from '@/hooks/useUIStabilization';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -42,7 +40,8 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useTankHistory, isLevelSampleFaulty, isPhSampleFaulty, type HistoryRawSample, type GroupedTelemetryPoint } from '@/hooks/useTankHistory';
+import { useTankHistory } from '@/hooks/useTankHistory';
+import { useHistoryRetention } from '@/hooks/useHistoryRetention';
 // exceljs and jsPDF are large: reportExport is loaded only when an export button is clicked (see handleExport*)
 const loadReportExport = () => import('@/lib/reportExport');
 import { estimateVolumeLiters, tankCapacityLiters, DEFAULT_TANK_IDS, tankIdsInOrder } from '@/lib/constants';
@@ -52,79 +51,23 @@ import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import PredictiveAnalytics from '@/components/PredictiveAnalytics';
 import { buildPredictiveReport, predictiveCsvLines } from '@/lib/predictive';
+import { buildPumpEvents, logBelongsToTank } from '@/lib/reportLogs';
 import {
-  ALERT_CATEGORIES,
-  buildPumpEvents,
-  countAlertStarts,
-  countProblemsByPeriod,
-  emptyProblemCounts,
-  isPumpRun,
-  logBelongsToTank,
-  PROBLEM_COLUMNS,
-  type ProblemCounts,
-  type PumpEvent,
-  type TelemetryTableRow,
-} from '@/lib/reportLogs';
-
-/** A Printable Telemetry Log Table row: telemetry averages plus the problems logged in that period. */
-type TableRow = TelemetryTableRow & { hasSamples: boolean; problems: ProblemCounts };
-
-/** Problem count cell: a red number when there were problems, a muted 0 otherwise. */
-function ProblemCell({ count }: { count: number }) {
-  return (
-    <td className="py-3.5 px-3 text-center">
-      <span className={count > 0 ? 'inline-block min-w-[1.5rem] px-1.5 py-0.5 rounded bg-danger/10 text-danger font-bold' : 'text-muted-foreground/60'}>
-        {count}
-      </span>
-    </td>
-  );
-}
-
-const DATE_RANGES = ['Last 7 Days', 'Last 14 Days', 'Last 30 Days'] as const;
-type DateRange = typeof DATE_RANGES[number];
-
-const PUMP_LOG_PAGE_SIZE = 10;
-
-/** "Zailanor Pundato - ADMIN"; just the name for entries written before the role was saved. */
-function pumpActorLabel(event: PumpEvent): string {
-  return event.role ? `${event.actor} - ${event.role.toUpperCase()}` : event.actor;
-}
-
-const PUMP_RESULT_STYLE: Record<PumpEvent['result'], { label: string; className: string }> = {
-  automatic: { label: 'Automatic', className: 'text-blue-500 bg-blue-500/10 border-blue-500/20' },
-  accepted: { label: 'Accepted', className: 'text-safe bg-safe/10 border-safe/20' },
-  refused: { label: 'Refused', className: 'text-danger bg-danger/10 border-danger/20' },
-  unconfirmed: { label: 'No reply', className: 'text-warning bg-warning/10 border-warning/20' },
-};
-
-/** Marks a history value recorded while the sensor was faulty (monitoring continues, value may be off). */
-function FaultTag({ what }: { what: string }) {
-  return (
-    <span
-      className="ml-1.5 text-[10px] text-danger font-semibold uppercase"
-      title={`Recorded during a ${what} sensor fault; may be inaccurate`}
-    >
-      Fault
-    </span>
-  );
-}
-
-/** Sensor health line on the live cards. A fault is shown, but the reading above keeps updating. */
-function SensorStatusRow({ ok }: { ok: boolean }) {
-  return (
-    <div className="mt-4 pt-2 border-t border-border/40 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-      <span>Status:</span>
-      <span
-        className={ok ? 'text-safe' : 'text-danger font-bold text-right'}
-        title={ok ? undefined : 'Monitoring continues; the reading may be inaccurate until the sensor is checked'}
-      >
-        {ok ? 'SENSOR OK' : 'SENSOR FAULT · still monitoring'}
-      </span>
-    </div>
-  );
-}
-
-const PIE_COLORS = ['#ef4444', '#f59e0b', '#a855f7', '#f97316', '#3b82f6'];
+  DATE_RANGES,
+  rangeDays,
+  groupTelemetry,
+  buildTableRows,
+  pumpActivationsByDay,
+  alertDistribution,
+  summarizeReport,
+  recentAlertLogs,
+  signalStrength,
+  phCategory as phCategoryOf,
+  buildReportCsv,
+  type DateRange,
+} from '@/lib/reportCalculations';
+import { ProblemCell, FaultTag, SensorStatusRow } from '@/components/reports/ReportParts';
+import { PIE_COLORS, PUMP_LOG_PAGE_SIZE, PUMP_RESULT_STYLE, pumpActorLabel } from '@/components/reports/reportStyles';
 
 export type { HistoryRawSample, GroupedTelemetryPoint } from '@/hooks/useTankHistory';
 
@@ -167,9 +110,7 @@ const Reports = () => {
     }
   }, [tanks, liveTanks, selectedTankId]);
 
-  const days = useMemo(() => {
-    return dateRange === 'Last 7 Days' ? 7 : dateRange === 'Last 14 Days' ? 14 : 30;
-  }, [dateRange]);
+  const days = rangeDays(dateRange);
 
   const selectedTank = useMemo(() => {
     return tanks.find(t => t.id === selectedTankId) || null;
@@ -239,28 +180,20 @@ const Reports = () => {
   };
   const processedTank = useProcessedTankData(selectedTank || dummyTank);
 
-  // Determine RSSI strength label and color
-  const rssiDetails = useMemo(() => {
-    if (!selectedTank) return { label: 'Syncing', color: 'text-muted-foreground', pct: 0 };
-    if (isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs)) {
-      return { label: 'Offline', color: 'text-amber-500', pct: 0 };
-    }
-    const rssi = processedTank.rssi ?? -999;
-    if (rssi === -999) return { label: 'Offline', color: 'text-muted-foreground', pct: 0 };
-    if (rssi >= -60) return { label: 'Excellent', color: 'text-safe', pct: 100 };
-    if (rssi >= -75) return { label: 'Good', color: 'text-safe/80', pct: 75 };
-    if (rssi >= -85) return { label: 'Fair', color: 'text-warning', pct: 45 };
-    return { label: 'Poor', color: 'text-danger', pct: 20 };
-  }, [processedTank.rssi, selectedTank, serverTimeOffset, offlineMs]);
+  // Wi-Fi signal label and pH category for the live cards
+  const rssiDetails = useMemo(() => (
+    selectedTank
+      ? signalStrength(processedTank.rssi, isTankControllerOffline(selectedTank, serverTimeOffset, offlineMs))
+      : { label: 'Syncing', color: 'text-muted-foreground', pct: 0 }
+  ), [processedTank.rssi, selectedTank, serverTimeOffset, offlineMs]);
 
-  // Determine pH Chemical Category
-  const phCategory = useMemo(() => {
-    if (!selectedTank) return { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' };
-    const ph = processedTank.phLevel ?? 7.0;
-    if (ph < limits.minPh) return { label: 'Acidic', color: 'text-danger bg-danger/10 border-danger/20' };
-    if (ph > limits.maxPh) return { label: 'Alkaline', color: 'text-warning bg-warning/10 border-warning/20' };
-    return { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' };
-  }, [processedTank.phLevel, selectedTank, limits.minPh, limits.maxPh]);
+  const phCategory = useMemo(() => (
+    selectedTank
+      ? phCategoryOf(processedTank.phLevel ?? 7.0, limits)
+      : { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' }
+  // limits is a new object each render; its two pH values are the real inputs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [processedTank.phLevel, selectedTank, limits.minPh, limits.maxPh]);
 
   // Calculate dynamic active alert count
   const activeAlerts = useMemo(() => {
@@ -284,215 +217,21 @@ const Reports = () => {
   // 1. Real historical samples from Firebase RTDB (/history/tanks/{tankId})
   const { historySamples, isLoadingHistory } = useTankHistory(selectedTankId, days);
 
-  // Monthly automated cleanup: Deletes samples older than 90 days when an admin opens Reports
-  useEffect(() => {
-    if (currentUser?.role !== 'admin' || !selectedTankId) return;
+  // Monthly automated cleanup: deletes samples older than 90 days when an admin opens Reports
+  useHistoryRetention(currentUser, selectedTankId, addLog);
 
-    const currentMonthKey = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
-    const storageKey = `wm_monthly_history_cleanup_${selectedTankId}`;
-    const lastCleanupKey = localStorage.getItem(storageKey);
-    if (lastCleanupKey === currentMonthKey) {
-      return; // Already executed this month
-    }
-
-    const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    const cleanupQuery = query(
-      ref(database, `history/tanks/${selectedTankId}`),
-      orderByChild('timestamp'),
-      endAt(ninetyDaysAgo)
-    );
-
-    get(cleanupQuery).then((snapshot) => {
-      if (snapshot.exists()) {
-        const updates: Record<string, null> = {};
-        let count = 0;
-        snapshot.forEach((child) => {
-          updates[child.key!] = null;
-          count++;
-        });
-        if (count > 0) {
-          update(ref(database, `history/tanks/${selectedTankId}`), updates).then(() => {
-            addLog({
-              action: 'Historical Data Retention',
-              details: `Monthly automated cleanup: deleted ${count} historical samples older than 90 days from tank ${selectedTankId}.`,
-              performedBy: currentUser.username || 'Admin',
-              logLevel: 'INFO',
-            });
-            toast.info(`Monthly cleanup: removed ${count} historical samples older than 90 days.`);
-          }).catch((err) => {
-            console.error('Error removing old history samples:', err);
-          });
-        }
-      }
-      localStorage.setItem(storageKey, currentMonthKey);
-    }).catch((err) => {
-      console.warn('Error querying historical samples for cleanup:', err);
-    });
-  }, [currentUser, selectedTankId, addLog]);
-
-  // 2. Group real samples into hourly averages (for 7 days) or daily averages (for 14/30 days)
-  const telemetryData: GroupedTelemetryPoint[] = useMemo(() => {
-    if (historySamples.length === 0) return [];
-
-    const isHourly = days === 7;
-    const groups = new Map<string | number, { timestamp: number; samples: HistoryRawSample[] }>();
-
-    for (const sample of historySamples) {
-      if (isHourly) {
-        const hourMs = 3600000;
-        const bucketTime = Math.floor(sample.timestamp / hourMs) * hourMs;
-        if (!groups.has(bucketTime)) {
-          groups.set(bucketTime, { timestamp: bucketTime, samples: [] });
-        }
-        groups.get(bucketTime)!.samples.push(sample);
-      } else {
-        const d = new Date(sample.timestamp);
-        const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        if (!groups.has(dayKey)) {
-          const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-          groups.set(dayKey, { timestamp: dayStart, samples: [] });
-        }
-        groups.get(dayKey)!.samples.push(sample);
-      }
-    }
-
-    const sortedEntries = Array.from(groups.values()).sort((a, b) => a.timestamp - b.timestamp);
-    const tankHeight = selectedTank?.tankHeight || 5.0;
-
-    return sortedEntries.map(({ timestamp, samples }) => {
-      const validLevels = samples.map(s => s.waterLevel).filter((v): v is number => v !== null);
-      const validPhs = samples.map(s => s.phLevel).filter((v): v is number => v !== null);
-      const validHeights = samples.map(s => s.waterHeight).filter((v): v is number => v !== null);
-
-      const avgLevel = validLevels.length > 0
-        ? Math.round(validLevels.reduce((a, b) => a + b, 0) / validLevels.length)
-        : null;
-
-      const avgPh = validPhs.length > 0
-        ? Math.round((validPhs.reduce((a, b) => a + b, 0) / validPhs.length) * 10) / 10
-        : null;
-
-      let avgHeight = 0;
-      if (validHeights.length > 0) {
-        avgHeight = Number((validHeights.reduce((a, b) => a + b, 0) / validHeights.length).toFixed(2));
-      } else if (avgLevel !== null) {
-        avgHeight = Number(((avgLevel / 100) * tankHeight).toFixed(2));
-      }
-
-      const d = new Date(timestamp);
-      const dateLabel = isHourly ? formatDateTime(d) : formatDate(d);
-
-      return {
-        date: dateLabel,
-        timestamp,
-        waterLevel: avgLevel,
-        phLevel: avgPh,
-        height: avgHeight,
-        sampleCount: samples.length,
-        levelFault: samples.some(isLevelSampleFaulty),
-        phFault: samples.some(isPhSampleFaulty),
-      };
-    });
-  }, [historySamples, days, selectedTank?.tankHeight]);
-
-  // Printable table rows: the telemetry above plus how many problems started in each row's
-  // period (hour in the 7-day view, day otherwise). A period with problems but no samples,
-  // such as a day the controller was offline, still gets a row.
-  const tableRows: TableRow[] = useMemo(() => {
-    const isHourly = days === 7;
-    const periodStart = (ts: number) => {
-      if (isHourly) return Math.floor(ts / 3600000) * 3600000;
-      const d = new Date(ts);
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    };
-    const problems = countProblemsByPeriod(logs, periodStart);
-    const rows: TableRow[] = telemetryData.map(p => ({
-      ...p,
-      hasSamples: true,
-      problems: problems.get(p.timestamp) ?? emptyProblemCounts(),
-    }));
-    const withSamples = new Set(telemetryData.map(p => p.timestamp));
-    for (const [ts, counts] of problems) {
-      if (withSamples.has(ts)) continue;
-      rows.push({
-        date: isHourly ? formatDateTime(ts) : formatDate(ts),
-        timestamp: ts,
-        waterLevel: null,
-        phLevel: null,
-        height: 0,
-        sampleCount: 0,
-        levelFault: false,
-        phFault: false,
-        hasSamples: false,
-        problems: counts,
-      });
-    }
-    return rows.sort((a, b) => a.timestamp - b.timestamp);
-  }, [telemetryData, logs, days]);
-
-  // 2. Dynamic Pump Activations parsed from Real-Time Firebase System Logs
-  const pumpActivityData = useMemo(() => {
-    const rangeData = [];
-    const now = new Date();
-    
-    const pumpLogs = logs.filter(isPumpRun);
-    
-    for (let i = days; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = formatDate(d);
-
-      // Count actual log events matching this specific date
-      const activationsCount = pumpLogs.filter(l => formatDate(l.timestamp) === dateStr).length;
-      
-      rangeData.push({
-        date: dateStr,
-        activations: activationsCount
-      });
-    }
-    
-    return rangeData;
-  }, [logs, days]);
-
-  // 3. Dynamic Alert Distribution parsed from Real-Time Firebase Logs
-  const alertDistributionData = useMemo(() => {
-    // One count per alert incident (the "Triggered" entry), not per reminder, recovery,
-    // or settings change that happens to mention "overflow" or "low level"
-    const categories = countAlertStarts(logs);
-
-    const result = ALERT_CATEGORIES.map(name => ({ name, value: categories[name] }));
-
-    return result.filter(item => item.value > 0);
-  }, [logs]);
-
-  // Summary Metrics calculations
-  const summaryMetrics = useMemo(() => {
-    if (telemetryData.length === 0) return null;
-    
-    const validLevels = telemetryData.map(d => d.waterLevel).filter((v): v is number => v !== null);
-    const validPhs = telemetryData.map(d => d.phLevel).filter((v): v is number => v !== null);
-    const pumpRuns = pumpActivityData.reduce((acc, curr) => acc + curr.activations, 0);
-
-    if (validLevels.length === 0 && validPhs.length === 0) return null;
-    
-    return {
-      avgLevel: validLevels.length > 0 ? Math.round(validLevels.reduce((a, b) => a + b, 0) / validLevels.length) : 0,
-      minLevel: validLevels.length > 0 ? Math.min(...validLevels) : 0,
-      maxLevel: validLevels.length > 0 ? Math.max(...validLevels) : 0,
-      avgPh: validPhs.length > 0 ? Number((validPhs.reduce((a, b) => a + b, 0) / validPhs.length).toFixed(1)) : 7.0,
-      minPh: validPhs.length > 0 ? Math.min(...validPhs) : 7.0,
-      maxPh: validPhs.length > 0 ? Math.max(...validPhs) : 7.0,
-      totalPumpRuns: pumpRuns,
-      alertsRegistered: alertDistributionData.reduce((acc, curr) => acc + curr.value, 0)
-    };
-  }, [telemetryData, pumpActivityData, alertDistributionData]);
-
-  // Filtered Alert Logs for this Tank specifically
-  const alertHistoryLogs = useMemo(() => {
-    return logs.filter(l => 
-      (l.logLevel === 'WARNING' || l.logLevel === 'ERROR' || l.logLevel === 'CRITICAL' || l.action.includes('Alert') || l.action.includes('Fault'))
-    ).slice(0, 8);
-  }, [logs]);
+  // 2. Hourly (7 days) or daily (14/30 days) averages, the printable table with problem counts,
+  //    pump runs per day, alert incidents per category, and the summary cards
+  const tankHeight = selectedTank?.tankHeight || 5.0;
+  const telemetryData = useMemo(() => groupTelemetry(historySamples, days, tankHeight), [historySamples, days, tankHeight]);
+  const tableRows = useMemo(() => buildTableRows(telemetryData, logs, days), [telemetryData, logs, days]);
+  const pumpActivityData = useMemo(() => pumpActivationsByDay(logs, days), [logs, days]);
+  const alertDistributionData = useMemo(() => alertDistribution(logs), [logs]);
+  const summaryMetrics = useMemo(
+    () => summarizeReport(telemetryData, pumpActivityData, alertDistributionData),
+    [telemetryData, pumpActivityData, alertDistributionData]
+  );
+  const alertHistoryLogs = useMemo(() => recentAlertLogs(logs), [logs]);
 
   const handleGenerateReport = () => {
     setIsGenerating(true);
@@ -526,22 +265,13 @@ const Reports = () => {
     if (!selectedTank) return;
     
     if (type === 'csv') {
-      const csvHeader = `Date,Water Level (%),Water Height (m),pH Value,Estimated Volume (L),Sample Count,${PROBLEM_COLUMNS.map(c => c.header).join(',')}\n`;
-      const csvRows = tableRows.map(d => {
-        const noData = !d.hasSamples;
-        const lvl = noData ? 'No data' : d.waterLevel !== null ? String(d.waterLevel) : 'N/A';
-        const height = noData ? 'No data' : String(d.height);
-        const ph = noData ? 'No data' : d.phLevel !== null ? String(d.phLevel) : 'N/A';
-        const estVolume = !noData && d.waterLevel !== null ? estimateVolumeLiters(d.waterLevel, capacityLiters) : 'N/A';
-        const problems = PROBLEM_COLUMNS.map(c => d.problems[c.key]).join(',');
-        return `${d.date},${lvl},${height},${ph},${estVolume},${d.sampleCount},${problems}`;
-      }).join('\n');
-      
       // Predictive analytics after the telemetry rows, as titled blocks
-      const csvPredictive = predictiveReport
-        ? `\n\n${predictiveCsvLines(predictiveReport, limits.lowLevelThreshold).join('\n')}`
-        : '';
-      const blob = new Blob([csvHeader + csvRows + csvPredictive], { type: 'text/csv' });
+      const csv = buildReportCsv(
+        tableRows,
+        capacityLiters,
+        predictiveReport ? predictiveCsvLines(predictiveReport, limits.lowLevelThreshold) : [],
+      );
+      const blob = new Blob([csv], { type: 'text/csv' });
       const filename = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
       setExportingType('csv');
       try {

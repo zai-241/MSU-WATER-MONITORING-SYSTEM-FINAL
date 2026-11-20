@@ -4,7 +4,7 @@ First checked on 2026-11-14 against `main` at `2c05cd1`. **Updated 2026-11-20 ag
 **Open now** below for everything still open. Groups 1–8 further down are the record of the 14 Nov work.
 
 **Status on 2026-11-20:** `npm test` 238 passed (35 files), `npm run typecheck` 0 errors, `npm run lint` 0 errors
-and 0 warnings. Open: code items A4 and A5 (both low) and the thesis items (A1, A2, A3, A6 fixed).
+and 0 warnings. Open: code item A4 (low, optional) and thesis items C1–C4 (A1, A2, A3, A5, A6 fixed).
 All manual steps (B1–B3) are done.
 
 **Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
@@ -24,7 +24,7 @@ references are `file:line` in the current code. After a group, run `npm test` an
 | 5 | Settings and alerting | 3 | **Done** (2026-11-14) |
 | 6 | Type-check and lint errors | 6 | **Done** (2026-11-14) |
 | 7 | Build, performance and repo | 4 | **Done** (2026-11-14) |
-| 8 | Thesis (paper, not code) | 8 | Before the defense |
+| 8 | Thesis (paper, not code) | 8 | **Done** in the 19 Nov draft except 8.5 (two references); new items C1–C4 |
 
 ---
 
@@ -58,7 +58,10 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 - [ ] **A4 ESP32 does not check Firebase's certificate (low).** `client.setInsecure()`
   (`backend/firmware/esp32_firmware.ino:561`, same in the other sketches). Traffic is still encrypted.
   *Fix (optional):* pin the Google root CA with `setCACert()`. Be ready to explain it to the panel otherwise.
-- [ ] **A5 `Reports.tsx` keeps growing (Q1, cleanup).** About 1,575 lines (1,200 on 13 Nov).
+- [x] **A5 `Reports.tsx` keeps growing (Q1, cleanup).** *Fixed 2026-11-21:* the chart, table, summary, CSV, signal
+  and pH-category calculations moved to `frontend/src/lib/reportCalculations.ts` (unit-tested in
+  `reportCalculations.test.ts`), the 90-day cleanup to `hooks/useHistoryRetention.ts`, and the small table/status
+  pieces to `components/reports/`. `Reports.tsx` is now about 1,310 lines of layout. Was: about 1,575 lines.
   *Fix:* move the chart and summary calculations into helpers or hooks.
 - [x] **A6 Unused code.** *Fixed 2026-11-20 (N8).* `deleteUserProfile()` in `frontend/src/services/authService.ts:125` is no longer called
   since user deletion was removed on 20 Nov. *Fix:* delete it.
@@ -78,13 +81,27 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 
 ### C. Thesis (before the defense)
 
-- [ ] Group 8 below (8.1–8.8) is still open.
-- [ ] The last thesis-vs-code check was on 14 Nov (`thesis-review/code-check-final-2026-11-14.md`, local only).
-  Changes since then need a paper check: Ethernet (W5500) with Wi-Fi backup, sensor faults that keep monitoring,
-  the real pump relay and Auto / Manual mode, the pump activity log, live calibration, night watch, predictive
-  analytics (written up in `docs/Methodology.md`, `docs/SRS.md`, `docs/System_Overview.md` on 19 Nov), per-tank
-  maintenance, tanks beyond 1–4, user online status and the 0.30 V level fault limit.
-  Run the `thesis-code-checker` agent before the next adviser meeting.
+- [x] **Group 8 (8.1–8.8)** re-checked 2026-11-21 against the 19 Nov draft
+  (`FINAL_CAPSTONE_PAPER_0.90m_survey-records-filled-2026-11-19.docx`): all resolved there except two references in
+  8.5 (C3 below).
+- [x] **Thesis-vs-code check** done 2026-11-21 (`thesis-review/code-check-2026-11-20.md`, local only): 32 mismatches
+  and 21 incomplete statements. All 58 text fixes are written as tracked changes ("Claude System Update") into
+  `thesis-review/FINAL_CAPSTONE_PAPER_0.90m_system-update-2026-11-21.docx` (script: `thesis-review/update-1120/`).
+  Review and accept them in Word. Run the check again after the next system change.
+- [ ] **C1 Redraw four figures** (text is fixed, the pictures are not): Figure 3.10 (use case: remove "Delete User",
+  "Select Tank" without "Tank 1–4", "IoT Sensors (one per tank)") and Figures 3.12–3.14 (ERD and data model: add
+  USER_DIRECTORY, PRESENCE, `tanks/{id}/thresholds`, `maintenanceMode`, `pumpFault`, `config/nightWatchTanks`).
+  First update `docs/diagrams/figures.mjs`: it still draws "LAN8720", "Delete User" and "Tank 1–4", while the
+  figures in the paper already show W5500, so a rebuild from it would bring LAN8720 back.
+- [ ] **C2 Fill the 31 "[NEEDS DATA: …]" markers** with your own results: level accuracy test (tape and dashboard
+  readings, dates, percentage errors), wireless bridge power-off test, mounting positions of the two CPE210 units,
+  the network link used on 9 Nov 2026, and five website retrieval dates in the References.
+- [ ] **C3 Two references cannot be found online** (searched 2026-11-21): Burge (2021) in "Tech Innovations Journal"
+  and UKAD (2017). Replace them with sources you have read, e.g. Lombardi, Pascale and Santaniello (2021), an IoT
+  overview in *Information* 12(2), 87, if it supports the same sentences.
+- [ ] **C4 Pump Control Lock wording (code question).** The Admin Panel says admins can still switch pumps while
+  the lock is on, but every controller refuses all pump commands then, an admin's included. The paper matches the
+  firmware. Decide which is right; changing the firmware would need the command to carry the sender's role.
 
 ### Superseded by later changes
 
@@ -273,7 +290,7 @@ Paragraph numbers are from `thesis-review/extract-accepted/draft.txt` (the paper
 In Word, search for the words instead. The full proofreading list (70 items) is in
 `thesis-review/proofread-2026-11-14.md`.
 
-- [ ] **8.1 Fill in the 11 open markers** (search Word for "[CHECK" and "[STUDENT"):
+- [x] **8.1 Fill in the 11 open markers** *(done in the 19 Nov draft)* (search Word for "[CHECK" and "[STUDENT"):
   - [p332] calibration values (0.25 V, 1.1 V, 1.5 m) for the 200-liter drum
   - [p886] how the Tank 2–4 controllers will connect to the network
   - [p917], [p993] number of tests at field deployment (37) vs today (98)
@@ -283,29 +300,29 @@ In Word, search for the words instead. The full proofreading list (70 items) is 
   - [p1201] what Trial 6 measured (an Ethernet failover logs, it shows no toast)
   - [p1317] 1–5 m test depths vs a 200-liter drum
   - [p1398] whether a 1-second test build was used
-- [ ] **8.2 Numbers that disagree:**
+- [x] **8.2 Numbers that disagree:** *(done in the 19 Nov draft: grand mean 5.99 throughout, total enumeration, Gantt months without a year; level error now waits for C2)*
   - grand mean 5.95 in the text ([p41], [p1677], [p1729], [p1733]) vs 5.99 in Table 4.12
   - water-level error 1.82% in the text vs 1.84% from the Table 4.4 rows
   - respondents: 3 engineers + 27 others ([p980]) vs 5 / 15 / 10 in Table 4.7 and [p1729]
   - "random sampling" ([p980]) vs "the entire workforce" ([p1450])
   - Gantt chart dates (Sept–Dec 2025) vs the title page (December 2026)
-- [ ] **8.3 Duplicate caption boxes.** Figures 2.12, 3.2, 3.3, 3.4 and 3.11 each have an extra tiny text box with a
+- [x] **8.3 Duplicate caption boxes.** *(none left in the 19 Nov draft)* Figures 2.12, 3.2, 3.3, 3.4 and 3.11 each have an extra tiny text box with a
   second caption (Rectangles 1, 2, 3, 5, 7). For Figure 2.12 both print side by side. Delete the extra boxes.
-- [ ] **8.4 Table of contents and lists.**
+- [x] **8.4 Table of contents and lists.** *(References has its TOC entry in the 19 Nov draft)*
   - "References" has no TOC entry (its heading is merged into the first reference).
   - The List of Figures and List of Tables are typed text inside fields: **never press F9 on them**.
   - After accepting the tracked changes, update only the main TOC (right-click → Update Field → Page numbers only).
-- [ ] **8.5 APA 7 references.**
+- [ ] **8.5 APA 7 references.** *(19 Nov draft: DOIs added for Raghava Rao et al. and Pasika & Gandla, Macarambon cited as a personal communication; Burge and UKAD still open, see C3)*
   - "(MSU MPWSD Organizational Chart, 2025)" has no reference entry.
   - The Macarambon interview is a personal communication: cite it in text only.
   - The Davis and Rogers quotations need page numbers.
   - DOIs/URLs are missing for Burge, Raghava Rao et al., UKAD, and Pasika & Gandla.
   - Tabs split several URLs.
-- [ ] **8.6 Test-condition notes.**
+- [x] **8.6 Test-condition notes.** *(done in the 19 Nov draft: tools list names pH 4.01, 7.00 and 10.01)*
   - The tools list names only the pH 4.0 and 7.0 buffers ([p986]), but Table 4.5 also uses pH 10.01.
   - Tests transmitted every second, while the firmware writes on change or every 10 seconds (see [p1398]).
-- [ ] **8.7 Appendix A.** The answer at [p1856] is a word-for-word copy of [p1859]; check against the recording.
-- [ ] **8.8 Screenshots and panel questions.**
+- [x] **8.7 Appendix A.** *(no duplicated answer in the 19 Nov draft)* The answer at [p1856] is a word-for-word copy of [p1859]; check against the recording.
+- [x] **8.8 Screenshots and panel questions.** *(no image placeholders left in the 19 Nov draft)*
   - Insert the 9 "[Insert Image/Screenshot: …]" placeholders in 4.3. (The old advice to crop out the pump
     simulation controls no longer applies: the pump is real now. Take the screenshots from the current app.)
   - Be ready to explain that the heartbeat key in the Firebase console is still named `system/worker`.

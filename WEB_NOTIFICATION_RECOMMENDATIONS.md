@@ -19,11 +19,13 @@ Re-checked against the code on 2026-11-20. The full current list (code, manual s
 
 | ID | Severity | Item | Notes |
 |---|---|---|---|
-| Q1 | Low | `frontend/src/pages/Reports.tsx` is large and growing (about 1,575 lines on 2026-11-20). | Extract the chart and summary calculations into hooks or helpers. Cleanup only. |
 | R10 | Future | Telegram alerts sent by the worker. | Not built. |
 | R11 | Future | Email summaries and SMS for critical alerts. | Not built. Listed in the paper's recommendations (GSM/SMS). |
 
 Closed since the 2026-11-13 update:
+
+- ✅ **Q1** (`Reports.tsx` too large): fixed 2026-11-21. Calculations moved to `lib/reportCalculations.ts`
+  and `hooks/useHistoryRetention.ts`; the page is about 1,310 lines of layout.
 
 - ✅ **S6** (viewers could write notifications): fixed 2026-11-20. Only admin and worker may write
   `notifications/{id}`; a viewer's page no longer runs the fallback alert evaluator.
