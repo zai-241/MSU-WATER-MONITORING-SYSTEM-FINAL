@@ -1,10 +1,11 @@
 # Errors and Bugs: Work List by Group
 
-Checked on 2026-11-14 against `main` at `2c05cd1` (the version deployed to
-https://msu-water-monitoring-system.web.app). Every code item was re-checked in the current files.
+First checked on 2026-11-14 against `main` at `2c05cd1`. **Updated 2026-11-20 against `main` at `9e51f66`:** see
+**Open now** below for everything still open. Groups 1–8 further down are the record of the 14 Nov work.
 
-The app works: 98 tests pass, the build succeeds, and Tank 1 is reporting. The items below are wrong behaviour,
-security gaps, or code-quality problems.
+**Status on 2026-11-20:** `npm test` 238 passed (35 files), `npm run typecheck` 0 errors, `npm run lint` 0 errors
+and 0 warnings. Open: 6 code items (2 security, 1 firmware consistency, 3 low/cleanup), 3 manual steps, and the
+thesis items.
 
 **Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
 (deploy the database rules, change the router's Wi-Fi password). Group 8 (thesis) is partly done.
@@ -27,7 +28,72 @@ references are `file:line` in the current code. After a group, run `npm test` an
 
 ---
 
+## Open now (re-checked 2026-11-20)
+
+This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Still open" table in
+`WEB_NOTIFICATION_RECOMMENDATIONS.md` now matches this section.
+
+### A. Code
+
+- [ ] **A1 Viewers can write to notifications (S6, medium).** Any account with a `/roles` entry, viewer included,
+  may write `notifications/{id}` (`backend/cloud/database.rules.json:108`), so a viewer could acknowledge an alert
+  outside the web page. `acknowledgedByUid` must be the writer's own UID, so a name cannot be faked.
+  *Fix:* allow notification writes only for `admin`, `worker` and the alert worker's service account, then
+  `npx firebase deploy --only database`.
+- [ ] **A2 Every signed-in user can read all user profiles (S7, low).** `backend/cloud/firestore.rules:14`
+  (`allow read: if isSignedIn()`) exposes every email address.
+  *Fix:* own profile for everyone, all profiles for admins; give the dashboard only the names it needs.
+- [ ] **A3 Manual pump mode is in the Tank 1 sketch only.** `pumpMode` (`"auto"` / `"manual"`) is read by
+  `esp32_firmware.ino`, but not by `tank2/`, `tank3/`, `tank4/`, nor by sketches made with
+  `npm run firmware:new-tank` (they copy Tank 4). Those tanks always auto-start at the low threshold.
+  *Fix:* port the `pumpMode` block to the Tank 4 sketch and copy it to Tanks 2–3 before their controllers are installed.
+- [ ] **A4 ESP32 does not check Firebase's certificate (low).** `client.setInsecure()`
+  (`backend/firmware/esp32_firmware.ino:561`, same in the other sketches). Traffic is still encrypted.
+  *Fix (optional):* pin the Google root CA with `setCACert()`. Be ready to explain it to the panel otherwise.
+- [ ] **A5 `Reports.tsx` keeps growing (Q1, cleanup).** About 1,575 lines (1,200 on 13 Nov).
+  *Fix:* move the chart and summary calculations into helpers or hooks.
+- [ ] **A6 Unused code.** `deleteUserProfile()` in `frontend/src/services/authService.ts:125` is no longer called
+  since user deletion was removed on 20 Nov. *Fix:* delete it.
+
+### B. Manual steps (cannot be checked from the code)
+
+- [ ] **B1 Change the router's Wi-Fi password** and put the new one in each tank's `secrets.h` (Group 2.1). The old
+  one is still in git history (commits `9133053`, `a70e646`).
+- [ ] **B2 Deploy the database rules** if not done since the last rules change:
+  `npx firebase deploy --only database,firestore`. The worker `pumpOn` limit (Group 2.2), the `calibrationUntil`
+  limit, per-tank maintenance and `/presence` are only live after this.
+- [ ] **B3 Flash every installed controller** with the current sketch (Tank 1: RC filter fault limit 0.30 V, per-tank
+  maintenance, live calibration).
+
+### C. Thesis (before the defense)
+
+- [ ] Group 8 below (8.1–8.8) is still open.
+- [ ] The last thesis-vs-code check was on 14 Nov (`thesis-review/code-check-final-2026-11-14.md`, local only).
+  Changes since then need a paper check: Ethernet (W5500) with Wi-Fi backup, sensor faults that keep monitoring,
+  the real pump relay and Auto / Manual mode, the pump activity log, live calibration, night watch, predictive
+  analytics (written up in `docs/Methodology.md`, `docs/SRS.md`, `docs/System_Overview.md` on 19 Nov), per-tank
+  maintenance, tanks beyond 1–4, user online status and the 0.30 V level fault limit.
+  Run the `thesis-code-checker` agent before the next adviser meeting.
+
+### Superseded by later changes
+
+- **Group 1** (virtual pump, "Pump Demo Mode"): the relay is enabled and a real pump is wired on Tank 1. See the
+  note under Group 1.
+- **Group 3.1** (only Tanks 1–4): tanks up to ID 999 can now be registered on purpose. See the note under 3.1.
+- **Item 8.8** (crop the pump simulation controls): no longer applies.
+
+### Not built (future work, listed in the paper's recommendations)
+
+- R10 Telegram alerts; R11 email summaries and SMS for critical alerts.
+
+---
+
 ## Group 1: Pump: virtual pump and Pump Demo Mode (Done 2026-11-14)
+
+> **Superseded (2026-11-16 to 11-19):** the pump is no longer virtual. All four sketches now have
+> `PUMP_RELAY_ENABLED 1` (GPIO 32 drives the relay, HIGH = ON), the "demo" wording was removed from the UI, reports
+> and logs, the Admin Panel switch is now called "Pump System" (database key still `pumpDemoMode`), and a real relay
+> and refill pump are wired on the Tank 1 drum. The text below is kept as the record of the 14 Nov fix.
 
 **Decision (changed from "remove"):** the pump is kept so it can be shown to the panel, but as a clearly labelled
 demo with **no physical pump**. The ESP32 runs its real pump logic with a *virtual pump*; no pin is switched. An admin
@@ -93,6 +159,10 @@ the current rules need them too). Until the rules are deployed, 2.2 is only fixe
   *Fix:* allow IDs 1–4 only (or extend the Configuration selector to every registered tank).
   *Done:* `SUPPORTED_TANK_IDS` in `constants.ts`. "Register New Tank" offers only the missing IDs 1–4 (greyed out when all
   four exist), and `addTank` rejects other IDs. Configuration uses the same list.
+  *Superseded (2026-11-20):* tanks beyond 1–4 are allowed again, this time on purpose and fully supported. Any free
+  whole-number ID from 1 to 999 can be registered (`isValidTankId`, `MAX_TANK_ID` in `constants.ts`); calibration,
+  maintenance, Reports, alerts and the offline watchdog follow every registered tank, and
+  `npm run firmware:new-tank -- <id>` makes the sketch. Tanks 1–4 (`DEFAULT_TANK_IDS`) still cannot be deleted.
 - [x] **3.2 A deleted Tank 1–4 comes back.** On every page load an admin or worker browser recreates any missing
   Tank 1–4 (`frontend/src/store/useStore.ts:593`, `addMissingDefaultTanks`).
   *Fix:* disable "Delete" for Tanks 1–4, or seed only once (for example a `/config/tanksSeeded` flag).
@@ -226,5 +296,6 @@ In Word, search for the words instead. The full proofreading list (70 items) is 
   - Tests transmitted every second, while the firmware writes on change or every 10 seconds (see [p1398]).
 - [ ] **8.7 Appendix A.** The answer at [p1856] is a word-for-word copy of [p1859]; check against the recording.
 - [ ] **8.8 Screenshots and panel questions.**
-  - Insert the 9 "[Insert Image/Screenshot: …]" placeholders in 4.3. Crop out the pump simulation controls until Group 1 is done.
+  - Insert the 9 "[Insert Image/Screenshot: …]" placeholders in 4.3. (The old advice to crop out the pump
+    simulation controls no longer applies: the pump is real now. Take the screenshots from the current app.)
   - Be ready to explain that the heartbeat key in the Firebase console is still named `system/worker`.

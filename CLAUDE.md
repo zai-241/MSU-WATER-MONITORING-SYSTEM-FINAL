@@ -118,7 +118,8 @@ The sketches have no fallback credentials: a build without all five values in `s
 | Filtering, calibration math, schemas | `docs/Methodology.md` |
 | Level sensor hardware: HW-685 ZERO/SPAN and multimeter tests; RC filter + pull-down on GPIO 35 (built on Tank 1, 20 Nov 2026) | `docs/Level_Sensor_Zero_Span_Calibration.md`, `docs/Level_Sensor_RC_Filter_Wiring.md` |
 | Chapter 3 diagrams | `docs/diagrams/` |
-| Open issues and review status | `WEB_NOTIFICATION_RECOMMENDATIONS.md`, `docs/Code_Cleanup.md` |
+| Open bugs, errors and manual steps (current list: "Open now" at the top) | `docs/Bugs_and_Errors.md` |
+| Older review records (open items mirror the list above) | `WEB_NOTIFICATION_RECOMMENDATIONS.md`, `docs/Code_Cleanup.md` (all done) |
 | Cloud setup steps (roles, worker, push, App Check) | `PHASE3_SETUP.md` |
 | Thesis tooling | `.claude/agents/` (thesis-code-checker, proofreader, etc.), `thesis-review/` |
 | What to change in the paper after a system change | `thesis-review/paper-changes-YYYY-MM-DD.md` (local only: `thesis-review/` is git-ignored) (one per batch; 2026-11-19: live calibration, night watch, predictive analytics), facts in `thesis-review/Paper_Facts.md` |

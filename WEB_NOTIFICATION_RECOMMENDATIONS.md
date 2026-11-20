@@ -1,7 +1,7 @@
 # Web Notification Recommendations and System Review: Status
 
 MSU Water Monitoring System. Original review: 2026-11-10. Updated 2026-11-13: open items first,
-finished items at the end under **Done (implemented)**.
+finished items at the end under **Done (implemented)**. Open items re-checked 2026-11-20.
 
 Everything else from the original review has been implemented (listed in **Done** at the end): role-based database rules and
 validation, no stored passwords, de-duplicated alerts that keep their acknowledgment, the
@@ -14,21 +14,30 @@ notification settings, browser and Android push, data sanitizing, limited querie
 
 ## Still open
 
+Re-checked against the code on 2026-11-20. The full current list (code, manual steps, thesis) is
+`docs/Bugs_and_Errors.md`, "Open now".
+
 | ID | Severity | Item | Notes |
 |---|---|---|---|
-| S5 | Medium | Deleting a user removes the Firestore profile and the role, but not the Firebase Auth account. | Contained: without a role the account has no database access. Full fix: delete the Auth user from the worker with the Admin SDK, or deactivate instead of delete. |
-| S6 | Medium | Any signed-in role, including viewer, can write an acknowledgment directly to the database. The UI hides the button. | Partly fixed: `acknowledgedByUid` must equal the writer's own UID, so a name cannot be faked. Remaining fix: restrict notification writes to admin and worker in `database.rules.json`. |
-| S7 | Low | Any signed-in user can read every user profile (including email addresses) in Firestore. | Allow users to read their own profile and admins to read all; the dashboard only needs names. |
-| E4 | Medium | Some writes still don't report failure: the dashboard's pump toggle calls `updateTank` without `await`/`catch`, so a failed write shows no error. | Partly fixed: acknowledgment + log is now one multi-path `update()`. Remaining fix: `await` the pump toggle and show an error toast on failure. |
-| Q7 | Low | `any` types remain, mainly in `pages/admin/Configuration.tsx` (form state). | Partly fixed (Dashboard has none). Type the form state as strings and parse on save. See `docs/Code_Cleanup.md`. |
-| Q1 | Low | `frontend/src/pages/Reports.tsx` is still large (about 1,200 lines). | Extract the chart and summary calculations into hooks or helpers. Cleanup only. |
+| S6 | Medium | Any account with a role, including viewer, can write to a notification directly in the database (for example acknowledge it). The UI hides the button. | Partly fixed: `acknowledgedByUid` must equal the writer's own UID, so a name cannot be faked. Remaining fix: restrict notification writes to admin and worker in `database.rules.json` (keep the worker service account and device rules in mind). |
+| S7 | Low | Any signed-in user can read every user profile (including email addresses) in Firestore (`backend/cloud/firestore.rules:14`). | Allow users to read their own profile and admins to read all; the dashboard only needs names. |
+| Q1 | Low | `frontend/src/pages/Reports.tsx` is large and growing (about 1,575 lines on 2026-11-20). | Extract the chart and summary calculations into hooks or helpers. Cleanup only. |
 | R10 | Future | Telegram alerts sent by the worker. | Not built. |
 | R11 | Future | Email summaries and SMS for critical alerts. | Not built. Listed in the paper's recommendations (GSM/SMS). |
 
+Closed since the 2026-11-13 update:
+
+- ✅ **S5** (deleting a user left the Auth account): user deletion was removed from the Admin Panel on
+  2026-11-20; accounts are deactivated instead (User Management → Deactivate). `deleteUserProfile()` in `services/authService.ts` is now unused.
+- ✅ **E4** (pump toggle did not report a failed write): the toggle now catches the error, clears the waiting
+  state and shows feedback (`Dashboard.tsx`, `onPumpToggle`).
+- ✅ **Q7** (`any` types): none left in the app code (`docs/Bugs_and_Errors.md` item 6.2).
+
 ## Firmware (outside the web app)
 
-- `backend/firmware/esp32_firmware.ino` contains a fallback Wi-Fi network name and password, and
-  the file is in git. If the repository is public, treat that password as exposed and change it.
+- ✅ Done: the fallback Wi-Fi network name and password were removed from all sketches (2026-11-14);
+  a build without `secrets.h` stops with `#error`. The old password is still in git history, so the
+  router password must be changed (manual step, `docs/Bugs_and_Errors.md` Group 2).
 - The ESP32 uses `setInsecure()` for HTTPS, so it does not verify Firebase's certificate. The
   traffic is still encrypted.
 
@@ -314,4 +323,4 @@ await admin.messaging().sendEachForMulticast({ tokens, notification: { title, bo
 | Phase 3: if time allows | R10 Telegram | Open |
 | Optional / future | Native Android push, App Check and API-key guidance (S8) | ✅ Done |
 | Optional / future | R11 email/SMS | Open |
-| Optional / future | Cleanup Q1–Q10, P2–P4, low-severity bugs | ✅ Done, except Q1 and Q7 (partly) |
+| Optional / future | Cleanup Q1–Q10, P2–P4, low-severity bugs | ✅ Done, except Q1 |
