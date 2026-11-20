@@ -64,9 +64,11 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
   one is still in git history (commits `9133053`, `a70e646`).
 - [ ] **B2 Deploy the database rules** if not done since the last rules change:
   `npx firebase deploy --only database,firestore`. The worker `pumpOn` limit (Group 2.2), the `calibrationUntil`
-  limit, per-tank maintenance and `/presence` are only live after this.
+  limit, per-tank maintenance, `/presence`, per-tank thresholds (`tanks/{id}/thresholds`, admin only) and
+  `config/nightWatchTanks` are only live after this. Saving a tank's own thresholds fails until then.
 - [ ] **B3 Flash every installed controller** with the current sketch (Tank 1: RC filter fault limit 0.30 V, per-tank
-  maintenance, live calibration).
+  maintenance, live calibration, per-tank thresholds from 20 Nov). Until Tank 1 is re-flashed its pump keeps
+  using the shared thresholds even if the tank has its own (alerts and Reports already use the tank's own).
 
 ### C. Thesis (before the defense)
 

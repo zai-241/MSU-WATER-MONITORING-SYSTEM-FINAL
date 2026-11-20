@@ -12,7 +12,7 @@ import {
   isPumpDemoOn,
   getPumpMode,
 } from '@/store/useStore';
-import { offlineThresholdMs, isTankInMaintenance, describePumpFault } from '@/lib/alertEngine';
+import { offlineThresholdMs, isTankInMaintenance, describePumpFault, tankThresholds } from '@/lib/alertEngine';
 import type { UserProfile } from '@/services/authService';
 import { useProcessedTankData } from '@/hooks/useUIStabilization';
 import { WifiOff, User, Loader2, Wrench } from 'lucide-react';
@@ -298,7 +298,7 @@ const TankCard = memo(({
         )}
         {!isPlanned && !disabled && !inMaintenance && pumpMode === 'auto' && (
           <p data-testid="pump-auto-note" className="text-[11px] text-muted-foreground text-right">
-            Auto: the pump may restart by itself at or below {config.lowLevelThreshold}%.
+            Auto: the pump may restart by itself at or below {tankThresholds(tank, config).lowLevelThreshold}%.
           </p>
         )}
         </>
@@ -329,6 +329,7 @@ const TankCard = memo(({
   if (p.phSensorOk !== n.phSensorOk) return false;
   if (p.levelSensorOk !== n.levelSensorOk) return false;
   if (p.pumpFault !== n.pumpFault) return false;
+  if (JSON.stringify(p.thresholds ?? null) !== JSON.stringify(n.thresholds ?? null)) return false;
   if (p.lowLevelAlert !== n.lowLevelAlert) return false;
   if (p.highLevelAlert !== n.highLevelAlert) return false;
   if (p.phAlert !== n.phAlert) return false;

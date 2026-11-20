@@ -154,6 +154,8 @@ function toEngineTank(id: string, raw: RawTank): EngineTank {
     levelSensorOk: raw.levelSensorOk !== false,
     maintenanceMode: raw.maintenanceMode === true,
     pumpFault: typeof raw.pumpFault === 'string' ? raw.pumpFault : null,
+    // This tank's own thresholds; evaluateTank checks them and falls back to /config
+    thresholds: raw.thresholds ?? null,
   };
 }
 

@@ -464,10 +464,31 @@ unsigned long levelRecoveryTimer = 0;
 // =================================================================================
 // Alert Validation, False Alarm Prevention, and Status Handling
 // =================================================================================
+// Thresholds in use (pump rules and local alerts). They are this tank's own
+// values (tanks/{TANK_ID}/thresholds, set by an admin in Reservoir Settings)
+// when all four are present and valid, otherwise the shared ones in /config.
 float lowLevelThreshold = 15.0;
 float overflowThreshold = 95.0;
 float minPh = 6.5;
 float maxPh = 8.5;
+// Shared values from /config
+float sharedLowLevelThreshold = 15.0;
+float sharedOverflowThreshold = 95.0;
+float sharedMinPh = 6.5;
+float sharedMaxPh = 8.5;
+// This tank's own values (read with the 1 s command poll)
+bool ownThresholdsSet = false;
+float ownLowLevelThreshold = 15.0;
+float ownOverflowThreshold = 95.0;
+float ownMinPh = 6.5;
+float ownMaxPh = 8.5;
+
+void applyThresholds() {
+  lowLevelThreshold = ownThresholdsSet ? ownLowLevelThreshold : sharedLowLevelThreshold;
+  overflowThreshold = ownThresholdsSet ? ownOverflowThreshold : sharedOverflowThreshold;
+  minPh = ownThresholdsSet ? ownMinPh : sharedMinPh;
+  maxPh = ownThresholdsSet ? ownMaxPh : sharedMaxPh;
+}
 bool maintenanceMode = false; // config/maintenanceMode: all tanks
 // tanks/{TANK_ID}/maintenanceMode: this tank only (set by an admin, read with the
 // 1 s command poll). Either one holds the pump off and refuses pump ON commands.
@@ -2659,6 +2680,46 @@ void networkTask(void *pvParameters) {
               phOffset = val;
           }
 
+          // --- THIS TANK'S OWN THRESHOLDS (tanks/{TANK_ID}/thresholds) ---
+          // Used only when all four are there and valid (low < overflow within
+          // 0-100 %, min pH < max pH within 0-14), the same check as the web app.
+          {
+            float ownLow = getFloatFromJson(payload, "lowLevelThreshold");
+            float ownHigh = getFloatFromJson(payload, "overflowThreshold");
+            float ownPhMin = getFloatFromJson(payload, "minPh");
+            float ownPhMax = getFloatFromJson(payload, "maxPh");
+            bool ownValid = ownLow != -999.0 && ownHigh != -999.0 &&
+                            ownPhMin != -999.0 && ownPhMax != -999.0 &&
+                            ownLow >= 0 && ownHigh <= 100 && ownLow < ownHigh &&
+                            ownPhMin >= 0 && ownPhMax <= 14 &&
+                            ownPhMin < ownPhMax;
+            bool changed =
+                ownValid != ownThresholdsSet ||
+                (ownValid &&
+                 (ownLow != ownLowLevelThreshold ||
+                  ownHigh != ownOverflowThreshold || ownPhMin != ownMinPh ||
+                  ownPhMax != ownMaxPh));
+            if (ownValid) {
+              ownLowLevelThreshold = ownLow;
+              ownOverflowThreshold = ownHigh;
+              ownMinPh = ownPhMin;
+              ownMaxPh = ownPhMax;
+            }
+            ownThresholdsSet = ownValid;
+            applyThresholds();
+            if (changed) {
+              logSystemEvent(
+                  "Pump Controller",
+                  ownValid ? "Using this tank's own thresholds: low " +
+                                 String((int)ownLow) + "%, overflow " +
+                                 String((int)ownHigh) + "%, pH " +
+                                 String(ownPhMin, 1) + "-" +
+                                 String(ownPhMax, 1)
+                           : String("Using the shared thresholds"),
+                  LEVEL_INFO);
+            }
+          }
+
           // --- LIVE CALIBRATION VIEW (calibrationUntil set by an admin) ---
           long newCalibUntil =
               hasKeyInJson(payload, "calibrationUntil")
@@ -2694,7 +2755,7 @@ void networkTask(void *pvParameters) {
         }
         http.end();
 
-        // Poll /config for dynamic system-wide alert thresholds
+        // Poll /config for the shared thresholds and system switches
         HTTPClient httpConfig;
         httpConfig.setReuse(true);
         httpConfig.begin(firebaseClient(), getConfigUrl());
@@ -2715,23 +2776,24 @@ void networkTask(void *pvParameters) {
           if (hasKeyInJson(configPayload, "lowLevelThreshold")) {
             float val = getFloatFromJson(configPayload, "lowLevelThreshold");
             if (val != -999.0)
-              lowLevelThreshold = val;
+              sharedLowLevelThreshold = val;
           }
           if (hasKeyInJson(configPayload, "overflowThreshold")) {
             float val = getFloatFromJson(configPayload, "overflowThreshold");
             if (val != -999.0)
-              overflowThreshold = val;
+              sharedOverflowThreshold = val;
           }
           if (hasKeyInJson(configPayload, "minPh")) {
             float val = getFloatFromJson(configPayload, "minPh");
             if (val != -999.0)
-              minPh = val;
+              sharedMinPh = val;
           }
           if (hasKeyInJson(configPayload, "maxPh")) {
             float val = getFloatFromJson(configPayload, "maxPh");
             if (val != -999.0)
-              maxPh = val;
+              sharedMaxPh = val;
           }
+          applyThresholds(); // the tank's own values win when set
           if (hasKeyInJson(configPayload, "maintenanceMode")) {
             maintenanceMode = getBoolFromJson(configPayload, "maintenanceMode");
           }

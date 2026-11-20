@@ -11,6 +11,7 @@
  *   low water  -> CRITICAL (danger),  level <  lowLevelThreshold
  *   overflow   -> WARNING,            level >  overflowThreshold
  *   pH         -> CRITICAL (danger),  pH outside minPh..maxPh
+ * The thresholds are the tank's own (tanks/{id}/thresholds) when set, else the shared ones in /config.
  * Hysteresis: 2 % for level, 0.15 for pH (fixed in firmware).
  */
 
@@ -69,16 +70,54 @@ export interface EngineTank {
   maintenanceMode?: boolean;
   /** Set by the controller's dry-run guard (see PUMP_FAULT_TEXT); missing = none */
   pumpFault?: string | null;
+  /** This tank's own thresholds (tanks/{id}/thresholds, set by an admin); missing = the shared ones in /config */
+  thresholds?: Partial<TankThresholds> | null;
 }
 
-export interface EngineConfig {
+/** Level (%) and pH limits. /config holds the shared ones; a tank may have its own in tanks/{id}/thresholds. */
+export interface TankThresholds {
   lowLevelThreshold: number;
   overflowThreshold: number;
   minPh: number;
   maxPh: number;
+}
+
+export interface EngineConfig extends TankThresholds {
   maintenanceMode?: boolean;
   repeatIntervalSec?: number;
   offlineThresholdSec?: number;
+}
+
+/**
+ * A tank's own thresholds, or null when it has none or they are not usable: all four must be numbers,
+ * level 0 to 100 with low below overflow, pH 0 to 14 with min below max. The controllers apply the same check.
+ */
+export function ownTankThresholds(raw: unknown): TankThresholds | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+  const t = {
+    lowLevelThreshold: n(r.lowLevelThreshold),
+    overflowThreshold: n(r.overflowThreshold),
+    minPh: n(r.minPh),
+    maxPh: n(r.maxPh),
+  };
+  const levelOk = t.lowLevelThreshold >= 0 && t.overflowThreshold <= 100 && t.lowLevelThreshold < t.overflowThreshold;
+  const phOk = t.minPh >= 0 && t.maxPh <= 14 && t.minPh < t.maxPh;
+  return levelOk && phOk ? t : null;
+}
+
+/** The thresholds that apply to a tank: its own (tanks/{id}/thresholds) when set and valid, else the shared ones. */
+export function tankThresholds(
+  tank: { thresholds?: unknown } | null | undefined,
+  config: TankThresholds,
+): TankThresholds {
+  return ownTankThresholds(tank?.thresholds) ?? {
+    lowLevelThreshold: config.lowLevelThreshold,
+    overflowThreshold: config.overflowThreshold,
+    minPh: config.minPh,
+    maxPh: config.maxPh,
+  };
 }
 
 /** The slice of an existing notification record the engine needs to stay idempotent. */
@@ -162,8 +201,9 @@ interface Check {
   recoveryMsg: string;
 }
 
-function buildChecks(tank: EngineTank, config: EngineConfig, trackers: TankTrackers): Check[] {
+function buildChecks(tank: EngineTank, engineConfig: EngineConfig, trackers: TankTrackers): Check[] {
   const checks: Check[] = [];
+  const config = tankThresholds(tank, engineConfig);
 
   const levelFault = tank.levelSensorOk === false;
   checks.push({
@@ -362,6 +402,18 @@ export interface NightConfig {
   nightEndHour?: number;
   nightFastDropPercent?: number;
   nightSlowDropPercent?: number;
+  /**
+   * Tanks the night watch covers, by tank ID (Admin Panel → Night Watch). Only an explicit false
+   * leaves a tank out; a missing entry (e.g. a newly added tank) is watched. The database may
+   * return it as an array when the IDs are small numbers; indexing by ID works for both.
+   */
+  nightWatchTanks?: Record<string, boolean> | boolean[] | null;
+}
+
+/** True when the night watch covers this tank (see NightConfig.nightWatchTanks). */
+export function isNightWatchedTank(tankId: string, config: Pick<NightConfig, 'nightWatchTanks'> | null | undefined): boolean {
+  const map = config?.nightWatchTanks as Record<string, unknown> | null | undefined;
+  return !map || typeof map !== 'object' || map[tankId] !== false;
 }
 
 export interface NightSettings {
@@ -553,6 +605,19 @@ export function evaluateNight({ tank, config, state, now, getExisting }: Evaluat
   const leakId = alertNotifId(tank.id, 'nightLeak');
   const window = settings.enabled ? nightWindowAt(now, settings.startHour, settings.endHour) : null;
   const hours = `${formatHour12(settings.startHour)} to ${formatHour12(settings.endHour)}`;
+
+  // Left out of the night watch by an admin: close its open night alerts and forget the tracking
+  if (!isNightWatchedTank(tank.id, config)) {
+    for (const [key, notifId, level, title] of [
+      ['nightDrain', drainId, 'danger', 'Possible Leak or Open Faucet'],
+      ['nightLeak', leakId, 'warning', 'Possible Slow Leak'],
+    ] as const) {
+      const open = getExisting(notifId);
+      if (open && !open.resolved) events.push({ kind: 'close', key, tankId: tank.id, notifId, level, title, message: '' });
+    }
+    Object.assign(state, createNightState());
+    return events;
+  }
 
   if (tank.enabled === false || !tank.lastUpdate || isTankInMaintenance(tank, config)) {
     state.lastEvalAt = 0;

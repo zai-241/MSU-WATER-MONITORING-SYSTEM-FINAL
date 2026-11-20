@@ -11,12 +11,15 @@ import { errorMessage } from '@/lib/utils';
 import {
   nightSettings,
   formatHour12,
+  isNightWatchedTank,
   MIN_NIGHT_DROP_PERCENT,
   NIGHT_FAST_WINDOW_MS,
+  type TankThresholds,
 } from '@/lib/alertEngine';
 
 // Validation schemas (E2 / R8)
-const thresholdSchema = z.object({
+// Level and pH limits: the shared ones in /config and a tank's own (tanks/{id}/thresholds)
+const limitFields = {
   lowLevelThreshold: z.number({ invalid_type_error: 'Low-level threshold must be a number' })
     .min(0, 'Low-level threshold must be at least 0%')
     .max(100, 'Low-level threshold cannot exceed 100%'),
@@ -29,6 +32,18 @@ const thresholdSchema = z.object({
   maxPh: z.number({ invalid_type_error: 'Maximum pH must be a number' })
     .min(0, 'Maximum pH must be at least 0')
     .max(14, 'Maximum pH cannot exceed 14'),
+};
+
+const tankLimitsSchema = z.object(limitFields).refine(data => data.lowLevelThreshold < data.overflowThreshold, {
+  message: 'Low-level threshold must be strictly less than overflow threshold',
+  path: ['lowLevelThreshold'],
+}).refine(data => data.minPh < data.maxPh, {
+  message: 'Minimum pH must be strictly less than maximum pH',
+  path: ['minPh'],
+});
+
+const thresholdSchema = z.object({
+  ...limitFields,
   offlineThresholdSec: z.number({ invalid_type_error: 'Offline threshold must be a number' })
     .min(20, 'Offline threshold must be at least 20 seconds (min 2 heartbeats)')
     .max(3600, 'Offline threshold cannot exceed 3600 seconds')
@@ -82,6 +97,64 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h);
 /** Form state: while typing, number fields hold the raw text; saving converts them with Number(). */
 type Editable<T> = { [K in keyof T]: T[K] | string };
 
+/** Reservoir Settings choice: the shared values or one tank's own */
+const ALL_TANKS = 'all';
+
+/** Unsaved edits to one tank's own thresholds (Reservoir Settings -> Tank N) */
+interface TankLimitsEdit {
+  /** true = the tank uses its own values; false = the shared ones */
+  custom: boolean;
+  values: Editable<TankThresholds>;
+}
+
+const toLimits = (v: Editable<TankThresholds>): TankThresholds => ({
+  lowLevelThreshold: Number(v.lowLevelThreshold),
+  overflowThreshold: Number(v.overflowThreshold),
+  minPh: Number(v.minPh),
+  maxPh: Number(v.maxPh),
+});
+
+const describeLimits = (t: Editable<TankThresholds>) =>
+  `Low ${t.lowLevelThreshold}% | Overflow ${t.overflowThreshold}% | pH ${t.minPh} - ${t.maxPh}`;
+
+/** Low/overflow % and pH range inputs, for the shared values or one tank's own */
+function LimitInputs({ idPrefix, values, onChange, disabled = false }: {
+  idPrefix: string;
+  values: Editable<TankThresholds>;
+  onChange: (key: keyof TankThresholds, value: string) => void;
+  disabled?: boolean;
+}) {
+  const input = (key: keyof TankThresholds, label: string, step?: string, hint?: string) => (
+    <div>
+      <label htmlFor={`${idPrefix}-${key}`} className="block text-sm font-semibold mb-1">{label}</label>
+      <input
+        id={`${idPrefix}-${key}`}
+        type="number"
+        step={step}
+        disabled={disabled}
+        value={values[key]}
+        onChange={e => onChange(key, e.target.value)}
+        className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background disabled:opacity-60"
+      />
+      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+    </div>
+  );
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {input('lowLevelThreshold', 'Low-Level Threshold (%)', undefined, 'Alert when water level falls below this percentage')}
+        {input('overflowThreshold', 'Overflow-Level Threshold (%)', undefined, 'Alert when water level exceeds this percentage')}
+      </div>
+      <h4 className="font-semibold mt-6 mb-3">pH Safe Range</h4>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {input('minPh', 'Minimum pH', '0.1')}
+        {input('maxPh', 'Maximum pH', '0.1')}
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">Safe pH range: {values.minPh} - {values.maxPh}</p>
+    </>
+  );
+}
+
 const Configuration = () => {
   const { config, updateConfig } = useConfig();
   const { tanks, updateTank } = useTanks();
@@ -107,6 +180,40 @@ const Configuration = () => {
   // Tank whose calibration the form shows, and a tank the user picked while the form had unsaved edits
   const [selectedTankId, setSelectedTankId] = useState<string>(DEFAULT_TANK_IDS[0]);
   const [pendingTankId, setPendingTankId] = useState<string | null>(null);
+
+  // Reservoir Settings: which values the form shows ("all" = shared), and unsaved per-tank edits by tank ID
+  const [limitsChoice, setLimitsChoice] = useState<string>(ALL_TANKS);
+  const [tankLimitEdits, setTankLimitEdits] = useState<Record<string, TankLimitsEdit>>({});
+  const limitsTankId = limitsChoice !== ALL_TANKS && tankIds.includes(limitsChoice) ? limitsChoice : ALL_TANKS;
+
+  /** The shared limits as the form currently shows them */
+  const sharedLimits = (): Editable<TankThresholds> => {
+    const c = localConfig ?? config;
+    return { lowLevelThreshold: c?.lowLevelThreshold ?? '', overflowThreshold: c?.overflowThreshold ?? '', minPh: c?.minPh ?? '', maxPh: c?.maxPh ?? '' };
+  };
+
+  /** A tank's own limits: the unsaved edit, else what is saved (none saved = starts from the shared ones) */
+  const limitsEditFor = (tankId: string): TankLimitsEdit => {
+    const edit = tankLimitEdits[tankId];
+    if (edit) return edit;
+    const own = tanks.find(t => t.id === tankId)?.thresholds ?? null;
+    return { custom: own !== null, values: own ?? sharedLimits() };
+  };
+
+  const setLimitsEdit = (tankId: string, edit: TankLimitsEdit) =>
+    setTankLimitEdits(prev => ({ ...prev, [tankId]: edit }));
+
+  /** Night watch: the tanks it covers, as a full map of the registered tanks (true = watched) */
+  const watchedTankMap = (c: Parameters<typeof isNightWatchedTank>[1]): Record<string, boolean> =>
+    Object.fromEntries(tankIds.map(id => [id, isNightWatchedTank(id, c)]));
+
+  const toggleNightTank = (tankId: string) => {
+    if (!localConfig) return;
+    const map = watchedTankMap(localConfig as SystemConfig);
+    map[tankId] = !map[tankId];
+    setIsConfigDirty(true);
+    setLocalConfig({ ...localConfig, nightWatchTanks: map });
+  };
 
   const selectedTank = tanks.find(t => t.id === selectedTankId);
   const selectedTankLabel = `Tank ${selectedTankId}`;
@@ -224,6 +331,7 @@ const Configuration = () => {
         nightEndHour: Number(localConfig.nightEndHour ?? night.endHour),
         nightFastDropPercent: Number(localConfig.nightFastDropPercent ?? night.fastDrop),
         nightSlowDropPercent: Number(localConfig.nightSlowDropPercent ?? night.slowDrop),
+        nightWatchTanks: watchedTankMap(localConfig as SystemConfig),
       };
 
       // Validate thresholds with zod (E2 / R8)
@@ -232,6 +340,25 @@ const Configuration = () => {
         toast.error(configValidation.error.errors[0].message);
         setIsSaving(false);
         return;
+      }
+
+      // Tanks whose own thresholds change (Reservoir Settings -> Tank N); all are checked before anything is written
+      const tankLimitWrites: { tankId: string; label: string; next: TankThresholds | null }[] = [];
+      for (const [tankId, edit] of Object.entries(tankLimitEdits)) {
+        const tank = tanks.find(t => t.id === tankId);
+        if (!tank) continue; // deleted meanwhile: writing would recreate it
+        const label = tank.name || `Tank ${tankId}`;
+        let next: TankThresholds | null = null;
+        if (edit.custom) {
+          next = toLimits(edit.values);
+          const check = tankLimitsSchema.safeParse(next);
+          if (!check.success) {
+            toast.error(`${label}: ${check.error.errors[0].message}`);
+            setIsSaving(false);
+            return;
+          }
+        }
+        if (JSON.stringify(tank.thresholds ?? null) !== JSON.stringify(next)) tankLimitWrites.push({ tankId, label, next });
       }
 
       // Check for changes and log (R8)
@@ -267,6 +394,10 @@ const Configuration = () => {
       if (savedNight.slowDrop !== parsedConfig.nightSlowDropPercent) {
         changes.push(`Night Total Drop (${savedNight.slowDrop}% -> ${parsedConfig.nightSlowDropPercent}%)`);
       }
+      const watchedList = (c: SystemConfig) => tankIds.filter(id => isNightWatchedTank(id, c)).join(', ') || 'none';
+      if (watchedList(config) !== watchedList(parsedConfig)) {
+        changes.push(`Night Watch Tanks (${watchedList(config)} -> ${watchedList(parsedConfig)})`);
+      }
       if (config.soundEnabled !== parsedConfig.soundEnabled) {
         changes.push(`Sound Alerts (${config.soundEnabled !== false ? 'Enabled' : 'Disabled'} -> ${parsedConfig.soundEnabled ? 'Enabled' : 'Disabled'})`);
       }
@@ -285,6 +416,21 @@ const Configuration = () => {
           logLevel: 'INFO'
         });
       }
+
+      for (const { tankId, label, next } of tankLimitWrites) {
+        // null removes the tank's own values: it goes back to the shared ones
+        await updateTank(tankId, { thresholds: next });
+        addLog({
+          action: 'Configuration Updated',
+          details: next
+            ? `Own thresholds for ${label}: ${describeLimits(next)}`
+            : `${label} uses the shared thresholds again`,
+          performedBy: currentUser?.username || 'Administrator',
+          logLevel: 'INFO',
+          tankId,
+        });
+      }
+      setTankLimitEdits({});
 
       if (localTank) {
         // B9: Send only calibration fields to avoid overwriting live telemetry / pump commands
@@ -351,55 +497,77 @@ const Configuration = () => {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl bg-card p-6 shadow-sm">
-        <h3 className="text-lg font-semibold mb-4">Reservoir Settings</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-semibold mb-1">Low-Level Threshold (%)</label>
-            <input 
-              type="number" 
-              value={localConfig.lowLevelThreshold} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, lowLevelThreshold: e.target.value }); }}
-              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
-            />
-            <p className="text-xs text-muted-foreground mt-1">Alert when water level falls below this percentage</p>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold mb-1">Overflow-Level Threshold (%)</label>
-            <input 
-              type="number" 
-              value={localConfig.overflowThreshold} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, overflowThreshold: e.target.value }); }}
-              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
-            />
-            <p className="text-xs text-muted-foreground mt-1">Alert when water level exceeds this percentage</p>
-          </div>
+      <div className="rounded-xl bg-card p-6 shadow-sm" data-testid="reservoir-settings">
+        <h3 className="text-lg font-semibold mb-1">Reservoir Settings</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Every tank uses the shared values unless it has its own. A tank&apos;s own values also set when its controller starts and stops the pump.
+        </p>
+        <div role="radiogroup" aria-label="Reservoir settings for" className="mb-4 flex flex-wrap gap-2">
+          {[ALL_TANKS, ...tankIds].map(id => {
+            const active = id === limitsTankId;
+            const label = id === ALL_TANKS ? 'All tanks' : `Tank ${id}`;
+            const own = id !== ALL_TANKS && limitsEditFor(id).custom;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                aria-label={label}
+                onClick={() => setLimitsChoice(id)}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition ${
+                  active
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground hover:bg-secondary'
+                }`}
+              >
+                {label}
+                {own && <span className="ml-1.5 text-[10px] font-bold uppercase opacity-80">own</span>}
+              </button>
+            );
+          })}
         </div>
 
-        <h4 className="font-semibold mt-6 mb-3">pH Safe Range</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-semibold mb-1">Minimum pH</label>
-            <input 
-              type="number" 
-              step="0.1" 
-              value={localConfig.minPh} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, minPh: e.target.value }); }}
-              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold mb-1">Maximum pH</label>
-            <input 
-              type="number" 
-              step="0.1" 
-              value={localConfig.maxPh} 
-              onChange={e => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, maxPh: e.target.value }); }}
-              className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background" 
-            />
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">Safe pH range: {localConfig.minPh} - {localConfig.maxPh}</p>
+        {limitsTankId === ALL_TANKS ? (
+          <LimitInputs
+            idPrefix="limits-all"
+            values={sharedLimits()}
+            onChange={(key, value) => { setIsConfigDirty(true); setLocalConfig({ ...localConfig, [key]: value }); }}
+          />
+        ) : (() => {
+          const edit = limitsEditFor(limitsTankId);
+          const tankName = tanks.find(t => t.id === limitsTankId)?.name || `Tank ${limitsTankId}`;
+          return (
+            <>
+              <div className={`mb-4 flex items-center justify-between gap-4 rounded-lg border px-3 py-2 ${edit.custom ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Own values for {tankName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {edit.custom
+                      ? 'This tank uses the values below instead of the shared ones.'
+                      : 'Off: this tank uses the shared values shown below.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={edit.custom}
+                  aria-label={`Own values for ${tankName}`}
+                  onClick={() => setLimitsEdit(limitsTankId, { custom: !edit.custom, values: edit.values })}
+                  className={`relative h-6 w-11 rounded-full transition-colors shrink-0 ${edit.custom ? 'bg-primary' : 'bg-muted'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-card shadow transition-transform ${edit.custom ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+              <LimitInputs
+                idPrefix={`limits-tank-${limitsTankId}`}
+                values={edit.custom ? edit.values : sharedLimits()}
+                disabled={!edit.custom}
+                onChange={(key, value) => setLimitsEdit(limitsTankId, { custom: true, values: { ...edit.values, [key]: value } })}
+              />
+            </>
+          );
+        })()}
       </div>
 
       <div className="rounded-xl bg-card p-6 shadow-sm border border-border">
@@ -701,6 +869,30 @@ const Configuration = () => {
             <p className="text-xs text-muted-foreground mt-1">Warn when the night ends if the level fell this much in total (slow leak)</p>
           </div>
         </div>
+        <div className={`mt-5 border-t border-border pt-4 ${localConfig.nightWatchEnabled === false ? 'opacity-50' : ''}`}>
+          <p className="text-sm font-semibold">Tanks to watch</p>
+          <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+            Untick a tank whose water is used at night so it raises no leak alerts. A newly added tank is watched until you untick it.
+          </p>
+          <div role="group" aria-label="Tanks to watch" className="flex flex-wrap gap-2">
+            {tankIds.map(id => {
+              const label = tanks.find(t => t.id === id)?.name || `Tank ${id}`;
+              const on = isNightWatchedTank(id, localConfig as SystemConfig);
+              return (
+                <label
+                  key={id}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${on ? 'border-primary/40 bg-primary/5' : 'border-border text-muted-foreground'}`}
+                >
+                  <input type="checkbox" checked={on} onChange={() => toggleNightTank(id)} className="h-4 w-4 accent-primary" />
+                  {label}
+                </label>
+              );
+            })}
+          </div>
+          {tankIds.every(id => !isNightWatchedTank(id, localConfig as SystemConfig)) && (
+            <p className="text-xs text-warning font-medium mt-2">No tank is watched: night watch will raise no alerts.</p>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl bg-card p-6 shadow-sm">
@@ -845,7 +1037,13 @@ const Configuration = () => {
               <div className="bg-secondary/40 p-3 rounded-lg text-xs space-y-1.5 border border-border/50 font-medium text-foreground/80">
                 <p>📊 <strong>Water Level Thresholds:</strong> Low: {localConfig.lowLevelThreshold}% | Overflow: {localConfig.overflowThreshold}%</p>
                 <p>🧪 <strong>pH Safety Range:</strong> Min: {localConfig.minPh} | Max: {localConfig.maxPh}</p>
-                <p>🌙 <strong>Night Watch:</strong> {localConfig.nightWatchEnabled === false ? 'Off' : `${formatHour12(Number(localConfig.nightStartHour ?? night.startHour))} to ${formatHour12(Number(localConfig.nightEndHour ?? night.endHour))} | Fast: ${localConfig.nightFastDropPercent ?? night.fastDrop}% in ${NIGHT_FAST_WINDOW_MS / 60_000} min | Total: ${localConfig.nightSlowDropPercent ?? night.slowDrop}%`}</p>
+                <p>🎯 <strong>Tanks with own values:</strong> {(() => {
+                  const own = tankIds.filter(id => limitsEditFor(id).custom);
+                  return own.length === 0
+                    ? 'None (all use the shared values)'
+                    : own.map(id => `Tank ${id} (${describeLimits(limitsEditFor(id).values)})`).join('; ');
+                })()}</p>
+                <p>🌙 <strong>Night Watch:</strong> {localConfig.nightWatchEnabled === false ? 'Off' : `${formatHour12(Number(localConfig.nightStartHour ?? night.startHour))} to ${formatHour12(Number(localConfig.nightEndHour ?? night.endHour))} | Fast: ${localConfig.nightFastDropPercent ?? night.fastDrop}% in ${NIGHT_FAST_WINDOW_MS / 60_000} min | Total: ${localConfig.nightSlowDropPercent ?? night.slowDrop}% | Tanks: ${tankIds.filter(id => isNightWatchedTank(id, localConfig as SystemConfig)).join(', ') || 'none'}`}</p>
                 <p>🔔 <strong>Watchdog & Sound:</strong> Offline: {localConfig.offlineThresholdSec ?? 30}s | Repeat: {localConfig.repeatIntervalSec ?? 60}s | Audio: {localConfig.soundEnabled !== false ? 'Enabled' : 'Disabled'}</p>
                 {localTank && (
                   <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {localTank.levelVmin}V | Vmax: {localTank.levelVmax}V | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L</p>

@@ -41,7 +41,7 @@ import {
   isDefaultTankId,
   isValidTankId,
 } from '@/lib/constants';
-import { planRaise, planResolve, archiveOf, type RaisePlan, type RaiseOutcome } from '@/lib/alertEngine';
+import { planRaise, planResolve, archiveOf, ownTankThresholds, type RaisePlan, type RaiseOutcome, type TankThresholds } from '@/lib/alertEngine';
 
 export type UserRole = 'admin' | 'worker' | 'viewer';
 export type TankStatus = 'safe' | 'warning' | 'danger' | 'offline';
@@ -112,6 +112,11 @@ export interface Tank {
    * rise while pumping) or "max-run" (maximum run time). Missing = none. Cleared by a manual ON.
    */
   pumpFault?: string | null;
+  /**
+   * This tank's own low/overflow % and pH range (Admin Panel → Reservoir Settings, admin only).
+   * Missing or invalid = the shared values in /config. The controller uses them for its pump rules too.
+   */
+  thresholds?: TankThresholds | null;
 
   // Sensor Validation Status
   phSensorOk: boolean;
@@ -165,6 +170,8 @@ export interface SystemConfig {
   nightEndHour?: number;
   nightFastDropPercent?: number;
   nightSlowDropPercent?: number;
+  /** Tanks the night watch covers, by tank ID; only false leaves a tank out (missing = watched) */
+  nightWatchTanks?: Record<string, boolean> | boolean[] | null;
 }
 
 export type PumpMode = 'auto' | 'manual';
@@ -557,6 +564,7 @@ export function sanitizeTank(key: string, raw: unknown): Tank {
     controllerOffline: !!r.controllerOffline,
     maintenanceMode: r.maintenanceMode === true,
     pumpFault: typeof r.pumpFault === 'string' && r.pumpFault !== '' ? r.pumpFault : null,
+    thresholds: ownTankThresholds(r.thresholds),
   };
 }
 

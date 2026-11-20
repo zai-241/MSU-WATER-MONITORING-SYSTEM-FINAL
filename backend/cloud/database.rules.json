@@ -41,6 +41,11 @@
       },
       "nightSlowDropPercent": {
         ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 100"
+      },
+      "nightWatchTanks": {
+        "$tankId": {
+          ".validate": "newData.isBoolean()"
+        }
       }
     },
     "tanks": {
@@ -65,6 +70,12 @@
         },
         "maintenanceMode": {
           ".validate": "newData.isBoolean() && (root.child('roles').child(auth.uid).val() === 'admin' || newData.val() === data.val())"
+        },
+        "thresholds": {
+          ".validate": "root.child('roles').child(auth.uid).val() === 'admin' && newData.hasChildren(['lowLevelThreshold', 'overflowThreshold', 'minPh', 'maxPh']) && newData.child('lowLevelThreshold').isNumber() && newData.child('overflowThreshold').isNumber() && newData.child('minPh').isNumber() && newData.child('maxPh').isNumber() && newData.child('lowLevelThreshold').val() >= 0 && newData.child('overflowThreshold').val() <= 100 && newData.child('lowLevelThreshold').val() < newData.child('overflowThreshold').val() && newData.child('minPh').val() >= 0 && newData.child('maxPh').val() <= 14 && newData.child('minPh').val() < newData.child('maxPh').val()",
+          "$other": {
+            ".validate": "$other === 'lowLevelThreshold' || $other === 'overflowThreshold' || $other === 'minPh' || $other === 'maxPh'"
+          }
         },
         "calibrationLive": {
           ".validate": "!newData.exists() || newData.hasChildren(['voltage', 'heightM', 'percent'])"

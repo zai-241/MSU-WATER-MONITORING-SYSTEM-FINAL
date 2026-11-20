@@ -228,6 +228,10 @@ is down), in `evaluateNight()` in `frontend/src/lib/alertEngine.ts`. The firmwar
 4. **Threshold floor**: the firmware sends a new level only after it changes by 2 %
    (`WATER_LEVEL_DEADBAND`), so both thresholds must be at least **3 %**; the Admin Panel and the
    database rules refuse lower values. On the 200 L test drum, 5 % is 10 L and 3 % is 6 L.
+4a. **Tanks to watch**: Admin Panel → Night Watch lists every registered tank with a checkbox
+   (`config/nightWatchTanks/{tankId}`). Only an explicit `false` leaves a tank out, so a newly added
+   tank is watched. An unwatched tank raises no night alerts, its open night alerts are closed, and its
+   tracking starts fresh when it is ticked again. Use it for a tank whose water is used at night.
 5. **Limits**: the worker saves the night state to `/system/nightWatch` (at most once a minute, and when it stops)
    and reloads it on start, so a restart during the night keeps the slow-leak total (before 20 Nov 2026 it was lost). A drip smaller than about 6 L per night is not detected.
 
@@ -324,6 +328,7 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | wifiConnected, ethConnected, firebaseConnected | BOOLEAN | link status |
 | controllerOffline | BOOLEAN | set by the offline watchdog |
 | maintenanceMode | BOOLEAN | admin: this tank is under maintenance (no alerts or offline notice, pump held off); missing = off |
+| thresholds | OBJECT | admin, optional: this tank's own `lowLevelThreshold`, `overflowThreshold` (0–100, low < overflow), `minPh`, `maxPh` (0–14, min < max). All four or none; missing = the shared values in `config`. Used by the alerts, Dashboard, Reports and this tank's controller (pump auto start and overflow stop) |
 | calibrationUntil | TIMESTAMP | admin: live calibration view open until (at most 30 min ahead) |
 | calibrationLive | OBJECT | ESP32, while the view is open: `voltage`, `heightM`, `percent`, `phVoltage`, `at` |
 | lastUpdate | TIMESTAMP | missing = controller never reported ("Planned") |
@@ -347,6 +352,7 @@ Written by the Admin Panel.
 | nightStartHour, nightEndHour | NUMBER (0–23, Philippine time) | 22, 3 |
 | nightFastDropPercent | NUMBER (3–100) | 5 % |
 | nightSlowDropPercent | NUMBER (3–100) | 3 % |
+| nightWatchTanks | OBJECT (tank ID → BOOLEAN) | missing or true = watched |
 
 #### `history/tanks/{tankId}/{pushKey}`: HISTORY
 Written by the ESP32 every 10 minutes. Indexed on `timestamp`.

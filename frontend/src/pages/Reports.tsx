@@ -47,7 +47,7 @@ import { useTankHistory, isLevelSampleFaulty, isPhSampleFaulty, type HistoryRawS
 const loadReportExport = () => import('@/lib/reportExport');
 import { estimateVolumeLiters, tankCapacityLiters, DEFAULT_TANK_IDS, tankIdsInOrder } from '@/lib/constants';
 import { formatDate, formatDateTime, formatTime } from '@/lib/dateFormat';
-import { offlineThresholdMs } from '@/lib/alertEngine';
+import { offlineThresholdMs, tankThresholds } from '@/lib/alertEngine';
 import { saveFile, isNativeApp, type SaveResult } from '@/utils/saveFile';
 import { useRangeLogs } from '@/hooks/useRangeLogs';
 import PredictiveAnalytics from '@/components/PredictiveAnalytics';
@@ -137,9 +137,6 @@ const Reports = () => {
   const offlineMs = offlineThresholdMs(config);
   // Pump card, chart, cycle count and export sections appear only while the pump system is on
   const pumpDemo = isPumpDemoOn(config);
-  // Same level cut-offs as the alert engine (low: level < threshold, overflow: level > threshold)
-  const isLevelLow = (level: number) => level < config.lowLevelThreshold;
-  const isLevelHigh = (level: number) => level > config.overflowThreshold;
 
   // Throttle high-frequency updates from Firebase to stabilize chart drawings and heavy table pagination
   const allTanks = useThrottledValue(rawTanks, 1500);
@@ -177,6 +174,12 @@ const Reports = () => {
   const selectedTank = useMemo(() => {
     return tanks.find(t => t.id === selectedTankId) || null;
   }, [tanks, selectedTankId]);
+
+  // The selected tank's own thresholds when an admin set them, else the shared ones (same rule as the alert engine)
+  const limits = tankThresholds(selectedTank, config);
+  // Same level cut-offs as the alert engine (low: level < threshold, overflow: level > threshold)
+  const isLevelLow = (level: number) => level < limits.lowLevelThreshold;
+  const isLevelHigh = (level: number) => level > limits.overflowThreshold;
 
   // Capacity the admin set for this tank (used for the estimated volume)
   const capacityLiters = tankCapacityLiters(selectedTank);
@@ -254,10 +257,10 @@ const Reports = () => {
   const phCategory = useMemo(() => {
     if (!selectedTank) return { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' };
     const ph = processedTank.phLevel ?? 7.0;
-    if (ph < config.minPh) return { label: 'Acidic', color: 'text-danger bg-danger/10 border-danger/20' };
-    if (ph > config.maxPh) return { label: 'Alkaline', color: 'text-warning bg-warning/10 border-warning/20' };
+    if (ph < limits.minPh) return { label: 'Acidic', color: 'text-danger bg-danger/10 border-danger/20' };
+    if (ph > limits.maxPh) return { label: 'Alkaline', color: 'text-warning bg-warning/10 border-warning/20' };
     return { label: 'Neutral', color: 'text-safe bg-safe/10 border-safe/20' };
-  }, [processedTank.phLevel, selectedTank, config.minPh, config.maxPh]);
+  }, [processedTank.phLevel, selectedTank, limits.minPh, limits.maxPh]);
 
   // Calculate dynamic active alert count
   const activeAlerts = useMemo(() => {
@@ -536,7 +539,7 @@ const Reports = () => {
       
       // Predictive analytics after the telemetry rows, as titled blocks
       const csvPredictive = predictiveReport
-        ? `\n\n${predictiveCsvLines(predictiveReport, config.lowLevelThreshold).join('\n')}`
+        ? `\n\n${predictiveCsvLines(predictiveReport, limits.lowLevelThreshold).join('\n')}`
         : '';
       const blob = new Blob([csvHeader + csvRows + csvPredictive], { type: 'text/csv' });
       const filename = `${processedTank.name.replace(/\s+/g, '_')}_Analytics_${dateRange.replace(/\s+/g, '_')}.csv`;
@@ -571,14 +574,14 @@ const Reports = () => {
           samples: historySamples,
           capacityLiters,
           liveLevel: liveLevelForForecast,
-          lowLevelThreshold: config.lowLevelThreshold,
-          minPh: config.minPh,
-          maxPh: config.maxPh,
+          lowLevelThreshold: limits.lowLevelThreshold,
+          minPh: limits.minPh,
+          maxPh: limits.maxPh,
           now: forecastMinute * 60_000,
           pumpAuto,
         })
       : null),
-    [selectedTank, historySamples, capacityLiters, liveLevelForForecast, config.lowLevelThreshold, config.minPh, config.maxPh, forecastMinute, pumpAuto]
+    [selectedTank, historySamples, capacityLiters, liveLevelForForecast, limits.lowLevelThreshold, limits.minPh, limits.maxPh, forecastMinute, pumpAuto]
   );
 
   // Everything the document builders need, in one place
@@ -595,10 +598,10 @@ const Reports = () => {
     telemetryData: tableRows,
     predictive: predictiveReport ?? undefined,
     thresholds: {
-      lowLevel: config.lowLevelThreshold,
-      overflow: config.overflowThreshold,
-      minPh: config.minPh,
-      maxPh: config.maxPh,
+      lowLevel: limits.lowLevelThreshold,
+      overflow: limits.overflowThreshold,
+      minPh: limits.minPh,
+      maxPh: limits.maxPh,
     },
   };
 
@@ -842,8 +845,8 @@ const Reports = () => {
                   {(processedTank?.phLevel ?? 7.0).toFixed(1)}
                 </h2>
                 <div className="flex justify-between text-xs text-muted-foreground font-medium">
-                  <span>Threshold min: {config.minPh}</span>
-                  <span>max: {config.maxPh}</span>
+                  <span>Threshold min: {limits.minPh}</span>
+                  <span>max: {limits.maxPh}</span>
                 </div>
               </div>
 
@@ -980,8 +983,8 @@ const Reports = () => {
                         formatter={(value: unknown) => [value !== null ? `${value}%` : 'Sensor Fault', 'Water Level']}
                       />
                       <Area type="monotone" dataKey="waterLevel" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#levelGradient)" dot={{ r: 4, fill: '#3b82f6' }} />
-                      <ReferenceLine y={config.lowLevelThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Low Threshold', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
-                      <ReferenceLine y={config.overflowThreshold} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'High Threshold', fill: '#f59e0b', fontSize: 9, position: 'insideTopLeft' }} />
+                      <ReferenceLine y={limits.lowLevelThreshold} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Low Threshold', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
+                      <ReferenceLine y={limits.overflowThreshold} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'High Threshold', fill: '#f59e0b', fontSize: 9, position: 'insideTopLeft' }} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1024,8 +1027,8 @@ const Reports = () => {
                         formatter={(value: unknown) => [value !== null ? `${value} pH` : 'Sensor Fault', 'pH Value']}
                       />
                       <Line type="monotone" dataKey="phLevel" stroke="#a855f7" strokeWidth={3} dot={{ r: 3, fill: 'hsl(var(--card))' }} />
-                      <ReferenceLine y={config.minPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Acidic Limit', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
-                      <ReferenceLine y={config.maxPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Alkaline Limit', fill: '#ef4444', fontSize: 9, position: 'insideTopLeft' }} />
+                      <ReferenceLine y={limits.minPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Acidic Limit', fill: '#ef4444', fontSize: 9, position: 'insideBottomLeft' }} />
+                      <ReferenceLine y={limits.maxPh} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Alkaline Limit', fill: '#ef4444', fontSize: 9, position: 'insideTopLeft' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1122,7 +1125,7 @@ const Reports = () => {
 
       {/* PREDICTIVE ANALYTICS: peak hours, peak day, expected use, time to low, pH trend */}
       {selectedTank && !isLoadingHistory && predictiveReport && (
-        <PredictiveAnalytics report={predictiveReport} lowLevelThreshold={config.lowLevelThreshold} rangeLabel={dateRange} />
+        <PredictiveAnalytics report={predictiveReport} lowLevelThreshold={limits.lowLevelThreshold} rangeLabel={dateRange} />
       )}
 
       {/* BOTTOM SECTION: REPORTS TABLE & PRINT LOGS */}
@@ -1196,7 +1199,7 @@ const Reports = () => {
                           ) : row.phLevel !== null ? (
                             <>
                               <span className={`px-2 py-0.5 rounded ${
-                                row.phLevel < config.minPh || row.phLevel > config.maxPh ? 'bg-danger/10 text-danger' : 'text-purple-500'
+                                row.phLevel < limits.minPh || row.phLevel > limits.maxPh ? 'bg-danger/10 text-danger' : 'text-purple-500'
                               }`}>{row.phLevel}</span>
                               {row.phFault && <FaultTag what="pH" />}
                             </>
