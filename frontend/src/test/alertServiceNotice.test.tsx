@@ -10,9 +10,10 @@ const state: {
   connected: boolean;
   /** What a fresh read of system/worker/lastSeen from the server returns */
   serverLastSeen: () => number | null | undefined;
+  role: 'admin' | 'worker' | 'viewer';
 } = {
   worker: { active: false, lastSeen: null, loaded: true }, notifications: [], maintenanceMode: false,
-  connected: true, serverLastSeen: () => null,
+  connected: true, serverLastSeen: () => null, role: 'worker',
 };
 
 const mockAdd = vi.fn().mockResolvedValue('created');
@@ -35,6 +36,7 @@ vi.mock('@/store/useStore', async (importOriginal) => {
 });
 vi.mock('@/utils/alertSound', () => ({ alertSound: { startAlert: vi.fn(), stopAlert: vi.fn() } }));
 vi.mock('@/config/firebase', () => ({ database: {}, firestore: {}, auth: {} }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ currentUser: { id: 'u1', role: state.role } }) }));
 
 import SystemMonitor from '@/components/SystemMonitor';
 
@@ -59,11 +61,19 @@ describe('Alert Service Offline notice', () => {
     state.maintenanceMode = false;
     state.connected = true;
     state.serverLastSeen = () => null;
+    state.role = 'worker';
     setVisibility('visible');
   });
   afterEach(() => {
     vi.useRealTimers();
     setVisibility('visible');
+  });
+
+  it("a viewer's page never writes the notice (only admins and workers may write notifications)", async () => {
+    state.role = 'viewer';
+    render(<SystemMonitor />);
+    await advance(120_000);
+    expect(mockAdd).not.toHaveBeenCalled();
   });
 
   it('waits for this page to settle (10 s) and then 60 s more, then raises one warning', async () => {

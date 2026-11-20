@@ -10,14 +10,24 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Full profiles (email, role, job title): each user reads their own, admins read all
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (
         isSignedIn() && 
         request.auth.uid == userId && 
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'jobTitle'])
       );
+    }
+
+    // Names only, for the Dashboard's "assigned to" line. Written by admins (new user,
+    // name change, and a sync on each admin sign-in); no email or role here.
+    match /directory/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && request.resource.data.keys().hasOnly(['username'])
+        && request.resource.data.username is string;
+      allow delete: if isAdmin();
     }
 
     match /{document=**} {

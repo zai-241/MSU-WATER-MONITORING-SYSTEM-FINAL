@@ -17,6 +17,7 @@ import { WORKER_STALE_MS } from '@/lib/constants';
 import { evaluateTank, createTankTrackers, evaluateNight, createNightState, offlineThresholdMs, isTankInMaintenance, ALERT_SERVICE_OFFLINE_ID, type TankTrackers, type NightState } from '@/lib/alertEngine';
 import { toast } from 'sonner';
 import { alertSound } from '@/utils/alertSound';
+import { useAuth } from '@/hooks/useAuth';
 
 const APP_TITLE = 'MSU Water Monitoring';
 /** How often the browser re-checks timers (5 s validation, offline watchdog) when it is the evaluator. */
@@ -36,12 +37,19 @@ const SERVICE_DOWN_GRACE_MS = 60_000;
  *    this component evaluates alerts itself with the same shared engine, so alerts keep
  *    working while at least one dashboard is open. Raises and resolves are database
  *    transactions, so several open browsers cannot duplicate or reopen an alert.
+ *    Only admin and worker sessions evaluate: the database rules let only those roles
+ *    write /notifications, so a viewer's page only presents alerts.
  */
 const SystemMonitor = () => {
   const { tanks, serverTimeOffset } = useTanks();
   const { config } = useConfig();
   const { notifications, addNotification, resolveNotification } = useNotifications();
   const { active: workerActive, loaded: workerLoaded } = useWorkerStatus();
+  const { currentUser } = useAuth();
+  // Viewers may not write /notifications (database rules): they never take over evaluation
+  const canEvaluate = currentUser?.role === 'admin' || currentUser?.role === 'worker';
+  // The fallback evaluator is idle while the worker runs, and always for viewers
+  const evaluatorIdle = workerActive || !canEvaluate;
 
   const trackers = useRef<Record<string, TankTrackers>>({});
   const nightStates = useRef<Record<string, NightState>>({});
@@ -136,7 +144,7 @@ const SystemMonitor = () => {
   // Timer for the fallback evaluator: validation windows and the offline watchdog must
   // advance even when no new telemetry arrives (which is exactly the offline case).
   useEffect(() => {
-    if (workerActive) return;
+    if (evaluatorIdle) return;
     let lastTickAt = Date.now();
     const interval = setInterval(() => {
       const now = Date.now();
@@ -148,11 +156,11 @@ const SystemMonitor = () => {
       setTick(t => t + 1);
     }, EVALUATION_TICK_MS);
     return () => clearInterval(interval);
-  }, [workerActive]);
+  }, [evaluatorIdle]);
 
   // 4. Fallback: controller-offline watchdog (R3)
   useEffect(() => {
-    if (workerActive || config?.maintenanceMode) return;
+    if (evaluatorIdle || config?.maintenanceMode) return;
     const thresholdMs = offlineThresholdMs(config);
     const dataIsFresh = canJudgeControllerOffline(isConnected, freshSince.current, Date.now());
 
@@ -171,11 +179,11 @@ const SystemMonitor = () => {
       syncTankOfflineState(tank.id, tank.name, isOffline, addSystemLog, { addNotification, resolveNotification }, thresholdMs / 1000)
         .finally(() => inFlightOffline.current.delete(tank.id));
     });
-  }, [tanks, config, serverTimeOffset, workerActive, tick, isConnected, addNotification, resolveNotification]);
+  }, [tanks, config, serverTimeOffset, evaluatorIdle, tick, isConnected, addNotification, resolveNotification]);
 
   // 5. Fallback: threshold and sensor-fault alerts through the shared engine
   useEffect(() => {
-    if (workerActive) {
+    if (evaluatorIdle) {
       trackers.current = {}; // the worker owns state; start clean if we ever take over
       nightStates.current = {};
       return;
@@ -252,7 +260,7 @@ const SystemMonitor = () => {
         }
       });
     });
-  }, [tanks, config, notifications, workerActive, tick, serverTimeOffset, addNotification, resolveNotification]);
+  }, [tanks, config, notifications, evaluatorIdle, tick, serverTimeOffset, addNotification, resolveNotification]);
 
   // 6. Tell users when the Alert Service stops: it cannot announce its own outage, and push
   //    notifications pause until it is back. Raised once per outage by this browser after
@@ -262,7 +270,7 @@ const SystemMonitor = () => {
   //    a sleeping tab or a backgrounded APK stops receiving heartbeats and would see a false
   //    outage. Before raising, the heartbeat is read once more from the server itself.
   useEffect(() => {
-    if (!workerLoaded) return;
+    if (!workerLoaded || !canEvaluate) return;
     const existing = notifications.find(n => n.id === ALERT_SERVICE_OFFLINE_ID);
     const open = !!existing && !existing.resolved;
     if (!workerActive) {
@@ -303,7 +311,7 @@ const SystemMonitor = () => {
           .catch((err) => console.error('Error resolving Alert Service notice:', err));
       }
     }
-  }, [workerActive, workerLoaded, notifications, tick, isConnected, config?.maintenanceMode, addNotification, resolveNotification]);
+  }, [workerActive, workerLoaded, canEvaluate, notifications, tick, isConnected, config?.maintenanceMode, addNotification, resolveNotification]);
 
   return null;
 };

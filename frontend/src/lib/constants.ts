@@ -107,3 +107,9 @@ export const STORAGE_KEYS = {
   soundMuted: 'wm_sound_muted',
   soundSnoozeUntil: 'wm_sound_snooze_until',
 } as const;
+
+/**
+ * Firestore collection with operator names only (directory/{uid} = { username }), readable by every
+ * signed-in user. Full profiles in users/{uid} are readable only by their owner and by admins.
+ */
+export const DIRECTORY_COLLECTION = 'directory';

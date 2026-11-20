@@ -5,10 +5,11 @@ import {
   signOut, 
   sendPasswordResetEmail,
 } from 'firebase/auth';
-import { doc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { ref, get, set, update } from 'firebase/database';
 import { auth, firestore, database } from '@/config/firebase';
-import { getUserProfile, UserProfile } from '@/services/authService';
+import { getUserProfile, setDirectoryName, UserProfile } from '@/services/authService';
+import { DIRECTORY_COLLECTION } from '@/lib/constants';
 import { disablePush } from '@/utils/push';
 import { startPresence } from '@/lib/presence';
 import { resolveLoginEmail } from '@/lib/email';
@@ -110,6 +111,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       if (Object.keys(roleUpdates).length > 0) {
                         await update(ref(database, 'roles'), roleUpdates);
                       }
+
+                      // Names-only directory for the Dashboard (non-admins cannot read users/):
+                      // add missing or changed names, remove entries of deleted profiles
+                      const dirSnap = await getDocs(collection(firestore, DIRECTORY_COLLECTION));
+                      const listed = new Map<string, unknown>();
+                      dirSnap.forEach((d) => listed.set(d.id, (d.data() as { username?: unknown }).username));
+                      const writes: Promise<void>[] = [];
+                      usersSnap.forEach((userDoc) => {
+                        const name = (userDoc.data() as UserProfile).username;
+                        if (typeof name === 'string' && listed.get(userDoc.id) !== name) {
+                          writes.push(setDirectoryName(userDoc.id, name));
+                        }
+                        listed.delete(userDoc.id);
+                      });
+                      listed.forEach((_name, uid) => writes.push(deleteDoc(doc(firestore, DIRECTORY_COLLECTION, uid))));
+                      await Promise.all(writes);
                     }
                   } catch (syncErr) {
                     // Non-fatal if offline or restricted by rules

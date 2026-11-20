@@ -16,7 +16,7 @@ import { offlineThresholdMs, isTankInMaintenance, describePumpFault, tankThresho
 import type { UserProfile } from '@/services/authService';
 import { useProcessedTankData } from '@/hooks/useUIStabilization';
 import { WifiOff, User, Loader2, Wrench } from 'lucide-react';
-import { PUMP_FEEDBACK_MS } from '@/lib/constants';
+import { PUMP_FEEDBACK_MS, DIRECTORY_COLLECTION } from '@/lib/constants';
 import { resolvePumpCommand, type PendingPumpCommand, type PumpCommandOutcome } from '@/lib/pumpCommand';
 import { useAuth } from '@/hooks/useAuth';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -371,19 +371,21 @@ const TankCard = memo(({
 const Dashboard = () => {
   const { tanks, isLive, updateTank } = useTanks();
   const serverTimeOffset = useServerTimeOffset();
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  // Operator names by UID (Firestore directory/: names only; full profiles are admin-only)
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const { config } = useConfig();
   const { currentUser } = useAuth();
   const addLog = addSystemLog;
 
-  // Firestore real-time listener for user profiles to map operator assignments on dashboard
+  // Firestore real-time listener for operator names, to show who each tank is assigned to
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(firestore, 'users'), (snapshot) => {
-      const list: UserProfile[] = [];
+    const unsubscribe = onSnapshot(collection(firestore, DIRECTORY_COLLECTION), (snapshot) => {
+      const names: Record<string, string> = {};
       snapshot.forEach(doc => {
-        list.push({ ...(doc.data() as UserProfile), id: doc.id });
+        const name = (doc.data() as { username?: unknown }).username;
+        if (typeof name === 'string') names[doc.id] = name;
       });
-      setUsers(list);
+      setUserNames(names);
     }, (error) => {
       // Assignments fall back to "Unknown" rather than leaving the page blank
       console.error('Error listening to user profiles:', error);
@@ -478,8 +480,7 @@ const Dashboard = () => {
 
   const getWorkerName = (id: string | null) => {
     if (!id) return 'Unassigned';
-    const user = users.find(u => u.id === id);
-    return user ? user.username : 'Unknown';
+    return userNames[id] ?? 'Unknown';
   };
 
   const handlePumpToggle = (tankId: string, tankName: string, newState: boolean) => {

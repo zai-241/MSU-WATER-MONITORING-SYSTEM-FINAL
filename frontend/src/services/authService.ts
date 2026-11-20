@@ -3,6 +3,7 @@ import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, set, remove, get } from 'firebase/database';
 import { firebaseConfig, firestore, database } from '@/config/firebase';
+import { DIRECTORY_COLLECTION } from '@/lib/constants';
 
 // Helper to get secondary Auth instance for creating operators without signing out admin
 const getSecondaryAuth = () => {
@@ -21,6 +22,15 @@ export interface UserProfile {
   jobTitle: string;
   status: 'active' | 'inactive';
   createdAt: number;
+}
+
+/**
+ * Names-only copy of the profiles (Firestore directory/{uid} = { username }). Every signed-in user
+ * may read it; full profiles (users/{uid}, with email and role) are readable only by their owner
+ * and by admins. Admins keep it in step: on create, on a name change, and on each admin sign-in.
+ */
+export function setDirectoryName(uid: string, username: string): Promise<void> {
+  return setDoc(doc(firestore, DIRECTORY_COLLECTION, uid), { username });
 }
 
 /**
@@ -73,6 +83,11 @@ export async function registerOperator(
 
     const docRef = doc(firestore, 'users', uid);
     await setDoc(docRef, profile);
+    try {
+      await setDirectoryName(uid, name);
+    } catch (dirErr) {
+      console.warn('Could not add the name to the user directory:', dirErr);
+    }
 
     // 4. Mirror role to Realtime Database for S1 role-based rules
     try {
@@ -95,6 +110,14 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
   try {
     const docRef = doc(firestore, 'users', uid);
     await updateDoc(docRef, updates);
+
+    if (typeof updates.username === 'string') {
+      try {
+        await setDirectoryName(uid, updates.username);
+      } catch (dirErr) {
+        console.warn('Could not update the name in the user directory:', dirErr);
+      }
+    }
 
     // Mirror role / activation changes to RTDB so database rules follow the profile
     if (updates.role || updates.status) {

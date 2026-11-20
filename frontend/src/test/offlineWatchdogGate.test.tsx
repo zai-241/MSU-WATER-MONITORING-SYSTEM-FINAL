@@ -24,6 +24,7 @@ vi.mock('@/store/useStore', async (importOriginal) => {
 });
 vi.mock('@/utils/alertSound', () => ({ alertSound: { startAlert: vi.fn(), stopAlert: vi.fn() } }));
 vi.mock('@/config/firebase', () => ({ database: {}, firestore: {}, auth: {} }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ currentUser: { id: 'u1', role: 'admin' } }) }));
 
 import SystemMonitor from '@/components/SystemMonitor';
 import { canJudgeControllerOffline } from '@/store/useStore';

@@ -116,7 +116,7 @@
         "timestamp"
       ],
       "$notifId": {
-        ".write": "root.child('roles').child(auth.uid).exists() && (newData.exists() || root.child('roles').child(auth.uid).val() === 'admin')",
+        ".write": "(root.child('roles').child(auth.uid).val() === 'admin' || root.child('roles').child(auth.uid).val() === 'worker') && (newData.exists() || root.child('roles').child(auth.uid).val() === 'admin')",
         "acknowledgedByUid": {
           ".validate": "newData.val() === auth.uid || newData.val() === data.val()"
         }

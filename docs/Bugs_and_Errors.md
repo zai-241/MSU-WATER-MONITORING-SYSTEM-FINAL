@@ -4,7 +4,7 @@ First checked on 2026-11-14 against `main` at `2c05cd1`. **Updated 2026-11-20 ag
 **Open now** below for everything still open. Groups 1–8 further down are the record of the 14 Nov work.
 
 **Status on 2026-11-20:** `npm test` 238 passed (35 files), `npm run typecheck` 0 errors, `npm run lint` 0 errors
-and 0 warnings. Open: 6 code items (2 security, 1 firmware consistency, 3 low/cleanup) and the thesis items.
+and 0 warnings. Open: code items A4 and A5 (both low) and the thesis items (A1, A2, A3, A6 fixed).
 All manual steps (B1–B3) are done.
 
 **Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
@@ -38,12 +38,17 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 
 ### A. Code
 
-- [ ] **A1 Viewers can write to notifications (S6, medium).** Any account with a `/roles` entry, viewer included,
+- [x] **A1 Viewers can write to notifications (S6, medium).** *Fixed 2026-11-20:* only `admin` and `worker` may
+  write `notifications/{id}` (delete stays admin only); the alert worker uses the Admin SDK and is not bound by the
+  rules. A viewer's page no longer runs the fallback evaluator (`SystemMonitor.tsx`), so it never tries to write.
+  Was: Any account with a `/roles` entry, viewer included,
   may write `notifications/{id}` (`backend/cloud/database.rules.json:108`), so a viewer could acknowledge an alert
   outside the web page. `acknowledgedByUid` must be the writer's own UID, so a name cannot be faked.
   *Fix:* allow notification writes only for `admin`, `worker` and the alert worker's service account, then
   `npx firebase deploy --only database`.
-- [ ] **A2 Every signed-in user can read all user profiles (S7, low).** `backend/cloud/firestore.rules:14`
+- [x] **A2 Every signed-in user can read all user profiles (S7, low).** *Fixed 2026-11-20:* `users/{uid}` is readable
+  by its owner and by admins only. The Dashboard reads names from the new Firestore `directory/{uid}` (`{ username }`
+  only), written by admins on create and rename, and synced on every admin sign-in (`AuthContext.tsx`). Was: `backend/cloud/firestore.rules:14`
   (`allow read: if isSignedIn()`) exposes every email address.
   *Fix:* own profile for everyone, all profiles for admins; give the dashboard only the names it needs.
 - [x] **A3 Manual pump mode is in the Tank 1 sketch only.** *Fixed 2026-11-20 (N3).* `pumpMode` (`"auto"` / `"manual"`) is read by

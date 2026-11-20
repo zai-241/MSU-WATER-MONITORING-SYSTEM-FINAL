@@ -19,13 +19,16 @@ Re-checked against the code on 2026-11-20. The full current list (code, manual s
 
 | ID | Severity | Item | Notes |
 |---|---|---|---|
-| S6 | Medium | Any account with a role, including viewer, can write to a notification directly in the database (for example acknowledge it). The UI hides the button. | Partly fixed: `acknowledgedByUid` must equal the writer's own UID, so a name cannot be faked. Remaining fix: restrict notification writes to admin and worker in `database.rules.json` (keep the worker service account and device rules in mind). |
-| S7 | Low | Any signed-in user can read every user profile (including email addresses) in Firestore (`backend/cloud/firestore.rules:14`). | Allow users to read their own profile and admins to read all; the dashboard only needs names. |
 | Q1 | Low | `frontend/src/pages/Reports.tsx` is large and growing (about 1,575 lines on 2026-11-20). | Extract the chart and summary calculations into hooks or helpers. Cleanup only. |
 | R10 | Future | Telegram alerts sent by the worker. | Not built. |
 | R11 | Future | Email summaries and SMS for critical alerts. | Not built. Listed in the paper's recommendations (GSM/SMS). |
 
 Closed since the 2026-11-13 update:
+
+- ✅ **S6** (viewers could write notifications): fixed 2026-11-20. Only admin and worker may write
+  `notifications/{id}`; a viewer's page no longer runs the fallback alert evaluator.
+- ✅ **S7** (every user could read all profiles and emails): fixed 2026-11-20. `users/{uid}` is own-or-admin;
+  the Dashboard reads names from the Firestore `directory` collection.
 
 - ✅ **S5** (deleting a user left the Auth account): user deletion was removed from the Admin Panel on
   2026-11-20; accounts are deactivated instead (User Management → Deactivate). `deleteUserProfile()` in `services/authService.ts` is now unused.
