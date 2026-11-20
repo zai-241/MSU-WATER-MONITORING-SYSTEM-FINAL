@@ -254,7 +254,8 @@ The HW-685 is made to stretch the **whole** 4–20 mA range (0–5 m) over 0–3
 get a much bigger voltage across the drum**. That's fine: 6.3 mV per cm is enough for the ESP32.
 
 **ZERO must not go below 0.50 V on the meter.** Near 0 V the ESP32's ADC is inaccurate (below about 0.15 V),
-the firmware flags a fault below 0.05 V, and an empty tank could no longer be told apart from a cut wire.
+the firmware flags a level fault at or below 0.30 V (`LEVEL_MIN_VALID_VOLTAGE`, raised from 0.05 V on 20 Nov 2026
+because the ADC reads about 0.14 V for 0 V), and an empty tank could no longer be told apart from a cut wire.
 (With the old firmware the ESP32 also read about 0.2 V low, which made a low ZERO even worse.)
 
 Tank 1 setting (17 Nov 2026): J1 caps removed (0–3.3 V), VCC from the expansion board's 5 V,

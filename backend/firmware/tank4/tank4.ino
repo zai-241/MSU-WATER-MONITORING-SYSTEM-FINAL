@@ -430,6 +430,13 @@ const unsigned long SENSOR_FAULT_TIMEOUT = 10000;
 // A real 200 L drum cannot change that fast: 25 % in 30 s is about 100 L/min.
 const int LEVEL_STABILITY_WINDOW_S = 30;
 const int LEVEL_UNSTABLE_RANGE = 25;
+// Lowest level voltage that counts as a real reading. With the 100 kOhm
+// pull-down on GPIO 35 (docs/Level_Sensor_RC_Filter_Wiring.md) a disconnected
+// HW-685 OUT wire is 0 V, but the ESP32 ADC reports about 0.14 V for 0 V, so
+// the old 0.05 V limit never fired and only the height check (-0.5 m) caught
+// it, by 12 mV on Tank 1 (20 Nov 2026). An empty tank reads at least 0.50 V
+// (ZERO is never set lower), so 0.30 V is safely between the two.
+const float LEVEL_MIN_VALID_VOLTAGE = 0.30;
 
 int consecutivePhSpikes = 0;
 unsigned long phFaultTimer = 0;
@@ -1600,7 +1607,8 @@ bool levelSignalUnstable(int levelPercent, unsigned long now) {
 void processLevelSensor() {
   float rawLevelVoltage = readLevelVoltageStable();
 
-  bool electricalValid = (rawLevelVoltage > 0.05 && rawLevelVoltage < 3.25);
+  bool electricalValid = (rawLevelVoltage > LEVEL_MIN_VALID_VOLTAGE &&
+                         rawLevelVoltage < 3.25);
 
   float valRange = levelVmax - levelVmin;
   float height = 0.0;

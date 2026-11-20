@@ -76,8 +76,9 @@ graph TD
 
 ### 2.4 Stage 3: Bounds Validation & Spike Rejection
 1. **Electrical Voltage Bounds**:
-   - Safe operational limits: $0.05\text{V} < V_{raw} < 3.25\text{V}$.
-   - Voltages $\le 0.05\text{V}$ (open circuit / disconnected wire) or $\ge 3.25\text{V}$ (short circuit to rail) trigger a fault timer.
+   - Safe operational limits: level sensor $0.30\text{V} < V_{raw} < 3.25\text{V}$ (`LEVEL_MIN_VALID_VOLTAGE`); pH sensor $0.05\text{V} < V_{raw} < 3.25\text{V}$.
+   - Voltages at or below the lower limit (open circuit / disconnected wire) or $\ge 3.25\text{V}$ (short circuit to rail) trigger a fault timer.
+   - Why 0.30 V for the level sensor: a 100 kΩ pull-down on GPIO 35 (`docs/Level_Sensor_RC_Filter_Wiring.md`) pulls a disconnected HW-685 output to 0 V, but the ESP32 ADC reports about 0.14 V for 0 V, so a 0.05 V limit never fired. On Tank 1 (20 Nov 2026) the unplugged sensor was caught only by the height check (−0.52 m against −0.5 m). An empty tank reads at least 0.50 V (ZERO is never set lower), so 0.30 V separates the two with margin.
    - If an electrical fault persists for $\ge 10,000\text{ ms}$ (`SENSOR_FAULT_TIMEOUT`), the sensor health is set to `false`, an emergency error is logged, and the pump is prevented from auto-starting.
    - Monitoring is never suspended by a fault. During the 10 s check the last good value is held (so a short glitch does not show); once the fault is confirmed, the live reading, clamped to the physical range (pH 0 to 14, level 0 to 100 %), keeps going to the dashboard, the 10-minute history and the alerts, flagged by `levelSensorOk` / `phSensorOk = false`. Threshold alerts (low water, overflow, pH) keep being evaluated and say that the reading may be inaccurate. Only the pump is held off while the level sensor is faulty.
    - Recovery requires stable readings for at least $3,000\text{ ms}$.

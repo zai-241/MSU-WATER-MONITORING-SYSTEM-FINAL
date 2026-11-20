@@ -34,6 +34,9 @@ reading with `levelSensorOk` / `phSensorOk = false`, and `alertEngine.ts` keeps 
 message says the reading may be inaccurate). Only the pump is held off while the level sensor is faulty.
 Besides out-of-range voltage, the level sensor is also flagged faulty when its reading swings 25 % or more within
 30 s (a floating GPIO 35 from a disconnected sensor stays in range but wanders); see `LEVEL_UNSTABLE_RANGE`.
+Tank 1 has an RC filter + 100 kΩ pull-down on GPIO 35 (`docs/Level_Sensor_RC_Filter_Wiring.md`), so a disconnected
+HW-685 output reads 0 V (the ADC reports about 0.14 V). The level voltage fault limit is therefore 0.30 V
+(`LEVEL_MIN_VALID_VOLTAGE`, all four sketches); pH stays at 0.05 V. An empty tank must read at least 0.50 V (ZERO).
 The pump UI no longer says "demo"; the Admin Panel switch is called "Pump System" (DB key still `pumpDemoMode`).
 Maintenance works system-wide (`config/maintenanceMode`, "Maintenance Mode (all tanks)") or per tank
 (`tanks/{id}/maintenanceMode`, Admin Panel → Tank Maintenance, admin only in the rules). Either one pauses that tank's alerts,
@@ -113,6 +116,7 @@ The sketches have no fallback credentials: a build without all five values in `s
 | Requirements | `docs/SRS.md` |
 | Architecture and operator manual | `docs/System_Overview.md` (older; no worker section yet) |
 | Filtering, calibration math, schemas | `docs/Methodology.md` |
+| Level sensor hardware: HW-685 ZERO/SPAN and multimeter tests; RC filter + pull-down on GPIO 35 (built on Tank 1, 20 Nov 2026) | `docs/Level_Sensor_Zero_Span_Calibration.md`, `docs/Level_Sensor_RC_Filter_Wiring.md` |
 | Chapter 3 diagrams | `docs/diagrams/` |
 | Open issues and review status | `WEB_NOTIFICATION_RECOMMENDATIONS.md`, `docs/Code_Cleanup.md` |
 | Cloud setup steps (roles, worker, push, App Check) | `PHASE3_SETUP.md` |
