@@ -4,7 +4,7 @@ First checked on 2026-11-14 against `main` at `2c05cd1`. **Updated 2026-11-20 ag
 **Open now** below for everything still open. Groups 1–8 further down are the record of the 14 Nov work.
 
 **Status on 2026-11-20:** `npm test` 238 passed (35 files), `npm run typecheck` 0 errors, `npm run lint` 0 errors
-and 0 warnings. Open: 6 code items (2 security, 1 firmware consistency, 3 low/cleanup), 3 manual steps, and the
+and 0 warnings. Open: 6 code items (2 security, 1 firmware consistency, 3 low/cleanup), 2 manual steps (B1, B3; B2 done), and the
 thesis items.
 
 **Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
@@ -62,10 +62,11 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 
 - [ ] **B1 Change the router's Wi-Fi password** and put the new one in each tank's `secrets.h` (Group 2.1). The old
   one is still in git history (commits `9133053`, `a70e646`).
-- [ ] **B2 Deploy the database rules** if not done since the last rules change:
-  `npx firebase deploy --only database,firestore`. The worker `pumpOn` limit (Group 2.2), the `calibrationUntil`
-  limit, per-tank maintenance, `/presence`, per-tank thresholds (`tanks/{id}/thresholds`, admin only) and
-  `config/nightWatchTanks` are only live after this. Saving a tank's own thresholds fails until then.
+- [x] **B2 Deploy the database rules.** *Done 2026-11-20* (`npx firebase deploy --only database,firestore` after
+  commit `08fbded`). Live now: the worker `pumpOn` limit (Group 2.2), the `calibrationUntil` limit, per-tank
+  maintenance, `/presence`, and the checks on per-tank thresholds (`tanks/{id}/thresholds`: admin only, all four
+  values, in range, low < overflow, min pH < max pH) and `config/nightWatchTanks` (true/false per tank).
+  Repeat this step after any later change to `database.rules.json` or `firestore.rules`.
 - [ ] **B3 Flash every installed controller** with the current sketch (Tank 1: RC filter fault limit 0.30 V, per-tank
   maintenance, live calibration, per-tank thresholds from 20 Nov). Until Tank 1 is re-flashed its pump keeps
   using the shared thresholds even if the tank has its own (alerts and Reports already use the tank's own).
