@@ -6,6 +6,19 @@ These replace the figures that no longer match the system. They keep the design 
 
 **To change a figure:** edit `figures.mjs`, then run `node docs/diagrams/build.mjs` (one-time setup: `npm i --no-save --prefix docs/diagrams puppeteer-core`). It needs Microsoft Edge and an internet connection for the fonts.
 
+**System update (2026-11-19):** 3-5, 3-6, 3-13 and 3-14 say W5500 Ethernet instead of LAN8720; 3-13 shows the pump relay on GPIO 32 as installed (refill pump of the drum model); 3-10 uses "Pump System" instead of "Pump Demo Mode"; Data_Model_1/2 add pumpMode, the night watch settings, pumpCommandAt/Result, calibrationUntil/Live and the history sensor flags. The W5500 picture in 3-13 is still the module photo from the original figure.
+
+**Features of 14–19 Nov (2026-11-19, second pass):**
+- 3-4: "Filter, Convert & Run Pump Logic"; the level check also covers a falling level at night.
+- 3-5: a faulty reading is held, then flagged and still sent; unstable level; pump logic; "Ethernet Up & Responding?"; night watch and the night-leak alert.
+- 3-6: Night Leak Watch in the Alert Service.
+- 3-7 (new in figures.mjs, same card style as 3-8/3-9): replaces the old picture that said LAN8720; adds the sensor fault, pump and live calibration rows.
+- 3-8 / 3-9: sensor flags, night watch, predictive analytics, Pump Activity Log, pump command and live calibration rows.
+- 3-10: Set Night Watch, View Live Sensor Readings (extends Calibrate), View Predictive Analytics (included by View Report) and Detect Night Water Loss (Alert Service).
+- 3-12 ERD: pumpMode, night watch fields, pumpCommandAt/Result, calibrationUntil/Live, history sensor flags.
+
+3-10 and 3-12 are now taller than 9 in at full width, so in Word they are set to 9 in high and slightly narrower.
+
 **Print size (2026-11-15):** Figures 3-4, 3-5 and 3-8 to 3-14 were redrawn for a portrait page because their text was too small to read on paper. Each is 1200 units wide with body text of 19 to 22 units, so at 6 inches wide the text prints at about 7 to 8 pt (it was 3 to 4 pt). To get this, the empty space was removed and some layouts changed: 3-4 and 3-11 use vertical lanes, 3-5 runs in two halves (reading and sending on the left, database and alerts on the right), 3-10 and 3-12 are stacked in columns, and 3-13 and 3-14 use two rows. The content is the same. Insert each PNG at the full text width; do not shrink it.
 
 Only the figures that contradict the system are here. Figures 3-1 to 3-3 and 3-7 already match and stay as they are.
@@ -32,7 +45,7 @@ Only the figures that contradict the system are here. Figures 3-1 to 3-3 and 3-7
 | 3-6 HIPO | Alert Service added to the Process Layer; current-to-voltage module in the sensors |
 | 3-8 IPO: Backend Server and Application Logic | Alert service, push, offline detection, retention |
 | 3-9 IPO: Web Dashboard and Mobile Application | Push, acknowledgment location, reports and exports |
-| 3-10 Use Case Diagram | No Edit User / Assign Role; Worker and Viewer use cases; Alert Service actor; Set Pump Demo Mode and Switch Pump (Demo Mode) |
+| 3-10 Use Case Diagram | No Edit User / Assign Role; Worker and Viewer use cases; Alert Service actor; Set Pump System & Pump Mode and Switch Pump |
 | 3-11 Activity Diagram | Logging in both branches; Alert Service lane |
 | 3-12 ERD | ROLES, USER_STATE, ALERT_SERVICE_HEARTBEAT; missing fields; corrected relationships; pump demo fields (TANKS.pumpOn, CONFIG.pumpDemoMode and pumpControlLock) |
 | 3-13 Architectural Design | Alert Service, FCM, real hardware parts |

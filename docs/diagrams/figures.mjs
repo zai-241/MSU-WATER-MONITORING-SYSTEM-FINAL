@@ -145,9 +145,9 @@ function fig34() {
   // nodes
   b += term(200, 110, 250, 70, 'Continuous 24/7\nMonitoring', { size: F });
   b += box(200, 205, 250, 76, 'Read Sensor Data\n(Level, pH)', { size: F });
-  b += box(200, 305, 250, 76, 'Filter & Convert\nReadings', { size: F });
+  b += box(200, 305, 250, 76, 'Filter, Convert &\nRun Pump Logic', { size: F });
   b += box(200, 418, 276, 104, 'Log Data to\nDatabase (On Change\nor Every 10 s)', { size: F });
-  b += dec(200, 590, 290, 170, 'Level Low/High\nfor 5 Seconds?', { size: 21 });
+  b += dec(200, 590, 300, 176, 'Level Low/High\nfor 5 s, or Falling\nat Night?', { size: 20 });
   b += dec(200, 810, 290, 170, 'pH Unsafe\nfor 5 Seconds?', { size: 21 });
   b += box(525, 700, 216, 76, 'Create Alert\nNotification', { size: F });
   b += box(525, 830, 216, 104, 'Send Push\nNotification\n(FCM)', { size: F });
@@ -205,7 +205,7 @@ function fig35() {
   b += arrow([[R, 1470], [R, 1527]]);
   b += arrow([[685, 1565], [355, 1565]]);
   // edge labels
-  b += note(442, 380, 'Invalid /\nVoltage Spike');
+  b += note(442, 380, 'Invalid / Spike /\nUnstable Level');
   b += tag(L, 457, 'Valid Reading');
   b += tag(32, 790, 'No') + tag(L, 845, 'Yes');
   b += note(362, 918, 'Yes') + tag(L, 1050, 'No');
@@ -220,21 +220,21 @@ function fig35() {
   b += term(L, 45, 130, 50, 'Start', { size: F });
   b += io(L, 160, 300, 100, 'Read Analog Sensors\n(Hydrostatic & pH)\nEvery 20 ms', { size: F });
   b += dec(L, 345, 310, 180, '4-Stage Signal\nFilter & Bounds\nCheck?', { size: F });
-  b += box(500, 215, 212, 128, 'Discard Reading &\nResample (Sensor\nFault if Invalid\nfor 10 s)', { size: 19 });
-  b += box(L, 535, 290, 100, 'Convert to Height,\nLevel % & pH\n(Calibration Values)', { size: F });
+  b += box(500, 215, 212, 128, 'Hold Last Value;\nAfter 10 s: Flag\nFault, Keep Sending\n(Clamped)', { size: 19 });
+  b += box(L, 535, 290, 100, 'Convert to Height,\nLevel % & pH;\nRun Pump Logic', { size: F });
   b += dec(L, 725, 330, 190, 'Changed ≥ 2% or\n≥ 0.15 pH, or 10 s\nHeartbeat Due?', { size: F });
-  b += dec(L, 950, 320, 150, 'Primary Ethernet\nLink Active?', { size: F });
-  b += box(500, 950, 212, 128, 'Transmit via\nLAN8720 Ethernet\n& CPE210 P2P\nBridge', { size: 19 });
+  b += dec(L, 950, 320, 150, 'Ethernet Up\n& Responding?', { size: F });
+  b += box(500, 950, 212, 128, 'Transmit via\nW5500 Ethernet\n& CPE210 P2P\nBridge', { size: 19 });
   b += dec(L, 1150, 280, 140, 'Backup Wi-Fi\nConnected?', { size: F });
   b += box(500, 1150, 212, 102, 'Transmit via\n2.4GHz Wi-Fi\nBackup', { size: 19 });
   b += box(L, 1325, 320, 100, 'Buffer Critical Logs in\nRAM (20 Entries) &\nReconnect (90 s Watchdog)', { size: F });
   b += term(L, 1565, 280, 64, 'Next Reading Cycle', { size: F });
   // nodes, right half
   b += cyl(R, 90, 300, 140, 'Firebase Realtime\nDatabase Sync\n(History Every 10 min)', { size: F });
-  b += dec(R, 300, 250, 170, 'Threshold\nValidation\nCheck?', { size: F });
+  b += dec(R, 300, 250, 170, 'Threshold or\nNight Watch\nCheck?', { size: F });
   b += io(1080, 430, 176, 100, 'Update Web\n& Mobile\nDashboard', { size: 19 });
   b += dec(R, 530, 250, 170, '5-Second\nPersistence\nCheck?', { size: F });
-  b += box(R, 740, 340, 128, 'Alert Service Raises Alert:\nCRITICAL (Low Level, pH),\nWARNING (Overflow);\nESP32 Logs the Event', { size: F });
+  b += box(R, 740, 340, 128, 'Alert Service Raises Alert:\nCRITICAL (Low Level, pH),\nWARNING (Overflow), Danger\n(Night Leak); ESP32 Logs', { size: F });
   b += io(R, 895, 330, 100, 'Send Push Notification;\nToast & Audible Chime\non Web & Android', { size: F });
   b += dec(R, 1045, 250, 110, 'Acknowledged?', { size: F });
   b += box(1080, 1045, 176, 118, 'Re-show Toast\n& Chime Every\n60 s (Push Only\nat Start)', { size: 18 });
@@ -260,12 +260,12 @@ function fig36() {
   let b = '';
   b += layer(75, 525, 'Input Layer (Perception)', 'One ESP32 Edge Node per Reservoir Tank (Tanks 1–4)');
   b += inner(157, 262, 563, 300, 'Sensors', 'Submersible Hydrostatic Level\nSensor (via Current-to-Voltage\nModule) & PH-4502C pH Sensor');
-  b += inner(757, 262, 563, 300, 'Processing & Network\nHardware', 'ESP32-WROOM-32\nMicrocontroller + LAN8720 PHY\nEthernet Module');
+  b += inner(757, 262, 563, 300, 'Processing & Network\nHardware', 'ESP32-WROOM-32\nMicrocontroller, W5500\nEthernet & Pump Relay');
   b += blockArrow(600);
   b += layer(712, 470, 'Process Layer (Network & Application)', 'Connectivity, Cloud Database, Alert Service & Logic');
   b += inner(115, 900, 405, 245, 'Connectivity', 'TP-Link CPE210 2.4GHz\nP2P Wireless Bridge;\nWi-Fi Standby Link', 32, 26);
   b += inner(532, 900, 405, 245, 'Cloud & Logic', 'Firebase Realtime\nDatabase, Cloud Firestore,\nAuthentication & Logs', 32, 26);
-  b += inner(949, 900, 405, 245, 'Alert Service', 'Cloud-Hosted: 5-Second\nCheck, Alerts, FCM Push,\nOffline Detection', 32, 26);
+  b += inner(949, 900, 405, 245, 'Alert Service', 'Cloud-Hosted: 5-Second\nCheck, Night Leak Watch,\nFCM Push, Offline Check', 32, 26);
   b += blockArrow(1182);
   b += layer(1294, 470, 'Output Layer (End Users & Devices)', 'Web Dashboard and Mobile Application');
   b += inner(157, 1482, 563, 245, 'End Users', 'Motor Pool Staff, Maintenance\nTechnicians, System\nAdministrators');
@@ -309,13 +309,41 @@ function ipo(rows) {
   return svg(PAGE_W, Math.round(H), b);
 }
 
+// Figure 3-7 (redrawn 2026-11-19 in the style of 3-8 and 3-9; the original said LAN8720 and had no pump or fault handling)
+const fig37 = () => ipo([
+  [['Hydrostatic Level Sensor', 'Analog voltage (0–3.3 V) through the current-to-voltage module, GPIO 35'],
+    ['Signal Processing & Depth Calculation', 'Median and moving-average filters, bounds and spike checks; height and level % from Vmin, Vmax and tank height'],
+    ['Calibrated Level & Depth', 'Level % and water height (m), with the level sensor health flag']],
+  [['pH Glass Electrode Sensor', 'Analog voltage (0–3.3 V), GPIO 34'],
+    ['pH Calibration & Conversion', 'Voltage check; neutral-voltage slope formula + offset'],
+    ['pH Reading', 'pH value (6.5–8.5 nominal), with the pH sensor health flag']],
+  [['Invalid or Unstable Readings', 'Voltage out of range, or a level swing of 25% or more within 30 s'],
+    ['Sensor Fault Check (10 s)', 'Hold the last good value; after 10 s flag the sensor faulty and keep sending the clamped reading'],
+    ['Monitoring Continues', 'Readings, history and alerts go on, marked as possibly inaccurate; pump held off on a level fault']],
+  [['Telemetry Data Packets', 'Structured JSON on change (2% or 0.15 pH) or every 10 s'],
+    ['Transport & RTDB Sync', 'W5500 Ethernet + CPE210 P2P bridge to Firebase; Wi-Fi failover when Ethernet is down or slow'],
+    ['Live Telemetry Sync', 'Real-time updates to the web dashboard & mobile app; history every 10 min']],
+  [['Level, Pump Commands & Pump Settings', 'Live level, thresholds, pumpOn command, Pump System switch, Auto / Manual mode'],
+    ['Local Pump Logic (GPIO 32 Relay)', 'Auto start at the low threshold (30 s off time), stop at overflow; safety stops; each command checked'],
+    ['Refill Pump Control', 'Pump switched on the drum model; accepted or refused answer and a log entry']],
+  [['Alert Threshold & Night Watch Configuration', 'Water level (15%–95%), pH (6.5–8.5); night window 10 PM–3 AM'],
+    ['Alert State Machine & Validation', '5-second persistence check; repeat every 60 s until acknowledged; night level-drop check'],
+    ['Real-Time In-App / Toast Alerts & Logs', 'In-app toast & audible chime, push notifications, audit entries']],
+  [['Admin Calibration & System Control', 'Thresholds, calibration, maintenance mode, live calibration view'],
+    ['RTDB Configuration Sync', 'Read by the ESP32 every second; live readings sent once per second while the view is open'],
+    ['Updated System Behavior', 'No re-flashing required; changes apply live']],
+  [['User Authentication & Role Data', 'User credentials & roles (Admin / Worker / Viewer)'],
+    ['Firestore Auth & Access Control', 'Firebase Auth validation & Role-Based Access Control (RBAC)'],
+    ['Secured Client Dashboard', 'React + Vite Web App & Capacitor Android App']],
+]);
+
 const fig38 = () => ipo([
-  [['JSON Payload from\nEach Tank\'s ESP32', 'waterLevel, waterHeight,\nphLevel, RSSI, status\n(on change or every 10 s)'],
+  [['JSON Payload from\nEach Tank\'s ESP32', 'waterLevel, waterHeight, phLevel, sensor health flags, RSSI, status (on change or every 10 s)'],
     ['Validate, Parse &\nPersist to RTDB', 'Authenticated HTTPS\nREST write directly to\nRTDB tanks/{id}'],
     ['Stored, Timestamped\nTelemetry Records', 'Live RTDB record per\ntank, lastUpdate\ntimestamp']],
-  [['Alert Threshold\nConfiguration', 'Low 15%, Overflow\n95%, pH 6.5–8.5'],
-    ['Alert Service:\n5-Second Check', 'Cloud-hosted service checks\neach tank against the\nlimits; a breach must last 5 s'],
-    ['Alert Notifications\n& Logs', 'Alert in /notifications\n(low level, pH: critical;\noverflow: warning);\nESP32 logs it in /logs']],
+  [['Alert & Night Watch Configuration', 'Low 15%, Overflow 95%, pH 6.5–8.5; night 10 PM–3 AM, 5% fast / 3% slow drop'],
+    ['Alert Service: 5-Second Check & Night Watch', 'Checks each tank against the limits (a breach must last 5 s); at night compares the level with the last 30 min'],
+    ['Alert Notifications\n& Logs', 'Alert in /notifications (low level, pH: critical; overflow: warning; possible leak: danger); ESP32 logs threshold alerts in /logs']],
   [['Device Push\nTokens', 'fcmTokens saved for\neach user in\nuserState/{uid}'],
     ['Push, Repeat &\nResolve Alerts', 'FCM push when the alert\nstarts; re-show every 60 s\nuntil acknowledged;\nresolve after 5 s normal'],
     ['Push & Real-Time\nToast Alerts', 'Push to Web & Android;\ntoast & audible chime\nin open dashboards']],
@@ -326,11 +354,14 @@ const fig38 = () => ipo([
     ['Auth & RBAC\nVerification', 'Firebase Auth sign-in;\nrole in roles/{uid}\nchecked by security rules'],
     ['Role-Gated\nDashboard Access', 'Admin / Worker / Viewer\nroutes unlocked based\non assigned role']],
   [['Reports & Historical\nRequests', 'Tank ID, date range\nfilters (7 / 14 / 30 days)'],
-    ['Query Logs & Build\nRecharts Datasets', 'Filter RTDB telemetry &\ndiagnostic logs by tank\nand range, build trend\narrays'],
-    ['Interactive Analytics\n& Exportable Reports', 'Recharts trend\nvisualizers & exportable\nreports (PDF, Excel,\nCSV)']],
-  [['Admin Calibration\n& Capacity Input', 'Vmin/Vmax, tankHeight,\nphSlope, phOffset,\ncapacityLiters (per tank)'],
+    ['Query Logs & Build Datasets', 'Filter RTDB telemetry & diagnostic logs by tank and range; build trend arrays and usage analytics (peak hours, peak day, forecasts)'],
+    ['Interactive Analytics\n& Exportable Reports', 'Recharts trends, predictive analytics, Pump Activity Log & reports (PDF, Excel, CSV)']],
+  [['Admin Calibration\n& Capacity Input', 'Vmin/Vmax, tankHeight, phSlope, phOffset, capacityLiters (per tank); live calibration view (calibrationUntil)'],
     ['Update Calibration\nParams in RTDB', 'Admin selects Tank 1–4\nand writes parameters\nto tanks/{id} fields'],
-    ['Dynamic Sensor\nCalibration', 'ESP32 applies updated\ncalibration on next poll;\ncapacity sets the\nvolume estimate']],
+    ['Dynamic Sensor\nCalibration', 'ESP32 applies updated calibration on next poll; live readings once per second while the view is open']],
+  [['Pump Command', 'pumpOn written by an Admin or the assigned Worker'],
+    ['Rules Check & Controller Answer', 'Security rules allow the write while the lock is off; the ESP32 accepts or refuses it'],
+    ['Pump State & Pump Activity Log', 'pumpCommandAt and pumpCommandResult; accepted or refused entry in /logs']],
   [['User Registry\nManagement', 'User details\nand role'],
     ['Register Auth &\nFirestore Profile', 'Firebase Auth user\ncreation; profile in\nusers/{uid}, role in\nroles/{uid}'],
     ['Active User Registry\nProfile', 'User profile visible in\nAdmin Panel with\nrole-gated access']],
@@ -340,12 +371,15 @@ const fig38 = () => ipo([
 ]);
 
 const fig39 = () => ipo([
-  [['Live telemetry from\nFirebase RTDB', 'waterLevel,\nwaterHeight, phLevel,\nRSSI, status'],
+  [['Live telemetry from\nFirebase RTDB', 'waterLevel, waterHeight, phLevel, pumpOn, RSSI, status'],
     ['onValue listener,\nthrottle & stabilize UI', 'Smooth interpolation,\ndeadband, 1.5 s throttle'],
-    ['Real-time tank cards\nwith water gauges', 'Level %, height, pH,\nsafe/warning/danger\nbadge']],
+    ['Real-time tank cards\nwith water gauges', 'Level %, height, pH, safe/warning/danger badge, pump switch']],
   [['Alert & sensor fault\nstate from RTDB', 'lowLevelAlert,\nhighLevelAlert, phAlert,\nphSensorOk,\nlevelSensorOk'],
-    ['Show alerts; fallback\n5 s check', 'Toast & chime on new\nalerts; SystemMonitor checks\nonly if Alert Service stops'],
-    ['Inline alert badges &\nsensor fault labels', 'CRITICAL / WARNING /\nRECOVERED / FAULT\ntags']],
+    ['Show alerts; fallback\nchecks', 'Toast & chime on new alerts; SystemMonitor runs the 5 s and night checks only if the Alert Service stops'],
+    ['Inline alert badges &\nsensor fault notices', 'CRITICAL / WARNING / RECOVERED / FAULT tags; "monitoring continues" notice']],
+  [['Pump switch on a tank card', 'Admin, or a Worker on an assigned tank'],
+    ['Write pumpOn, wait for the answer', 'Spinner until pumpCommandResult arrives (15 s timeout); command logged'],
+    ['Pump state & result', 'Accepted, refused with the reason, or timed out']],
   [['Notification\nmessages from RTDB', 'notifications/ node,\ntype:\ninfo/warning/danger'],
     ['Sort, track unread\n& acknowledge', 'Record who acknowledged\nand when; read state in\nuserState/{uid}'],
     ['Notification center\nwith unread badge', 'Bell icon pulse,\nscrollable history,\nacknowledge action']],
@@ -353,14 +387,17 @@ const fig39 = () => ipo([
     ['Register device &\nshow notification', 'Device token saved in\nuserState/{uid};\ntap opens the alert'],
     ['Alerts even when the\napp is closed', 'System notification on\nWeb & Android']],
   [['Reports request &\ndate range filter', 'Tank selection (Tanks 1–4),\n7 / 14 / 30-day range'],
-    ['Query RTDB telemetry,\nbuild chart datasets', 'Recharts time-series\ncharts, hourly/daily\naggregation'],
-    ['Trend charts &\nexportable reports', 'PDF / Excel / CSV\nfrom the Reports page']],
+    ['Query RTDB telemetry,\nbuild chart datasets', 'Recharts time-series charts, hourly/daily aggregation; predictive analytics computed in the browser'],
+    ['Trend charts &\nexportable reports', 'Predictive analytics, Pump Activity Log, problem counts; PDF / Excel / CSV from the Reports page']],
   [['Audit log search &\ncategory filter', 'Keyword query; tabs\nAll / Alerts / System /\nErrors'],
     ['Filter logs/ node,\nhighlight matches', 'Regex-safe highlight, sort\nby timestamp desc'],
     ['Filtered audit log with\nhighlighted terms', 'Paginated list, clear-all\nfor admin role only']],
-  [['Admin configuration\n& settings input', 'Thresholds; calibration\n& capacity of the\nselected tank (1–4);\nmaintenance mode'],
+  [['Admin configuration\n& settings input', 'Thresholds; night watch; Pump System & pump mode; calibration & capacity of the selected tank (1–4); maintenance mode'],
     ['Validate input, write\nto config/ & tanks/', 'updateConfig /\nupdateTank RTDB write,\ntoast confirm'],
     ['Updated system\nconfig & calibration\nsettings', 'Changes apply live,\nESP32 picks up on poll']],
+  [['Live calibration view', 'Start or +10 min for one tank (30 min at most)'],
+    ['Write calibrationUntil, listen to calibrationLive', 'Readings once per second; "Use as Vmin / Vmax / pH neutral" fills the form'],
+    ['Live sensor readings', 'Level voltage, height, %, pH voltage; Save applies the values']],
   [['User management', 'New user, role\n(admin/worker/viewer)'],
     ['Register via\nsecondary Auth,\nFirestore profile', 'onSnapshot user list;\nactivate/deactivate,\ndelete'],
     ['Active user registry\nlist, role-based\naccess live', 'Admin panel user\ntable updated in real\ntime']],
@@ -375,7 +412,7 @@ const fig39 = () => ipo([
 // use cases, C = second-level and system use cases. Ellipses are sized from their text.
 // ======================================================================
 function fig310() {
-  const W = PAGE_W, H = 1664, IMG = 'uc', FS = 19, AX = 200, BX = 575, CX = 870, SX = 945;
+  const W = PAGE_W, H = 1760, IMG = 'uc', FS = 19, AX = 200, BX = 575, CX = 870, SX = 945;
   let b = '';
   const E = {};
   const uc = (id, x, cy, t, kind = 'blue', leftAligned = false) => {
@@ -384,43 +421,47 @@ function fig310() {
     const rx = Math.max(52, Math.max(...ls.map((l) => estW(l, FS, true))) / 2 / k + 8);
     E[id] = { cx: leftAligned ? x + rx : x, cy, rx, ry, t, kind };
   };
-  const row = (n) => 62 + 84 * (n - 1) + (n >= 16 ? 12 : 0);
+  const row = (n) => 62 + 84 * (n - 1) + (n >= 17 ? 12 : 0);
   const A = (id, cy, t) => uc(id, AX, cy, t, 'blue', true);
   // column A: left tips line up so the actor lines fan out without crossing other ellipses
-  A('cfg', 272, 'Configure\nSystem');
-  A('vsl', 470, 'View System\nLogs');
-  A('mua', row(8), 'Manage User\nAccount');
-  A('gar', row(11), 'Generate\nAnalytic\nReport');
-  A('vnh', 1046, 'View\nNotification\nHistory');
-  A('vd', row(14), 'View\nDashboard');
-  A('ack', row(16), 'Acknowledge\nAlert');
-  A('login', row(18), 'Login');
+  A('cfg', 314, 'Configure\nSystem');
+  A('vsl', 554, 'View System\nLogs');
+  A('mua', row(9), 'Manage User\nAccount');
+  A('gar', row(12), 'Generate\nAnalytic\nReport');
+  A('vnh', 1130, 'View\nNotification\nHistory');
+  A('vd', row(15), 'View\nDashboard');
+  A('ack', row(17), 'Acknowledge\nAlert');
+  A('login', row(19), 'Login');
   // column B
-  uc('setph', BX, row(1), 'Set pH Level\nThreshold', 'green');
+  uc('setph', BX - 60, row(1), 'Set pH Level\nThreshold', 'green'); // shifted left so the include lines clear the ellipses below
   uc('setwl', BX, row(2), 'Set Water\nLevel Threshold', 'green');
   uc('cal', BX, row(3), 'Calibrate Sensors\n& Set Capacity', 'green');
   uc('awc', BX, row(4), 'Assign Water\nController', 'green');
   uc('loc', BX, row(5), 'Set Location', 'green');
-  uc('pdm', BX, row(6), 'Set Pump\nDemo Mode', 'green');
-  uc('add', BX, row(7), 'Add User\n(with Role)', 'green');
-  uc('del', BX, row(8), 'Delete User', 'green');
-  uc('act', BX, row(9), 'Activate/Deactivate\nAccount', 'green');
-  uc('vrd', BX, row(10), 'View Report\non Dashboard', 'green');
-  uc('exp', BX, row(11), 'Export Report to\n(PDF/Excel/CSV)', 'green');
-  uc('fd', BX, row(12), 'Filter Data', 'green');
-  uc('mtt', BX, row(14), 'Monitor Tank\nTelemetry', 'bright');
-  uc('rt', BX, row(16), 'Real-Time In-App /\nToast & Push Alert');
-  uc('vc', BX, row(17), 'Validate\nCredentials', 'green');
-  uc('cur', BX, row(18), 'Check User\nRole', 'green');
-  uc('lus', BX, row(19), 'Load User\nSession', 'green');
+  uc('pdm', BX, row(6), 'Set Pump\nSystem &\nPump Mode', 'green');
+  uc('nw', BX - 60, row(7), 'Set Night Watch', 'green');
+  uc('add', BX, row(8), 'Add User\n(with Role)', 'green');
+  uc('del', BX, row(9), 'Delete User', 'green');
+  uc('act', BX, row(10), 'Activate/Deactivate\nAccount', 'green');
+  uc('vrd', BX, row(11), 'View Report\non Dashboard', 'green');
+  uc('exp', BX, row(12), 'Export Report to\n(PDF/Excel/CSV)', 'green');
+  uc('fd', BX, row(13), 'Filter Data', 'green');
+  uc('mtt', BX, row(15), 'Monitor Tank\nTelemetry', 'bright');
+  uc('rt', BX, row(17), 'Real-Time In-App /\nToast & Push Alert');
+  uc('vc', BX, row(18), 'Validate\nCredentials', 'green');
+  uc('cur', BX, row(19), 'Check User\nRole', 'green');
+  uc('lus', BX, row(20), 'Load User\nSession', 'green');
   // column C and the system use cases
   uc('sel', CX, row(3), 'Select Tank\n(Tank 1–4)', 'green');
-  uc('vdd', CX, row(14), 'View\nDashboard Data', 'green');
-  uc('pump', CX, row(15), 'Switch Pump\n(Demo Mode)');
-  uc('pd', SX, row(13), 'Provide\nData');
-  uc('ra', SX, row(16), 'Raise Alert');
-  uc('spn', SX, row(17), 'Send Push\nNotification');
-  uc('dco', SX, row(18), 'Detect Controller\nOffline');
+  uc('live', CX, row(4), 'View Live\nSensor Readings', 'green');
+  uc('pa', CX, row(11), 'View Predictive\nAnalytics', 'green');
+  uc('vdd', CX, row(15), 'View\nDashboard Data', 'green');
+  uc('pump', CX, row(16), 'Switch Pump');
+  uc('pd', SX, row(14), 'Provide\nData');
+  uc('ra', SX, row(17), 'Raise Alert');
+  uc('spn', SX, row(18), 'Send Push\nNotification');
+  uc('dco', SX, row(19), 'Detect Controller\nOffline');
+  uc('dnw', SX, row(20), 'Detect Night\nWater Loss');
 
   const edgePt = (e, tx, ty) => { // point on ellipse border toward (tx,ty)
     const dx = tx - e.cx, dy = ty - e.cy, k = 1 / Math.sqrt((dx * dx) / (e.rx * e.rx) + (dy * dy) / (e.ry * e.ry));
@@ -436,15 +477,16 @@ function fig310() {
   const assoc = (x, y, to) => { const c = E[to]; b += arrow([[x, y], [c.cx + (x < c.cx ? -c.rx : c.rx), c.cy]], { sw: 1.4 }); }; // ends at the side tip, so it never cuts across a neighbour
 
   const LX = 60, RX = 1132, AR = 46;
-  const admin = [LX, 440], worker = [LX, 930], viewer = [LX, 1330], iot = [RX, 1150], svc = [RX, 1470];
+  const admin = [LX, 500], worker = [LX, 1014], viewer = [LX, 1414], iot = [RX, 1234], svc = [RX, 1560];
   for (const id of ['cfg', 'vsl', 'mua', 'gar', 'vnh', 'vd', 'ack', 'login']) assoc(admin[0] + AR + 4, admin[1], id);
   for (const id of ['vsl', 'gar', 'vnh', 'vd', 'ack', 'login']) assoc(worker[0] + AR + 4, worker[1], id);
   for (const id of ['vnh', 'vd', 'login']) assoc(viewer[0] + AR + 4, viewer[1], id);
   for (const id of ['pd', 'ra']) assoc(iot[0] - AR - 4, iot[1], id);
-  for (const id of ['ra', 'spn', 'dco']) assoc(svc[0] - AR - 4, svc[1], id);
+  for (const id of ['ra', 'spn', 'dco', 'dnw']) assoc(svc[0] - AR - 4, svc[1], id);
 
-  for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc', 'pdm']) rel('cfg', id, 'include');
-  rel('cal', 'sel', 'include');
+  for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc', 'pdm', 'nw']) rel('cfg', id, 'include');
+  rel('cal', 'sel', 'include'); rel('live', 'cal', 'extend');
+  rel('vrd', 'pa', 'include');
   for (const id of ['add', 'del', 'act']) rel(id, 'mua', 'extend');
   rel('gar', 'vrd', 'include'); rel('gar', 'fd', 'include'); rel('exp', 'gar', 'extend');
   rel('vd', 'mtt', 'include'); rel('mtt', 'vdd', 'include'); rel('pump', 'mtt', 'extend');
@@ -457,7 +499,7 @@ function fig310() {
     b += `<ellipse cx="${e.cx.toFixed(1)}" cy="${e.cy}" rx="${e.rx.toFixed(1)}" ry="${e.ry}" fill="${fill}" stroke="#2B2F36" stroke-width="1.6"/>`;
     b += text(e.cx, e.cy, e.t, { size: FS, lh: 1.25 });
   }
-  b += text(CX, row(15) + 54, '[Admin; Worker on assigned tank]', { size: 16, weight: 500 });
+  b += text(CX, row(16) + 54, '[Admin; Worker on assigned tank]', { size: 16, weight: 500 });
   b = rect(126, 12, 938, H - 24, { fill: 'none', rx: 3, stroke: '#111', sw: 1.6 }) + b;
 
   // actors: avatars from the original figure; Alert Service drawn in the same flat style
@@ -532,7 +574,7 @@ function fig311() {
 // Two columns of tables; links between them run in the middle gap and down the right margin.
 // ======================================================================
 function fig312() {
-  const W = PAGE_W, H = 1716, ROW = 26, HEAD = 50, TW = 450, X1 = 12, X2 = 622;
+  const W = PAGE_W, H = 1976, ROW = 26, HEAD = 50, TW = 450, X1 = 12, X2 = 622;
   const RT = 'Firebase Realtime Database';
   let b = '', ents = {};
   const ent = (id, x, y, title, sub, rows, fs = false) => {
@@ -561,18 +603,19 @@ function fig312() {
     ['', 'lowLevelThreshold', 'NUMBER'], ['', 'overflowThreshold', 'NUMBER'], ['', 'minPh', 'NUMBER'], ['', 'maxPh', 'NUMBER'],
     ['', 'maintenanceMode', 'BOOLEAN'], ['', 'offlineThresholdSec', 'NUMBER'], ['', 'repeatIntervalSec', 'NUMBER'],
     ['', 'soundEnabled', 'BOOLEAN'], ['', 'pushEnabled', 'BOOLEAN'],
-    ['', 'pumpDemoMode', 'BOOLEAN'], ['', 'pumpControlLock', 'BOOLEAN']]);
-  ent('tanks', X1, 432, 'TANKS', `${RT}  /tanks/{id}`, [
+    ['', 'pumpDemoMode', 'BOOLEAN'], ['', 'pumpControlLock', 'BOOLEAN'], ['', 'pumpMode', 'STRING'],
+    ['', 'nightWatchEnabled', 'BOOLEAN'], ['', 'nightStart/EndHour', 'NUMBER'], ['', 'nightFast/SlowDropPercent', 'NUMBER']]);
+  ent('tanks', X1, 536, 'TANKS', `${RT}  /tanks/{id}`, [
     ['PK', 'id', 'STRING'], ['', 'name', 'STRING'], ['', 'location', 'STRING'], ['', 'enabled', 'BOOLEAN'],
     ['FK', 'assignedWorker', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'], ['', 'phLevel', 'NUMBER'],
     ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'], ['', 'pumpOn', 'BOOLEAN'],
-    ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'levelVmin', 'NUMBER'], ['', 'levelVmax', 'NUMBER'],
+    ['', 'pumpCommandAt', 'TIMESTAMP'], ['', 'pumpCommandResult', 'STRING'], ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'levelVmin', 'NUMBER'], ['', 'levelVmax', 'NUMBER'],
     ['', 'tankHeight', 'NUMBER'], ['', 'capacityLiters', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'],
     ['', 'phSlope', 'NUMBER'], ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'], ['', 'firebaseConnected', 'BOOLEAN'],
-    ['', 'controllerOffline', 'BOOLEAN'], ['', 'lastUpdate', 'TIMESTAMP']]);
-  ent('hist', X1, 1320, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
+    ['', 'controllerOffline', 'BOOLEAN'], ['', 'calibrationUntil', 'TIMESTAMP'], ['', 'calibrationLive', 'OBJECT'], ['', 'lastUpdate', 'TIMESTAMP']]);
+  ent('hist', X1, 1528, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
     ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
-    ['', 'phLevel', 'NUMBER'], ['', 'pumpOn', 'BOOLEAN'], ['', 'timestamp', 'TIMESTAMP']]);
+    ['', 'phLevel', 'NUMBER'], ['', 'pumpOn', 'BOOLEAN'], ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'timestamp', 'TIMESTAMP']]);
   ent('roles', X2, 12, 'ROLES', `${RT}  /roles/{uid}`, [
     ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
   ent('users', X2, 198, 'USERS', 'Cloud Firestore  users/{uid}', [
@@ -632,7 +675,7 @@ function fig312() {
     itUp(E2 + 88, 1085, 'acknowledges');
 
   // legend, across the bottom
-  const ly = 1584, lg = { size: 17, weight: 400, anchor: 'start', family: ARIAL };
+  const ly = 1844, lg ={ size: 17, weight: 400, anchor: 'start', family: ARIAL };
   b += `<rect x="${X1}" y="${ly}" width="${W - 2 * X1}" height="120" fill="#FFF" stroke="#999" stroke-width="1.5"/>`;
   b += text(X1 + 14, ly + 20, 'Legend', { size: 18, anchor: 'start', family: ARIAL });
   const r = (i) => ly + 46 + i * 26;
@@ -708,7 +751,7 @@ function dmKit() {
 }
 
 function figDataModel1() {
-  const { W, TW, COL, FS, RT, MONO } = DM, H = 1680;
+  const { W, TW, COL, FS, RT, MONO } = DM, H = 1850;
   const k = dmKit();
   // ---- column 1: Firestore, ROLES, USER_STATE, legend
   let x = COL[0];
@@ -758,27 +801,32 @@ function figDataModel1() {
   const cfgEnd = k.tbl(x, 30 + tH + 40, 'CONFIG', 'config', 'Admin Panel (one record for all tanks)', [
     ['lowLevelThreshold (%, default 15)', 'NUMBER'], ['overflowThreshold (%, default 95)', 'NUMBER'],
     ['minPh (default 6.5)', 'NUMBER'], ['maxPh (default 8.5)', 'NUMBER'], ['maintenanceMode', 'BOOLEAN'],
-    ['pumpControlLock', 'BOOLEAN'], ['pumpDemoMode (missing = on)', 'BOOLEAN'], ['offlineThresholdSec (default 30)', 'NUMBER'],
-    ['repeatIntervalSec (default 60)', 'NUMBER'], ['soundEnabled', 'BOOLEAN'], ['pushEnabled', 'BOOLEAN']]);
+    ['pumpControlLock', 'BOOLEAN'], ['pumpDemoMode (Pump System)', 'BOOLEAN'], ['pumpMode (auto or manual)', 'STRING'],
+    ['offlineThresholdSec (default 30)', 'NUMBER'], ['repeatIntervalSec (default 60)', 'NUMBER'], ['soundEnabled', 'BOOLEAN'], ['pushEnabled', 'BOOLEAN'],
+    ['nightWatchEnabled (missing = on)', 'BOOLEAN'], ['nightStartHour, nightEndHour (22, 3)', 'NUMBER'],
+    ['nightFastDropPercent (default 5)', 'NUMBER'], ['nightSlowDropPercent (default 3)', 'NUMBER']]);
   k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system/worker', 'Alert Service heartbeat', [
     ['lastSeen', 'TIMESTAMP'], ['startedAt', 'TIMESTAMP']]);
   return svg(W, H, k.b);
 }
 
 function figDataModel2() {
-  const { W, COL, RT } = DM, H = 1860;
+  const { W, COL, RT } = DM, H = 2090;
   const k = dmKit();
   let x = COL[0];
   const tnkEnd = k.tbl(x, 30, 'TANKS', 'tanks/{tankId}', ['ESP32 (live readings), Admin (setup,', 'calibration, capacity), Worker (pumpOn),', 'Alert Service (controllerOffline)'], [
     ['id ("1" to "4")', 'STRING'], ['name', 'STRING'], ['location', 'STRING'], ['enabled', 'BOOLEAN'], ['assignedWorker (user UID)', 'STRING'],
     ['waterLevel (%)', 'NUMBER'], ['waterHeight (m)', 'NUMBER'], ['phLevel', 'NUMBER'], ['status (safe|warning|danger|offline)', 'STRING'],
-    ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn', 'BOOLEAN'],
+    ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn (state and command)', 'BOOLEAN'],
+    ['pumpCommandAt', 'TIMESTAMP'], ['pumpCommandResult', 'STRING'],
     ['levelSensorOk', 'BOOLEAN'], ['phSensorOk', 'BOOLEAN'], ['levelVmin (V)', 'NUMBER'], ['levelVmax (V)', 'NUMBER'],
     ['tankHeight (m)', 'NUMBER'], ['capacityLiters (default 200)', 'NUMBER'], ['levelOffset', 'NUMBER'], ['phNeutralVoltage (V)', 'NUMBER'],
     ['phSlope', 'NUMBER'], ['phOffset', 'NUMBER'], ['rssi (dBm)', 'NUMBER'], ['wifiConnected', 'BOOLEAN'], ['ethConnected', 'BOOLEAN'],
-    ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['lastUpdate', 'TIMESTAMP']]);
+    ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['calibrationUntil (max 30 min ahead)', 'TIMESTAMP'],
+    ['calibrationLive (V, m, %, pH V)', 'OBJECT'], ['lastUpdate', 'TIMESTAMP']]);
   k.tbl(x, tnkEnd + 40, 'HISTORY', 'history/tanks/{tankId}/{pushKey}', 'ESP32, one sample every 10 minutes', [
-    ['waterLevel', 'NUMBER'], ['waterHeight', 'NUMBER'], ['phLevel', 'NUMBER'], ['pumpOn', 'BOOLEAN'], ['timestamp (indexed)', 'TIMESTAMP']]);
+    ['waterLevel', 'NUMBER'], ['waterHeight', 'NUMBER'], ['phLevel', 'NUMBER'], ['pumpOn', 'BOOLEAN'],
+    ['levelSensorOk, phSensorOk', 'BOOLEAN'], ['timestamp (indexed)', 'TIMESTAMP']]);
 
   x = COL[1];
   const ntfEnd = k.tbl(x, 30, 'NOTIFICATIONS', 'notifications/{alertId}', ['Alert Service (or open dashboards while', 'it is down); users acknowledge'], [
@@ -851,10 +899,10 @@ function fig313() {
   b += `<rect x="286" y="127" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="330" y="129" width="44" height="18" rx="2" fill="#111"/>`;
   for (let i = 0; i < 4; i++) b += `<rect x="${292 + i * 20}" y="165" width="10" height="16" fill="#E2B33B"/>`;
   b += serverIcon(800, 690) + bellIcon(520, 690);
-  // relay output reserved for future pump control (GPIO 32): dashed because it is not installed
-  b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#555', sw: 2, dash: '6 4' });
-  b += A([[594, 322], [620, 322]], { dash: '6 4' });
-  b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Future\nPump)', 16);
+  // pump relay on GPIO 32 (installed on the Tank 1 drum model)
+  b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#111', sw: 2 });
+  b += A([[594, 322], [620, 322]]);
+  b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Refill\nPump)', 16);
   // one sensor node per tank: the group is repeated at Tanks 1–4
   b += rect(8, 50, 682, 452, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
   b += P(349, 28, 'One Sensor Node per Tank (Tanks 1–4)');
@@ -863,7 +911,7 @@ function fig313() {
   b += P(330, 85, 'Current-to-Voltage\nModule');
   b += P(110, 469, 'pH Sensor\n(PH-4502C)');
   b += P(508, 436, 'ESP32\nMicrocontroller');
-  b += P(572, 85, 'LAN8720 PHY\nEthernet Module');
+  b += P(572, 85, 'W5500\nEthernet Module');
   b += P(855, 45, 'TP-Link CPE210\nP2P Bridge (2.4GHz)');
   b += P(725, 152, 'RJ45', 17);
   b += P(1088, 60, 'Internet\nConnection\n(Wireless Router)');
@@ -894,7 +942,7 @@ function fig314() {
   b += A([[1022, 210], [1022, 282]], { start: true }) + P(1008, 246, 'Internet /\nWAN Link', 17, { anchor: 'end' });
   // sensor site to the office
   b += A([[192, 360], [272, 360], [272, 235], [880, 235], [880, 360], [947, 360]], { start: true });
-  b += lbl(576, 235, 'Primary Link: LAN8720 PHY Ethernet + P2P Wireless Bridge', { size: 17, family: POPPINS, weight: 600 });
+  b += lbl(576, 235, 'Primary Link: W5500 Ethernet + P2P Wireless Bridge', { size: 17, family: POPPINS, weight: 600 });
   b += A([[192, 400], [296, 400]], { start: true }) + A([[800, 400], [947, 400]], { start: true });
   b += A([[100, 458], [100, 590], [985, 590], [985, 450]], { dash: '9 7', start: true });
   b += lbl(542, 590, 'Standby Link: Built-in 2.4GHz Wi-Fi (Used if Ethernet Goes Down)', { size: 17, family: POPPINS, weight: 600 });
@@ -919,6 +967,7 @@ export const figures = [
   ['Figure 3-4: Proposed Operational Workflow of MPWSD', fig34],
   ['Figure 3-5: System Data Processing and Logic Flowchart', fig35],
   ['Figure 3-6: Hierarchical Input-Process-Output (HIPO) Model', fig36],
+  ['Figure 3-7: Input-Process-Output (IPO) for the IoT System', fig37],
   ['Figure 3-8: Input-Process-Output (IPO) Model for Backend Server and Application Logic', fig38],
   ['Figure 3-9: Input-Process-Output (IPO) Model for Web Dashboard and Mobile Application', fig39],
   ['Figure 3-10: Use Case Diagram for the Water Level and Quality Monitoring System', fig310],
