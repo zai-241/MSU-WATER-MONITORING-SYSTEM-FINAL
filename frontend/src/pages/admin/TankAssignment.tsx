@@ -374,7 +374,10 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
               Are you sure you want to delete <strong>{deletingTank.name}</strong> from the MSU Water Monitoring System?
             </p>
             <p className="text-xs text-danger font-medium">
-              ⚠️ This will permanently remove its real-time telemetry node and all database records.
+              ⚠️ This will permanently remove its real-time telemetry node, its 10-minute history, and close its open alerts.
+            </p>
+            <p data-testid="delete-tank-device-note" className="text-xs text-muted-foreground">
+              If its controller is still powered, turn it off or remove its account in Device Accounts, or its next upload recreates the tank.
             </p>
 
             <div className="flex gap-3 pt-2">

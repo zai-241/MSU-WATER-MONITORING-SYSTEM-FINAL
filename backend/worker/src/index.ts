@@ -34,6 +34,7 @@ import {
   createTankTrackers,
   evaluateNight,
   createNightState,
+  restoreNightState,
   offlineThresholdMs,
   isControllerOffline,
   isTankInMaintenance,
@@ -56,6 +57,9 @@ import {
 
 const TICK_MS = 2000;
 const HEARTBEAT_MS = 10_000;
+/** Night watch state per tank, saved so a restart during the night keeps the slow-leak total */
+const NIGHT_STATE_PATH = 'system/nightWatch';
+const NIGHT_STATE_SAVE_MS = 60_000;
 const HEALTH_STALE_SEC = 60; // /health reports 503 if no evaluation finished for this long
 const RETENTION_DAYS = 90;
 const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -149,6 +153,7 @@ function toEngineTank(id: string, raw: RawTank): EngineTank {
     phSensorOk: raw.phSensorOk !== false,
     levelSensorOk: raw.levelSensorOk !== false,
     maintenanceMode: raw.maintenanceMode === true,
+    pumpFault: typeof raw.pumpFault === 'string' ? raw.pumpFault : null,
   };
 }
 
@@ -441,6 +446,25 @@ async function main(): Promise<void> {
     .catch((err) => log('could not close the Alert Service Offline notice:', err));
   setInterval(beat, HEARTBEAT_MS);
 
+  // Night watch state survives a restart (a redeploy at night used to lose the slow-leak total).
+  // Loaded once before the first evaluation, saved when it changes (at most once a minute) and on stop.
+  const nightRef = db.ref(NIGHT_STATE_PATH);
+  try {
+    const saved = (await nightRef.once('value')).val() as Record<string, unknown> | null;
+    Object.entries(saved ?? {}).forEach(([id, raw]) => { nightStates[id] = restoreNightState(raw); });
+    if (saved) log(`night watch state restored for ${Object.keys(saved).length} tank(s)`);
+  } catch (err) {
+    log('could not restore the night watch state (starting fresh):', err);
+  }
+  let lastSavedNight = JSON.stringify(nightStates);
+  const saveNightStates = async () => {
+    const json = JSON.stringify(nightStates);
+    if (json === lastSavedNight) return;
+    await nightRef.set(JSON.parse(json));
+    lastSavedNight = json;
+  };
+  setInterval(() => { saveNightStates().catch((err) => log('could not save the night watch state:', err)); }, NIGHT_STATE_SAVE_MS);
+
   let running = false;
   let lastLoopAt = Date.now();
   setInterval(() => {
@@ -468,6 +492,7 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     log('stopping');
+    try { await saveNightStates(); } catch { /* the last saved copy is at most a minute old */ }
     try { await heartbeatRef.remove(); } catch { /* already disconnected */ }
     process.exit(0);
   };

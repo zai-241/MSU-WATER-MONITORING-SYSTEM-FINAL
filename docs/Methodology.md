@@ -159,6 +159,19 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
      (`isTankInMaintenance()` in `alertEngine.ts`); the other tanks keep working.
    - If `levelSensorOk == false`, the pump is forced **OFF** to avoid dry-running or unmonitored filling.
    - If `pumpControlLock == true`, manual toggles by Worker operators are rejected; only Admins can override.
+4. **Dry-Run Guard** (added 20 Nov 2026, all sketches):
+   - While the pump runs (started automatically or by a command, in Auto or Manual mode), the level must rise at least
+     **3 %** (`PUMP_MIN_RISE_PERCENT`, above the 2 % level deadband) every **10 min** (`PUMP_NO_RISE_TIMEOUT_MS`), and one
+     run may last at most **60 min** (`PUMP_MAX_RUN_MS`). Otherwise the pump is stopped (empty source, closed valve,
+     blocked pipe, pump running dry), a CRITICAL log is written, and `tanks/{id}/pumpFault` is set to `"no-rise"` or
+     `"max-run"`.
+   - After such a stop no automatic start happens until an operator turns the pump ON from the dashboard (that clears
+     the fault and restarts the guard) or the controller restarts. The alert engine raises "Pump Stopped: Check Water
+     Supply" (`alert-{id}-pumpFault`, danger, push), and the Dashboard card shows the reason.
+   - Both times are starting values for the drum-model pump: time a refill from the low to the overflow threshold and
+     set `PUMP_MAX_RUN_MS` to about 1.5 times that.
+   - The guard also bounds the cloud watchdog's "never restart while the pump is ON" rule (4.2): a pump can no longer
+     run for hours with no internet.
 
 ### 4.2 Network Failover & Resilience
 1. **Dual-Interface Failover**:
@@ -179,6 +192,10 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
    - After each start the controller logs the reset reason (`esp_reset_reason()`: power-on, task watchdog, brownout, or its own cloud-watchdog restart) under "System Power Tracker". Watchdog, crash and brownout resets are logged as ERROR.
 4. **Request Timeouts**:
    - Every Firebase request has a 5 s read timeout and a 10 s TLS handshake limit (the core default is 120 s). The old 1.5 s read timeout was shorter than a normal command poll at the site (1.5 to 3.8 s), so many uploads failed with HTTP -11.
+   - Only an HTTP 2xx answer counts as success (since 20 Nov 2026). Before, any answer except 401 did, so a Firebase
+     error (for example 503) kept the cloud watchdog from restarting and was read as a tank record without `pumpOn`,
+     which stopped a running pump as if an operator had sent OFF. Pump commands are now read only from a reply that
+     contains `pumpOn`.
    - The sensor upload uses the same keep-alive TLS connection as the command poll instead of a new handshake every upload.
    - The 30 s task watchdog is fed before each request, so a loop with several slow requests (for example a RAM log flush) does not reset the board; a single hung request still does.
    - Command polls slower than 4 s are counted and logged as one summary at most every 10 min (one log per slow poll above 1.5 s wrote 4,265 entries in 4 days).
@@ -211,8 +228,8 @@ is down), in `evaluateNight()` in `frontend/src/lib/alertEngine.ts`. The firmwar
 4. **Threshold floor**: the firmware sends a new level only after it changes by 2 %
    (`WATER_LEVEL_DEADBAND`), so both thresholds must be at least **3 %**; the Admin Panel and the
    database rules refuse lower values. On the 200 L test drum, 5 % is 10 L and 3 % is 6 L.
-5. **Limits**: the worker keeps the night totals in memory, so a worker restart during the night
-   counts the slow drop only from the restart. A drip smaller than about 6 L per night is not detected.
+5. **Limits**: the worker saves the night state to `/system/nightWatch` (at most once a minute, and when it stops)
+   and reloads it on start, so a restart during the night keeps the slow-leak total (before 20 Nov 2026 it was lost). A drip smaller than about 6 L per night is not detected.
 
 **Suggested test** (drum model): set the window to include the current hour in the Admin Panel, open
 the drum faucet slightly, and record the time from opening to the alert; repeat with a slow drip and
@@ -295,6 +312,7 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | pumpOn | BOOLEAN | virtual pump state, and the command field: the web app writes it; the ESP32 writes it only when it changes the pump itself or refuses a command (not in its regular sensor upload) |
 | pumpCommandAt | TIMESTAMP | ESP32: server time it last handled a pump command from the web app |
 | pumpCommandResult | STRING | ESP32: `accepted`, or `refused-demo-off`, `refused-overflow`, `refused-maintenance`, `refused-lock`, `refused-level-sensor` |
+| pumpFault | STRING | ESP32 dry-run guard (4.1): `no-rise` or `max-run` after it stopped the pump; missing = none. Cleared by a manual ON or a restart |
 | levelSensorOk, phSensorOk | BOOLEAN | sensor health |
 | levelVmin, levelVmax | NUMBER | level sensor calibration (V) |
 | tankHeight | NUMBER | m |

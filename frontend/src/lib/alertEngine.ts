@@ -25,11 +25,27 @@ export const MIN_OFFLINE_THRESHOLD_SEC = 20; // never below two 10 s heartbeats
 export const LEVEL_HYSTERESIS = 2;
 export const PH_HYSTERESIS = 0.15;
 
-export type AlertKey = 'lowLevel' | 'overflow' | 'ph' | 'levelFault' | 'phFault';
+export type AlertKey = 'lowLevel' | 'overflow' | 'ph' | 'levelFault' | 'phFault' | 'pumpFault';
 export type AlertLevel = 'warning' | 'danger';
 export type TrackerStatus = 'NORMAL' | 'WARNING' | 'CRITICAL' | 'RECOVERED';
 
-export const ALERT_KEYS: AlertKey[] = ['levelFault', 'phFault', 'lowLevel', 'overflow', 'ph'];
+export const ALERT_KEYS: AlertKey[] = ['levelFault', 'phFault', 'pumpFault', 'lowLevel', 'overflow', 'ph'];
+
+/**
+ * tanks/{id}/pumpFault, written by the controller's dry-run guard when it stops the pump:
+ * "no-rise" (the level did not rise while pumping) or "max-run" (maximum run time reached).
+ * Cleared when an operator turns the pump ON again (or the controller restarts).
+ */
+export const PUMP_FAULT_TEXT: Record<string, string> = {
+  'no-rise': 'the water level did not rise while the pump was running',
+  'max-run': 'the pump reached its maximum run time',
+};
+
+/** Readable reason for a pumpFault value, or null when there is none. */
+export function describePumpFault(fault: unknown): string | null {
+  if (typeof fault !== 'string' || fault === '') return null;
+  return PUMP_FAULT_TEXT[fault] ?? `pump fault "${fault}"`;
+}
 
 export interface AlertTracker {
   status: TrackerStatus;
@@ -51,6 +67,8 @@ export interface EngineTank {
   levelSensorOk?: boolean;
   /** This tank's own maintenance switch (tanks/{id}/maintenanceMode, set by an admin) */
   maintenanceMode?: boolean;
+  /** Set by the controller's dry-run guard (see PUMP_FAULT_TEXT); missing = none */
+  pumpFault?: string | null;
 }
 
 export interface EngineConfig {
@@ -88,7 +106,7 @@ export function alertNotifId(tankId: string, key: AlertKey | NightKey | 'offline
 
 export function createTankTrackers(): TankTrackers {
   const fresh = (): AlertTracker => ({ status: 'NORMAL', abnormalStartTime: 0, normalStartTime: 0, lastNotificationTime: 0 });
-  return { lowLevel: fresh(), overflow: fresh(), ph: fresh(), levelFault: fresh(), phFault: fresh() };
+  return { lowLevel: fresh(), overflow: fresh(), ph: fresh(), levelFault: fresh(), phFault: fresh(), pumpFault: fresh() };
 }
 
 export function repeatIntervalMs(config: Pick<EngineConfig, 'repeatIntervalSec'> | null | undefined): number {
@@ -161,6 +179,14 @@ function buildChecks(tank: EngineTank, config: EngineConfig, trackers: TankTrack
     isAbnormal: phFault, isNormal: !phFault,
     abnormalMsg: `${tank.name} pH sensor reported a hardware fault. Monitoring continues, but pH readings may be inaccurate until the sensor is checked.`,
     recoveryMsg: `${tank.name} pH sensor fault resolved.`,
+  });
+
+  const pumpReason = describePumpFault(tank.pumpFault);
+  checks.push({
+    key: 'pumpFault', level: 'danger', title: 'Pump Stopped: Check Water Supply',
+    isAbnormal: pumpReason !== null, isNormal: pumpReason === null,
+    abnormalMsg: `${tank.name} pump was stopped automatically because ${pumpReason ?? 'of a pump fault'}. Check the water source, valve and pipe. Automatic refills are blocked until the pump is turned ON from the dashboard.`,
+    recoveryMsg: `${tank.name} pump fault cleared.`,
   });
 
   // Threshold checks keep running on a faulty sensor (monitoring is never suspended);
@@ -401,6 +427,42 @@ export function createNightState(): NightState {
     windowStart: 0, windowEnd: 0, samples: [], fastSince: 0, segmentPeak: null, segmentLast: null,
     committedDrop: 0, fastRaisedThisWindow: false, summaryDone: false,
     active: false, trough: 0, troughAt: 0, lastNotificationTime: 0, lastEvalAt: 0,
+  };
+}
+
+/**
+ * Rebuilds a night state saved in the database (the worker keeps it in /system/nightWatch so a
+ * restart during the night does not lose the slow-leak total). Anything missing or malformed
+ * falls back to a fresh state's value. The database drops nulls and empty arrays, hence the defaults.
+ */
+export function restoreNightState(raw: unknown): NightState {
+  const fresh = createNightState();
+  if (!raw || typeof raw !== 'object') return fresh;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+  const numOrNull = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const bool = (v: unknown) => v === true;
+  const samples = Array.isArray(r.samples)
+    ? r.samples
+        .filter((s): s is { t: number; level: number } =>
+          !!s && typeof s === 'object' && Number.isFinite((s as { t: unknown }).t) && Number.isFinite((s as { level: unknown }).level))
+        .map(s => ({ t: s.t, level: s.level }))
+    : [];
+  return {
+    windowStart: num(r.windowStart, 0),
+    windowEnd: num(r.windowEnd, 0),
+    samples,
+    fastSince: num(r.fastSince, 0),
+    segmentPeak: numOrNull(r.segmentPeak),
+    segmentLast: numOrNull(r.segmentLast),
+    committedDrop: num(r.committedDrop, 0),
+    fastRaisedThisWindow: bool(r.fastRaisedThisWindow),
+    summaryDone: bool(r.summaryDone),
+    active: bool(r.active),
+    trough: num(r.trough, 0),
+    troughAt: num(r.troughAt, 0),
+    lastNotificationTime: num(r.lastNotificationTime, 0),
+    lastEvalAt: num(r.lastEvalAt, 0),
   };
 }
 

@@ -33,6 +33,9 @@ references are `file:line` in the current code. After a group, run `npm test` an
 This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Still open" table in
 `WEB_NOTIFICATION_RECOMMENDATIONS.md` now matches this section.
 
+**New bugs found in the code added since 14 Nov** are listed separately in
+[`docs/New_Bugs_2026-11-20.md`](New_Bugs_2026-11-20.md) (N1–N8). A3 below is N3 there, and A6 is N8.
+
 ### A. Code
 
 - [ ] **A1 Viewers can write to notifications (S6, medium).** Any account with a `/roles` entry, viewer included,
@@ -43,7 +46,7 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 - [ ] **A2 Every signed-in user can read all user profiles (S7, low).** `backend/cloud/firestore.rules:14`
   (`allow read: if isSignedIn()`) exposes every email address.
   *Fix:* own profile for everyone, all profiles for admins; give the dashboard only the names it needs.
-- [ ] **A3 Manual pump mode is in the Tank 1 sketch only.** `pumpMode` (`"auto"` / `"manual"`) is read by
+- [x] **A3 Manual pump mode is in the Tank 1 sketch only.** *Fixed 2026-11-20 (N3).* `pumpMode` (`"auto"` / `"manual"`) is read by
   `esp32_firmware.ino`, but not by `tank2/`, `tank3/`, `tank4/`, nor by sketches made with
   `npm run firmware:new-tank` (they copy Tank 4). Those tanks always auto-start at the low threshold.
   *Fix:* port the `pumpMode` block to the Tank 4 sketch and copy it to Tanks 2–3 before their controllers are installed.
@@ -52,7 +55,7 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
   *Fix (optional):* pin the Google root CA with `setCACert()`. Be ready to explain it to the panel otherwise.
 - [ ] **A5 `Reports.tsx` keeps growing (Q1, cleanup).** About 1,575 lines (1,200 on 13 Nov).
   *Fix:* move the chart and summary calculations into helpers or hooks.
-- [ ] **A6 Unused code.** `deleteUserProfile()` in `frontend/src/services/authService.ts:125` is no longer called
+- [x] **A6 Unused code.** *Fixed 2026-11-20 (N8).* `deleteUserProfile()` in `frontend/src/services/authService.ts:125` is no longer called
   since user deletion was removed on 20 Nov. *Fix:* delete it.
 
 ### B. Manual steps (cannot be checked from the code)

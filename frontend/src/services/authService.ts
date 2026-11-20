@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, set, remove, get } from 'firebase/database';
 import { firebaseConfig, firestore, database } from '@/config/firebase';
 
@@ -112,28 +112,6 @@ export async function updateUserProfile(uid: string, updates: Partial<UserProfil
     }
   } catch (error) {
     console.error('Error updating user profile:', error);
-    throw error;
-  }
-}
-
-/**
- * Delete user profile from Firestore
- * Note: Actual Firebase Auth user deletion requires cloud function or admin SDK,
- * but in a client-only implementation, we disable them by updating status to 'inactive'
- * or deleting their profile document. We'll support profile document deletion here.
- */
-export async function deleteUserProfile(uid: string): Promise<void> {
-  try {
-    const docRef = doc(firestore, 'users', uid);
-    await deleteDoc(docRef);
-
-    try {
-      await remove(ref(database, `roles/${uid}`));
-    } catch (rtdbErr) {
-      console.warn('Could not remove role from RTDB:', rtdbErr);
-    }
-  } catch (error) {
-    console.error('Error deleting user profile:', error);
     throw error;
   }
 }

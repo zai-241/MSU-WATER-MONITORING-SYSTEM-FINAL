@@ -6,18 +6,21 @@ const listeners = new Map<string, Listener[]>();
 const mockSet = vi.fn().mockResolvedValue(undefined);
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
 const mockRemove = vi.fn().mockResolvedValue(undefined);
+const mockGet = vi.fn().mockResolvedValue({ val: () => null, exists: () => false });
 
 vi.mock('firebase/database', () => ({
   ref: (_db: unknown, path?: string) => ({ _path: path ?? '' }),
   query: (r: unknown) => r,
   orderByChild: vi.fn(),
+  orderByKey: vi.fn(),
   limitToLast: vi.fn(),
+  startAt: vi.fn(),
   endAt: vi.fn(),
   onValue: (target: { _path: string }, cb: Listener) => {
     listeners.set(target._path, [...(listeners.get(target._path) ?? []), cb]);
     return () => listeners.set(target._path, (listeners.get(target._path) ?? []).filter(l => l !== cb));
   },
-  get: vi.fn(),
+  get: (...args: unknown[]) => mockGet(...args),
   set: (...args: unknown[]) => mockSet(...args),
   update: (...args: unknown[]) => mockUpdate(...args),
   push: vi.fn(() => ({ key: 'k1' })),
@@ -97,7 +100,27 @@ describe('Default tanks 1–4', () => {
       await expect(deleteTank(id)).rejects.toThrow(/cannot be deleted/);
     }
     expect(mockRemove).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
     await deleteTank('5');
-    expect(mockRemove).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.calls[0][1]).toMatchObject({ 'tanks/5': null, 'history/tanks/5': null });
+  });
+
+  it('deleting an added tank also resolves its open alerts (N5)', async () => {
+    mockGet.mockResolvedValueOnce({
+      val: () => ({
+        'alert-5-lowLevel': { resolved: false, acknowledged: true },
+        'alert-5-offline': { resolved: false },
+        'alert-5-ph-1700000000000': { resolved: true },
+      }),
+      exists: () => true,
+    });
+    await deleteTank('5');
+    const updates = mockUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(updates['notifications/alert-5-lowLevel/resolved']).toBe(true);
+    expect(updates['notifications/alert-5-offline/resolved']).toBe(true);
+    expect(updates['notifications/alert-5-offline/resolvedAt']).toEqual(expect.any(Number));
+    expect(updates).not.toHaveProperty('notifications/alert-5-ph-1700000000000/resolved');
+    expect(updates['tanks/5']).toBeNull();
   });
 });

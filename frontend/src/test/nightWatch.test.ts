@@ -5,6 +5,7 @@ import {
   nightWindowAt,
   nightSettings,
   formatHour12,
+  restoreNightState,
   NIGHT_DRAIN_CONFIRM_MS,
   NIGHT_STEADY_MS,
   type NightConfig,
@@ -198,5 +199,35 @@ describe('night watch: slow leak (whole night)', () => {
     const existing = { 'alert-1-nightLeak': { timestamp: ph(19, 3), acknowledged: true, resolved: false } };
     const { events } = feed([[ph(19, 22, 0, 10), { waterLevel: 80 }]], { existing });
     expect(events).toEqual([expect.objectContaining({ kind: 'close', notifId: 'alert-1-nightLeak' })]);
+  });
+});
+
+describe('night watch: state saved by the worker (N6)', () => {
+  /** What the database gives back: nulls and empty arrays are dropped */
+  const viaDatabase = (state: NightState) =>
+    JSON.parse(JSON.stringify(state, (_k, v) => (v === null || (Array.isArray(v) && v.length === 0) ? undefined : v)));
+
+  it('keeps the slow-leak total across a restart in the middle of the night', () => {
+    // 2 % lost before a 00:00 restart, 2 % after it: 4 % in total, above the 3 % threshold
+    const before = feed(series(ph(19, 22), 120, m => 80 - (2 * m) / 120));
+    const restored = restoreNightState(viaDatabase(before.state));
+    expect(restored.committedDrop + ((restored.segmentPeak ?? 0) - (restored.segmentLast ?? 0))).toBeCloseTo(2, 5);
+
+    const after = feed([...series(ph(20, 0, 5), 170, m => 78 - (2 * m) / 170), [ph(20, 3, 1), { waterLevel: 76 }]], { state: restored });
+    const leaks = after.events.filter(e => e.key === 'nightLeak');
+    expect(leaks).toHaveLength(1);
+    expect(leaks[0].message).toMatch(/lost 4%/);
+  });
+
+  it('without the saved state the same night is missed (the old behaviour)', () => {
+    const after = feed([...series(ph(20, 0, 5), 170, m => 78 - (2 * m) / 170), [ph(20, 3, 1), { waterLevel: 76 }]]);
+    expect(after.events.filter(e => e.key === 'nightLeak')).toEqual([]);
+  });
+
+  it('falls back to a fresh state for missing or malformed data', () => {
+    expect(restoreNightState(null)).toEqual(createNightState());
+    expect(restoreNightState({ windowStart: 'x', samples: [{ t: 1 }, { t: 2, level: 50 }], active: 'yes' })).toMatchObject({
+      windowStart: 0, samples: [{ t: 2, level: 50 }], active: false, segmentPeak: null,
+    });
   });
 });

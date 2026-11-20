@@ -12,7 +12,7 @@ import {
   isPumpDemoOn,
   getPumpMode,
 } from '@/store/useStore';
-import { offlineThresholdMs, isTankInMaintenance } from '@/lib/alertEngine';
+import { offlineThresholdMs, isTankInMaintenance, describePumpFault } from '@/lib/alertEngine';
 import type { UserProfile } from '@/services/authService';
 import { useProcessedTankData } from '@/hooks/useUIStabilization';
 import { WifiOff, User, Loader2, Wrench } from 'lucide-react';
@@ -74,6 +74,8 @@ const TankCard = memo(({
   const tankMaintenance = !disabled && tank.maintenanceMode === true;
   const inMaintenance = !disabled && isTankInMaintenance(tank, config);
   const pumpToggleDisabled = disabled || isOffline || inMaintenance || !canTogglePump || isPumpWaiting;
+  // Set by the controller's dry-run guard when it stopped the pump
+  const pumpFaultReason = !disabled && !isPlanned && isPumpDemoOn(config) ? describePumpFault(tank.pumpFault) : null;
 
   return (
     <div className={`rounded-xl bg-card p-6 shadow-sm border transition-all ${
@@ -201,6 +203,16 @@ const TankCard = memo(({
             {processedTank.levelSensorOk === false && isPumpDemoOn(config) && ' The pump stays off.'}
           </div>
         )}
+        {pumpFaultReason && (
+          <div
+            role="status"
+            data-testid="pump-fault-notice"
+            className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger"
+          >
+            <span className="font-bold">Pump stopped automatically</span>
+            {`: ${pumpFaultReason}. Check the water source, valve and pipe. Automatic refills stay blocked until the pump is turned ON here.`}
+          </div>
+        )}
         <div className="flex justify-between border-b border-border pb-2">
           <span className="text-muted-foreground">Last Seen:</span>
           <span className={`font-medium text-xs flex items-center gap-1 ${isPlanned ? 'text-muted-foreground' : isOffline ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-foreground'}`}>
@@ -316,6 +328,7 @@ const TankCard = memo(({
   if (p.name !== n.name) return false;
   if (p.phSensorOk !== n.phSensorOk) return false;
   if (p.levelSensorOk !== n.levelSensorOk) return false;
+  if (p.pumpFault !== n.pumpFault) return false;
   if (p.lowLevelAlert !== n.lowLevelAlert) return false;
   if (p.highLevelAlert !== n.highLevelAlert) return false;
   if (p.phAlert !== n.phAlert) return false;
@@ -497,7 +510,18 @@ const Dashboard = () => {
       delete next[tankId];
       return next;
     });
-    Promise.resolve(updateTank(tankId, { pumpOn: newState })).catch((err: unknown) => {
+    const { tankName } = pumpConfirm;
+    Promise.resolve(updateTank(tankId, { pumpOn: newState })).then(() => {
+      // Logged only once the database accepted the command (a refused write is not a command)
+      addLog({
+        action: newState ? 'PUMP_ON' : 'PUMP_OFF',
+        details: `Pump for ${tankName} was turned ${newState ? 'ON' : 'OFF'}`,
+        performedBy: currentUser?.username || 'Unknown',
+        // Reports → Pump Activity Log shows who switched which tank's pump
+        tankId,
+        ...(currentUser?.role ? { performedByRole: currentUser.role } : {}),
+      });
+    }).catch((err: unknown) => {
       setPumpPending(prev => {
         const next = { ...prev };
         delete next[tankId];
@@ -511,15 +535,6 @@ const Dashboard = () => {
           until: Date.now() + PUMP_FEEDBACK_MS,
         },
       }));
-    });
-
-    addLog({
-      action: pumpConfirm.newState ? 'PUMP_ON' : 'PUMP_OFF',
-      details: `Pump for ${pumpConfirm.tankName} was turned ${pumpConfirm.newState ? 'ON' : 'OFF'}`,
-      performedBy: currentUser?.username || 'Unknown',
-      // Reports → Pump Activity Log shows who switched which tank's pump
-      tankId,
-      ...(currentUser?.role ? { performedByRole: currentUser.role } : {}),
     });
 
     setPumpConfirm(null);

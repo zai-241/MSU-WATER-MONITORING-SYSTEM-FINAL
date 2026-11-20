@@ -34,7 +34,7 @@
 // Serial Monitor (115200 baud). Use it to read Vmin and Vmax for the Admin
 // Panel calibration: Vmax with the sensor on the floor of the full drum,
 // Vmin with the sensor lifted out of the water. Set to 0 when done.
-#define LEVEL_VOLTAGE_PRINT 1
+#define LEVEL_VOLTAGE_PRINT 0
 
 #if DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.print(x)
@@ -242,6 +242,21 @@ bool lastSentPumpState = false;
 bool pumpSyncPending = true;
 unsigned long lastPumpStopTime = 0;
 const unsigned long PUMP_MIN_OFF_TIME = 30000; // anti-chatter
+
+// Dry-run guard: a running pump must raise the level by PUMP_MIN_RISE_PERCENT
+// within PUMP_NO_RISE_TIMEOUT_MS, and may run at most PUMP_MAX_RUN_MS in one go.
+// Otherwise it is stopped (empty source, closed valve, blocked pipe, pump
+// running dry), tanks/{id}/pumpFault is set, and no automatic start happens
+// until an operator turns the pump ON from the dashboard or the controller
+// restarts. Tune both times to the pump: time a refill from the low to the
+// overflow threshold and allow about 1.5 times that.
+const unsigned long PUMP_NO_RISE_TIMEOUT_MS = 10UL * 60UL * 1000UL; // 10 min
+const int PUMP_MIN_RISE_PERCENT = 3; // above the 2 % level deadband
+const unsigned long PUMP_MAX_RUN_MS = 60UL * 60UL * 1000UL;         // 60 min
+unsigned long pumpRunStartMs = 0; // when the pump last started (0 = off)
+unsigned long pumpRiseRefMs = 0;  // when the level last rose by PUMP_MIN_RISE_PERCENT
+int pumpRiseRefLevel = 0;         // the level at that time
+String pumpFaultReason = "";      // "" | "no-rise" | "max-run" (tanks/{id}/pumpFault)
 
 float lastPhValue = 7.0;
 
@@ -470,7 +485,8 @@ bool pumpControlLock = false;
 bool pumpDemoMode = true;
 // Pump mode (config/pumpMode = "auto" | "manual"; missing or invalid = auto).
 // Manual: only operator commands start the pump (no low-level auto refill); the
-// safety stops (demo off, maintenance, faulty level sensor, overflow) still apply.
+// safety stops (demo off, maintenance, faulty level sensor, overflow, dry-run
+// guard) still apply.
 bool pumpManualMode = false;
 bool pumpModeLoaded = false; // false until the first /config read sets the mode
 
@@ -2092,6 +2108,13 @@ void acknowledgePumpCommand(const char *commandResult) {
   sendPumpPatch(false, false, commandResult);
 }
 
+// Starts the dry-run guard's clocks. Call whenever the pump is switched ON.
+void notePumpStarted(int levelPercent) {
+  pumpRunStartMs = millis();
+  pumpRiseRefMs = pumpRunStartMs;
+  pumpRiseRefLevel = levelPercent;
+}
+
 void processAutomaticPumpControl() {
   unsigned long now = millis();
 
@@ -2170,6 +2193,42 @@ void processAutomaticPumpControl() {
     return;
   }
 
+  // Rule 4: dry-run guard. The level must keep rising while the pump runs.
+  if (currentPumpState) {
+    if (pumpRunStartMs == 0)
+      notePumpStarted(levelPercent);
+    if (levelPercent >= pumpRiseRefLevel + PUMP_MIN_RISE_PERCENT) {
+      pumpRiseRefLevel = levelPercent;
+      pumpRiseRefMs = now;
+    }
+    const char *fault = NULL;
+    String why;
+    if (now - pumpRunStartMs >= PUMP_MAX_RUN_MS) {
+      fault = "max-run";
+      why = "it ran for the maximum of " + String(PUMP_MAX_RUN_MS / 60000UL) +
+            " min";
+    } else if (now - pumpRiseRefMs >= PUMP_NO_RISE_TIMEOUT_MS) {
+      fault = "no-rise";
+      why = "the level did not rise " + String(PUMP_MIN_RISE_PERCENT) +
+            "% in " + String(PUMP_NO_RISE_TIMEOUT_MS / 60000UL) + " min";
+    }
+    if (fault != NULL) {
+      currentPumpState = false;
+      lastPumpStopTime = now;
+      pumpRunStartMs = 0;
+      pumpFaultReason = fault;
+      logSystemEvent("Pump Controller",
+                     "Pump stopped automatically. Water level: " +
+                         String(levelPercent) + "%. Reason: " + why +
+                         ". Check the water source, valve and pipe. Automatic "
+                         "starts are blocked until the pump is turned ON from "
+                         "the dashboard.",
+                     LEVEL_CRITICAL);
+      updateFirebasePumpState(false);
+      return;
+    }
+  }
+
   // Manual pump mode: no automatic start; only operator commands turn it on.
   if (pumpManualMode) {
     return;
@@ -2177,8 +2236,13 @@ void processAutomaticPumpControl() {
 
   // Automatic start when level falls to lowLevelThreshold or below
   if (!currentPumpState && (levelPercent <= (int)lowLevelThreshold)) {
-    if (now - lastPumpStopTime >= PUMP_MIN_OFF_TIME) {
+    if (pumpFaultReason.length() > 0) {
+      DEBUG_PRINTF("[Pump] Auto-start blocked: pump fault \"%s\" (turn the pump "
+                   "ON from the dashboard to clear it)\n",
+                   pumpFaultReason.c_str());
+    } else if (now - lastPumpStopTime >= PUMP_MIN_OFF_TIME) {
       currentPumpState = true;
+      notePumpStarted(levelPercent);
       logSystemEvent(
           "Pump Controller",
           "Pump started automatically. Water level: " + String(levelPercent) +
@@ -2377,6 +2441,7 @@ void networkTask(void *pvParameters) {
   // 10 s heartbeat.
   static bool lastSentEthLink = false;
   static bool lastSentWifiLink = false;
+  static String lastSentPumpFault = "";
 
   for (;;) {
     esp_task_wdt_reset(); // Pet the watchdog
@@ -2445,7 +2510,7 @@ void networkTask(void *pvParameters) {
           firebaseAuthValid = false;
         }
 
-        if (httpResponseCode > 0 && httpResponseCode != 401) {
+        if (httpResponseCode >= 200 && httpResponseCode < 300) {
           bool wasDisconnected = !firebaseConnected;
           firebaseConnected = true;
           markCloudOk();
@@ -2465,7 +2530,8 @@ void networkTask(void *pvParameters) {
             // The database does not hold our pump state yet: write it first
             // and read commands from the next poll on.
             updateFirebasePumpState(currentPumpState);
-          } else if (firebasePump != lastSentPumpState) {
+          } else if (hasKeyInJson(payload, "pumpOn") &&
+                     firebasePump != lastSentPumpState) {
             if (firebasePump) {
               // Manual ON command requested
               bool lvlOk;
@@ -2529,7 +2595,15 @@ void networkTask(void *pvParameters) {
                 updateFirebasePumpStateWithResult(false, "refused-level-sensor");
                 currentPumpState = false;
               } else {
+                if (pumpFaultReason.length() > 0) {
+                  logSystemEvent("Pump Controller",
+                                 "Pump fault \"" + pumpFaultReason +
+                                     "\" cleared by a manual ON command.",
+                                 LEVEL_INFO);
+                  pumpFaultReason = "";
+                }
                 currentPumpState = true;
+                notePumpStarted(lvlPct);
                 lastSentPumpState = true;
                 logSystemEvent(
                     "Pump Controller",
@@ -2771,6 +2845,8 @@ void networkTask(void *pvParameters) {
         (abs(snapPh - lastSentPhValue) >= PH_LEVEL_DEADBAND);
     bool phHealthChanged = (snapPhOk != lastSentPhHealth);
     bool levelHealthChanged = (snapLevelOk != lastSentLevelHealth);
+    String snapPumpFault = pumpFaultReason;
+    bool pumpFaultChanged = (snapPumpFault != lastSentPumpFault);
     bool alertStateChanged =
         (lowLevelAlert.state != lastSentLowLevelAlertState) ||
         (highLevelAlert.state != lastSentHighLevelAlertState) ||
@@ -2797,7 +2873,8 @@ void networkTask(void *pvParameters) {
       if (rateLimitElapsed &&
           (levelChangedSignificantly || phChangedSignificantly ||
            phHealthChanged || levelHealthChanged ||
-           alertStateChanged || linkChanged || heartbeatElapsed ||
+           alertStateChanged || linkChanged || pumpFaultChanged ||
+           heartbeatElapsed ||
            calibLive)) {
         if (ensureFirebaseAuth()) {
 
@@ -2819,6 +2896,12 @@ void networkTask(void *pvParameters) {
           jsonPayload += "\"waterHeight\":" + String(snapHeight, 2) + ",";
           jsonPayload += "\"status\":\"" + status + "\",";
           // No pumpOn here: it is written only by updateFirebasePumpState().
+          // pumpFault: set by the dry-run guard; null removes it.
+          jsonPayload += "\"pumpFault\":" +
+                         (snapPumpFault.length() > 0
+                              ? "\"" + snapPumpFault + "\""
+                              : String("null")) +
+                         ",";
           jsonPayload +=
               "\"phSensorOk\":" + String(snapPhOk ? "true" : "false") + ",";
           jsonPayload +=
@@ -2866,7 +2949,7 @@ void networkTask(void *pvParameters) {
             firebaseAuthValid = false;
           }
 
-          if (httpResponseCode > 0 && httpResponseCode != 401) {
+          if (httpResponseCode >= 200 && httpResponseCode < 300) {
             DEBUG_PRINTLN("Firebase Sensors Updated successfully.");
             linkUploadFirst = false;
             bool wasDisconnected = !firebaseConnected;
@@ -2895,6 +2978,7 @@ void networkTask(void *pvParameters) {
             lastSentPhAlertState = phAlert.state;
             lastSentEthLink = snapEth;
             lastSentWifiLink = snapWifi;
+            lastSentPumpFault = snapPumpFault;
             lastSensorWrite = millis();
           } else {
             if (httpResponseCode <= 0) {

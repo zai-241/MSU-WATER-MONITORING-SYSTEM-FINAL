@@ -24,7 +24,7 @@
 import { formatDate, formatTime } from '@/lib/dateFormat';
 import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { database, auth } from '@/config/firebase';
-import { ref, onValue, set, update, push, remove, runTransaction, query, orderByChild, limitToLast, endAt, get } from 'firebase/database';
+import { ref, onValue, set, update, push, runTransaction, query, orderByChild, orderByKey, limitToLast, startAt, endAt, get } from 'firebase/database';
 import {
   CONTROLLER_OFFLINE_THRESHOLD_MS,
   OFFLINE_CHECK_SETTLE_MS,
@@ -107,6 +107,11 @@ export interface Tank {
    * offline notice, and its controller keeps the pump off. config.maintenanceMode does the same for all tanks.
    */
   maintenanceMode?: boolean;
+  /**
+   * Set by the controller's dry-run guard when it stopped the pump: "no-rise" (level did not
+   * rise while pumping) or "max-run" (maximum run time). Missing = none. Cleared by a manual ON.
+   */
+  pumpFault?: string | null;
 
   // Sensor Validation Status
   phSensorOk: boolean;
@@ -551,6 +556,7 @@ export function sanitizeTank(key: string, raw: unknown): Tank {
     assignedWorker: r.assignedWorker ?? null,
     controllerOffline: !!r.controllerOffline,
     maintenanceMode: r.maintenanceMode === true,
+    pumpFault: typeof r.pumpFault === 'string' && r.pumpFault !== '' ? r.pumpFault : null,
   };
 }
 
@@ -756,16 +762,31 @@ export function resetDefaultTankSeeding() {
   attemptedDefaultTankIds.clear();
 }
 
-export function deleteTank(id: string) {
+export async function deleteTank(id: string): Promise<void> {
   if (!id || id.trim() === '') {
-    return Promise.reject(new Error('Invalid tank ID. Deletion cannot be performed on blank identifiers.'));
+    throw new Error('Invalid tank ID. Deletion cannot be performed on blank identifiers.');
   }
   // Tanks 1–4 are recreated on the next page load (addMissingDefaultTanks), so deleting one
   // would only wipe its calibration. Admins disable a tank instead.
   if (isDefaultTankId(id)) {
-    return Promise.reject(new Error(`Tank ${id} is one of the system's tanks and cannot be deleted. Disable it instead.`));
+    throw new Error(`Tank ${id} is one of the system's tanks and cannot be deleted. Disable it instead.`);
   }
-  return remove(ref(database, `tanks/${id}`));
+  // One multi-path write: the tank, its 10-minute history, and its open alerts. Nothing evaluates a
+  // deleted tank any more, so an open alert would stay "active" (and keep the alarm sounding) forever.
+  const prefix = `alert-${id}-`;
+  const openAlerts = await get(query(ref(database, 'notifications'), orderByKey(), startAt(prefix), endAt(`${prefix}`)));
+  const updates: Record<string, unknown> = {
+    [`tanks/${id}`]: null,
+    [`history/tanks/${id}`]: null,
+  };
+  const resolvedAt = serverNow();
+  Object.entries((openAlerts.val() ?? {}) as Record<string, Partial<Notification>>).forEach(([key, alert]) => {
+    if (alert && !alert.resolved) {
+      updates[`notifications/${key}/resolved`] = true;
+      updates[`notifications/${key}/resolvedAt`] = resolvedAt;
+    }
+  });
+  return update(ref(database), updates);
 }
 
 export function useTanks() {
