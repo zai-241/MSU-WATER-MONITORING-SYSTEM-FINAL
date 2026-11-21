@@ -702,10 +702,10 @@ function fig312() {
 }
 
 // ======================================================================
-// Data Model: Cloud Firestore and Firebase Realtime Database
+// Figures 3-13 and 3-14 (Data Model): Cloud Firestore and Firebase Realtime Database
 // Two portrait figures sized for a 6.5-inch page width (text about 8-9 pt when inserted full width):
-//   Data Model 1: Firestore, the RTDB path tree, ROLES, USER_STATE, CONFIG, SYSTEM
-//   Data Model 2: TANKS, HISTORY, NOTIFICATIONS, LOGS
+//   Figure 3-13: Firestore, the RTDB path tree, ROLES, USER_STATE, CONFIG, SYSTEM
+//   Figure 3-14: TANKS, HISTORY, NOTIFICATIONS, LOGS
 // Relationships are in the ERD (Figure 3-12); these figures are the storage view.
 // ======================================================================
 const DM = { W: 1540, TW: 720, ROW: 44, COL: [30, 790], FS: '#FCE8CC', RT: '#D6E4F5', MONO: 'Consolas, monospace' };
@@ -868,7 +868,7 @@ function figDataModel2() {
 }
 
 // ======================================================================
-// Figure 3-13: Architectural Design (photos from the original figure)
+// Figure 3-15: Architectural Design (photos from the original figure)
 // Top row: sensor node, bridge, router. Bottom row: cloud services and the client.
 // ======================================================================
 function serverIcon(cx, cy, r = 46) {
@@ -946,7 +946,7 @@ function fig313() {
 }
 
 // ======================================================================
-// Figure 3-14: Network Design Topology (photos from the original figure, labels redrawn larger)
+// Figure 3-16: Network Design Topology (photos from the original figure, labels redrawn larger)
 // ======================================================================
 function fig314() {
   const W = PAGE_W, H = 815, NET = 'net', IMG = 'arch';
@@ -993,8 +993,8 @@ export const figures = [
   ['Figure 3-10: Use Case Diagram for the Water Level and Quality Monitoring System', fig310],
   ['Figure 3-11: Activity Diagram', fig311],
   ['Figure 3-12: Entity-Relationship Diagram (ERD)', fig312],
-  ['Figure 3-13: Architectural Design of the System', fig313],
-  ['Figure 3-14: Network Design Topology', fig314],
-  ['Data Model 1: Cloud Firestore and Realtime Database Structure', figDataModel1],
-  ['Data Model 2: Realtime Database Tank, History, Notification and Log Records', figDataModel2],
+  ['Figure 3-13: Data Model of the Cloud Firestore and Realtime Database Structure', figDataModel1],
+  ['Figure 3-14: Data Model of the Realtime Database Tank, History, Notification and Log Records', figDataModel2],
+  ['Figure 3-15: Architectural Design of the System', fig313],
+  ['Figure 3-16: Network Design Topology', fig314],
 ].map(([title, draw]) => ({ title, file: title.split(':')[0].replace(/\s+/g, '_'), draw }));

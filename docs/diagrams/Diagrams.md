@@ -6,6 +6,8 @@ These replace the figures that no longer match the system. They keep the design 
 
 **To change a figure:** edit `figures.mjs`, then run `node docs/diagrams/build.mjs` (one-time setup: `npm i --no-save --prefix docs/diagrams puppeteer-core`). It needs Microsoft Edge and an internet connection for the fonts.
 
+**File names follow the paper's figure numbers (2026-11-21):** Figures 3-13 and 3-14 are the two data model figures (they were `Data_Model_1` and `Data_Model_2`), Figure 3-15 is the Architectural Design (was `Figure_3-13`) and Figure 3-16 is the Network Design Topology (was `Figure_3-14`). The notes and tables above the figures that were written before this date use the old numbers.
+
 **System update (2026-11-19):** 3-5, 3-6, 3-13 and 3-14 say W5500 Ethernet instead of LAN8720; 3-13 shows the pump relay on GPIO 32 as installed (refill pump of the drum model); 3-10 uses "Pump System" instead of "Pump Demo Mode"; Data_Model_1/2 add pumpMode, the night watch settings, pumpCommandAt/Result, calibrationUntil/Live and the history sensor flags. The W5500 picture in 3-13 is still the module photo from the original figure.
 
 **Features of 14–19 Nov (2026-11-19, second pass):**
@@ -129,24 +131,24 @@ Adds an Alert Service lane; telemetry is logged before the decision.
 
 Adds ROLES, USER_STATE and ALERT_SERVICE_HEARTBEAT, the missing fields (including each tank's capacityLiters and LOGS.tankId), and TANKS raises NOTIFICATIONS and is the source of LOGS. Pump demo fields: TANKS.pumpOn, CONFIG.pumpDemoMode and pumpControlLock.
 
-## Figure 3-13: Architectural Design of the System
+## Figure 3-13: Data Model of the Cloud Firestore and Realtime Database Structure
 
-![Figure 3-13: Architectural Design of the System](images/Figure_3-13.png)
+![Figure 3-13: Data Model of the Cloud Firestore and Realtime Database Structure](images/Figure_3-13.png)
+
+## Figure 3-14: Data Model of the Realtime Database Tank, History, Notification and Log Records
+
+![Figure 3-14: Data Model of the Realtime Database Tank, History, Notification and Log Records](images/Figure_3-14.png)
+
+Placed after the ERD as Figures 3-13 and 3-14. They are the storage view of the ERD: the one Firestore collection (`users`), the RTDB path tree, each record's key, fields and types, and who writes it. The model is split in two portrait figures so the text stays readable (about 8–9 pt) when a figure is inserted at the full 6.5-inch text width. The same model is written out in `docs/Methodology.md` §5.
+
+## Figure 3-15: Architectural Design of the System
+
+![Figure 3-15: Architectural Design of the System](images/Figure_3-15.png)
 
 Adds the current-to-voltage module, the CPE210 bridge pair, the cloud-hosted Alert Service and Firebase Cloud Messaging; the sensor node is repeated for each tank (Tanks 1–4).
 
-## Figure 3-14: Network Design Topology
+## Figure 3-16: Network Design Topology
 
-![Figure 3-14: Network Design Topology](images/Figure_3-14.png)
+![Figure 3-16: Network Design Topology](images/Figure_3-16.png)
 
 Wi-Fi is a standby link; one ESP32 node per tank, with Tank 1 tested on the drum model and Tanks 2–4 planned; the P2P link was 15–20 m in testing; adds the cloud-hosted Alert Service.
-
-## Data Model 1: Cloud Firestore and Realtime Database Structure
-
-![Data Model 1: Cloud Firestore and Realtime Database Structure](images/Data_Model_1.png)
-
-## Data Model 2: Realtime Database Tank, History, Notification and Log Records
-
-![Data Model 2: Realtime Database Tank, History, Notification and Log Records](images/Data_Model_2.png)
-
-New figures (no numbers yet; place them next to the ERD in 3.11–3.13). They are the storage view of the ERD: the one Firestore collection (`users`), the RTDB path tree, each record's key, fields and types, and who writes it. The model is split in two portrait figures so the text stays readable (about 8–9 pt) when a figure is inserted at the full 6.5-inch text width. The same model is written out in `docs/Methodology.md` §5.

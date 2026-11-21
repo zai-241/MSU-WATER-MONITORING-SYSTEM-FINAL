@@ -277,7 +277,7 @@ once the real reservoir is monitored.
 
 ## 5. Database Schema & Data Models
 
-The system stores data in two Firebase databases. **Cloud Firestore** holds only user profiles. The **Firebase Realtime Database (RTDB)** holds everything that changes live: tank readings, settings, history, logs, alerts, roles and per-user state. The figures `docs/diagrams/images/Data_Model_1.png` (Firestore, the RTDB path tree and the smaller records) and `Data_Model_2.png` (tanks, history, notifications, logs) show this model; the ERD (Figure 3-12) shows the relationships between records.
+The system stores data in two Firebase databases. **Cloud Firestore** holds only user profiles. The **Firebase Realtime Database (RTDB)** holds everything that changes live: tank readings, settings, history, logs, alerts, roles and per-user state. Figures 3-13 and 3-14 (`docs/diagrams/images/Figure_3-13.png`: Firestore, the RTDB path tree and the smaller records; `Figure_3-14.png`: tanks, history, notifications, logs) show this model; the ERD (Figure 3-12) shows the relationships between records.
 
 Firebase does not enforce foreign keys; keys such as `assignedWorker` or `tankId` are kept consistent by the application. All times are `TIMESTAMP` values in milliseconds since 1970 (readings, logs and alerts use server time).
 
