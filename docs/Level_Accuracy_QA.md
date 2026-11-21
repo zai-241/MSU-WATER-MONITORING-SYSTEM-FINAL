@@ -3,6 +3,10 @@
 Prepared 2026-11-21 from the level accuracy test of **21 November 2026** on the Tank 1 drum model (0.90 m), reported in
 the thesis as Table 4.4 and section 4.2.1.3. Numbers below match that table.
 
+**Keep in mind:** the 200 L, 0.90 m drum is only the **test model**. The system is meant for the MSU Motor Pool
+reservoir tanks, which are about **5 m tall**. The level sensor is rated 0 to 5 m, so it was chosen for the real
+tanks, not for the drum (Q11, Q16, Q18).
+
 **One-sentence summary to open with:**
 > "On 21 November 2026 we compared the dashboard with a steel tape at nine depths from 10 to 90 cm. The mean
 > percentage error was 4.4 %, within our ±5 % target, and the average difference was 2.6 percentage points, about
@@ -87,11 +91,11 @@ non-linear. Our firmware computes the level with a straight line between the two
 calibration), so a curve in between cannot be corrected.
 
 **Q11. Why is the ADC curve so noticeable on your system?**
-The submersible sensor is rated 0 to 5 m (4 to 20 mA). The 0.90 m drum uses only about 18 % of that range (4 to about
-6.9 mA), so the whole drum spans well under 1 V at the ESP32 input (calibrated empty about 0.5 V, full about 1.2 V).
-One percent of the drum is only a few millivolts, so a small ADC error of a few tens of millivolts becomes several
-percent. On the real reservoir, which is much deeper, the sensor would use more of its range and the same ADC error
-would be a smaller percentage.
+Because the test drum is much shorter than the tank the sensor was chosen for. The submersible sensor is rated 0 to
+5 m (4 to 20 mA) to match the 5 m reservoir tanks. The 0.90 m drum uses only about 18 % of that range (4 to about
+6.9 mA), so the whole drum spans only about 0.7 V at the ESP32 input (calibrated empty about 0.5 V, full about 1.2 V).
+One percent of the drum is only about 7 mV, so an ADC error of a few tens of millivolts becomes several percent.
+On a 5 m tank the sensor uses its whole range (Q16).
 
 **Q12. Does the firmware add any error?**
 Yes, up to about 2 points, by design. (1) The level percentage is stored as a whole number with the decimal part
@@ -118,10 +122,17 @@ Three options, from cheapest:
 3. **A sensor with a range matched to the tank** (for example 0 to 1 m for the drum), so the drum uses the whole
    4 to 20 mA range.
 
-**Q16. Will the accuracy be the same on the real Reservoir Tank No. 1?**
-Not necessarily, and it should be retested after installation. The calibration (Vmin, Vmax, tank height) is set per
-tank in the Admin Panel, so it can be redone on site without changing the firmware. On a deeper tank the sensor uses
-more of its range, which should reduce the percentage error.
+**Q16. Will the accuracy be the same on the real 5 m reservoir tanks?**
+We expect the **percentage** error to be smaller, but it must be confirmed by a test after installation. On a 5 m tank
+the sensor uses its full 4 to 20 mA range, and the HW-685 can be set to spread it over about 0.5 to 3.0 V, about
+2.5 V instead of 0.7 V. One percent of the tank is then about 25 mV instead of 7 mV, so the same ADC error is about
+a third as large in percent. In centimetres it is not smaller: 1 % of a 5 m tank is 5 cm, so a 1 to 2 % error is
+5 to 10 cm. For low and overflow alerts on a 5 m tank this is still adequate.
+
+Nothing in the firmware has to change: the calibration (Vmin, Vmax, tank height 5.00 m, which is the firmware
+default) is set per tank in the Admin Panel. Two cautions for installation: keep the full-tank voltage at or below
+about 2.5 to 3.0 V, because the ESP32's ADC is least linear near its top; and since the sensor tops out at 5 m, a tank
+filled above 5 m from the sensor would read 100 % and no higher.
 
 **Q17. Why not compare with a commercial level meter instead of a tape?**
 A steel tape measuring depth from the drum floor is a direct, simple reference with millimetre marks, and it is the
@@ -130,9 +141,16 @@ error of a few centimetres.
 
 ---
 
+**Q18. If the real tanks are 5 m tall, why did you test on a 0.90 m drum?**
+A 5 m reservoir could not be emptied, filled in steps and measured with a tape for a pilot test, and the controller
+could not be installed on the Motor Pool tanks during development. The 200 L drum is a scaled model of Reservoir Tank
+No. 1: it tests the same sensor, ESP32, firmware, cloud and dashboard. Because the drum uses only a small part of the
+sensor's range, it is a harder test of percentage accuracy than the real tank would be (Q11, Q16).
+
 ## Things to avoid saying
 
 - Do not say the sensor is "accurate to ±5 % at every level". It is the **mean** that meets ±5 %.
 - Do not blame the tape or the water for the 50 to 80 cm error; the pattern is consistent, which points to the
   ADC/sensor curve (Q10).
-- Do not claim the result for the real reservoir; it was measured on the 0.90 m drum model only (Q16).
+- Do not claim the 4.4 % for the real 5 m reservoir; it was measured on the 0.90 m drum model only. Say you
+  **expect** a smaller percentage error there and that it needs an on-site test (Q16).
