@@ -67,7 +67,9 @@ const TankCard = memo(({
   const disabled = !processedTank.enabled;
 
   const isWorker = currentUser?.role === 'worker';
-  const canTogglePump = isAdmin || (isWorker && !config.pumpControlLock && processedTank.assignedWorker === currentUser?.id);
+  // The controller refuses every dashboard command while the Pump Control Lock is on (admins included)
+  const pumpLocked = config.pumpControlLock === true;
+  const canTogglePump = !pumpLocked && (isAdmin || (isWorker && processedTank.assignedWorker === currentUser?.id));
   const pumpMode = getPumpMode(config);
   const isPumpWaiting = pumpPending !== undefined;
   // This tank's own maintenance switch (the system-wide one has a banner above the cards)
@@ -265,7 +267,7 @@ const TankCard = memo(({
                   aria-busy={isPumpWaiting}
                   disabled={pumpToggleDisabled}
                   onClick={() => onPumpToggle(processedTank.id, processedTank.name, !processedTank.pumpOn)}
-                  title={isOffline ? 'Pump toggle disabled: Controller is offline' : inMaintenance ? 'Pump toggle disabled: Maintenance mode' : isPumpWaiting ? 'Waiting for the controller to confirm' : undefined}
+                  title={isOffline ? 'Pump toggle disabled: Controller is offline' : inMaintenance ? 'Pump toggle disabled: Maintenance mode' : isPumpWaiting ? 'Waiting for the controller to confirm' : pumpLocked ? 'Pump toggle disabled: Pump Control Lock is on' : undefined}
                   className={`relative h-6 w-11 rounded-full transition-colors ${
                     isPumpWaiting
                       ? `cursor-wait ${processedTank.pumpOn ? 'bg-primary/60' : 'bg-muted'}`
@@ -556,7 +558,7 @@ const Dashboard = () => {
       )}
       {isPumpDemoOn(config) && config.pumpControlLock && !config.maintenanceMode && (
         <div className="mb-4 p-3 rounded-lg bg-danger/20 border border-danger text-danger text-sm font-medium flex items-center gap-2">
-          🔒 Pump Control Lock is active — Worker pump controls are locked.
+          🔒 Pump Control Lock is active — pump commands from the dashboard are locked for all users.
         </div>
       )}
       {/* Premium Connection Status Banner */}

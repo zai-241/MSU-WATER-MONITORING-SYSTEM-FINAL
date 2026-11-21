@@ -56,6 +56,19 @@ describe('Pump demo mode', () => {
     expect(screen.queryByText(/Pump Control Lock is active/)).not.toBeInTheDocument();
   });
 
+  it('locks the pump switch for an admin too while the Pump Control Lock is on', () => {
+    const { unmount } = render(<Dashboard />);
+    expect(screen.getByTestId('pump-toggle')).not.toBeDisabled();
+    unmount();
+
+    state.config = { ...state.config, pumpControlLock: true };
+    render(<Dashboard />);
+    const toggle = screen.getByTestId('pump-toggle');
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute('title', 'Pump toggle disabled: Pump Control Lock is on');
+    expect(screen.getByText(/locked for all users/)).toBeInTheDocument();
+  });
+
   it('leaves the pump sheet out of the Excel export when demo mode is off', async () => {
     const base: ReportExportData = {
       currentUser: null,

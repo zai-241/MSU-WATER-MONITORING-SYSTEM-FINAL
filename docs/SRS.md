@@ -90,7 +90,7 @@ mindmap
 * **FR-01.6**: Administrators must be able to register additional tanks beyond Tanks 1–4 (any free whole-number ID from 1 to 999). Tanks 1–4 cannot be deleted (only disabled); added tanks can be deleted.
 
 ### 3.2 Pump & System Controls (FR-02)
-* **FR-02.1**: Administrators must be able to lock out manual pump toggling for Worker operators (`pumpControlLock = true`).
+* **FR-02.1**: Administrators must be able to lock out manual pump toggling from the dashboard for all users, Administrators included (`pumpControlLock = true`). Automatic pump control continues.
 * **FR-02.2**: The system must support a `maintenanceMode` toggle that:
   1. Forces the physical pump relay OFF immediately.
   2. Blocks all automatic and manual pump activations.

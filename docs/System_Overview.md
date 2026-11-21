@@ -192,7 +192,7 @@ Sensor calibration parameters can be adjusted in real time via the **Admin Panel
 * **Overflow Protection**: When water level reaches $\ge 95\%$ (`overflowThreshold`), the pump is immediately stopped.
 * **Maintenance Mode**: Activating Maintenance Mode via the Admin Panel forces the physical pump relay OFF, suppresses alarms, and prevents automatic or manual pump activation during physical maintenance.
 * **Tank Maintenance (per tank)**: Admin Panel → System Controls → Tank Maintenance has one switch for each registered tank. It does the same as Maintenance Mode for that tank only (alerts, night watch and the offline notice paused; pump held off and pump commands refused), so a technician can work on one tank while the others stay monitored. The Dashboard card shows **"Under Maintenance"**.
-* **Pump Control Lock**: Restricts pump manual toggles exclusively to Administrators, preventing standard Workers from activating relays.
+* **Pump Control Lock**: Blocks manual pump toggles from the dashboard for every user, Administrators included; the controller keeps running the pump automatically.
 * **Multi-Tank Infrastructure**: Tank 1 is the active IoT-connected reservoir. Tanks 2–4 are pre-configured expansion slots labeled **"Planned - IoT node not yet installed"** in the dashboard. An admin can register more tanks (Tank 5, 6, ...) in Admin Panel → Tank Assignment; each gets its own card, calibration, maintenance switch, reports and alerts, and `npm run firmware:new-tank -- <id>` makes its controller sketch.
 
 ### 4.3 Night Watch (Leak Detection)

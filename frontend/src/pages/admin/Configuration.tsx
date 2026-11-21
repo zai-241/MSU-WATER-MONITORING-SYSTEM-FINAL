@@ -1004,8 +1004,8 @@ const Configuration = () => {
               <Power size={18} className={localConfig.pumpControlLock ? 'text-danger' : 'text-muted-foreground'} />
               <div>
                 <p className="font-medium text-sm">Pump Control Lock</p>
-                <p className="text-xs text-muted-foreground">Locks all pump controls for workers — admins can still toggle pumps</p>
-                {localConfig.pumpControlLock && <p className="text-xs text-danger font-medium mt-1">🔒 Active — workers cannot control pumps</p>}
+                <p className="text-xs text-muted-foreground">Locks the dashboard pump switch for everyone, admins included. The controller keeps running the pump by itself.</p>
+                {localConfig.pumpControlLock && <p className="text-xs text-danger font-medium mt-1">🔒 Active — no one can switch the pump from the dashboard</p>}
               </div>
             </div>
             <button onClick={() => handleToggle('pumpControlLock', 'Pump Control Lock')}
@@ -1145,8 +1145,8 @@ const Configuration = () => {
               {controlConfirm.key === 'maintenanceMode' && !controlConfirm.newState && 'This will restore normal operations. Alerts (and the pump controls) will be re-enabled.'}
               {controlConfirm.key === 'pumpDemoMode' && controlConfirm.newState && 'This will show the pump controls on every dashboard, in Reports and in exports, and let the controller run the pump.'}
               {controlConfirm.key === 'pumpDemoMode' && !controlConfirm.newState && 'This will hide all pump controls, reports and export sections. The controller keeps the pump off and refuses pump commands.'}
-              {controlConfirm.key === 'pumpControlLock' && controlConfirm.newState && 'This will lock all pump controls for workers. Only admins will be able to toggle pumps.'}
-              {controlConfirm.key === 'pumpControlLock' && !controlConfirm.newState && 'This will unlock pump controls. Assigned workers will be able to toggle their tank pumps again.'}
+              {controlConfirm.key === 'pumpControlLock' && controlConfirm.newState && 'This will lock the dashboard pump switch for everyone, admins included. The controller refuses pump commands but keeps running the pump by itself.'}
+              {controlConfirm.key === 'pumpControlLock' && !controlConfirm.newState && 'This will unlock pump controls. Admins and assigned workers will be able to switch their tank pumps again.'}
             </p>
             <div className="flex gap-3">
               <button onClick={() => setControlConfirm(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground">Cancel</button>

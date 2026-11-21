@@ -158,7 +158,7 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
      poll). On the web side the same two switches pause the tank's alerts, night watch and offline notice
      (`isTankInMaintenance()` in `alertEngine.ts`); the other tanks keep working.
    - If `levelSensorOk == false`, the pump is forced **OFF** to avoid dry-running or unmonitored filling.
-   - If `pumpControlLock == true`, manual toggles by Worker operators are rejected; only Admins can override.
+   - If `pumpControlLock == true`, every manual toggle from the dashboard is rejected, by Admins and Workers alike (the dashboard greys out the switch for everyone). Automatic control continues.
 4. **Dry-Run Guard** (added 20 Nov 2026, all sketches):
    - While the pump runs (started automatically or by a command, in Auto or Manual mode), the level must rise at least
      **3 %** (`PUMP_MIN_RISE_PERCENT`, above the 2 % level deadband) every **10 min** (`PUMP_NO_RISE_TIMEOUT_MS`), and one
