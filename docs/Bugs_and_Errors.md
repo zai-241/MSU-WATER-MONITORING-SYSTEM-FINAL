@@ -94,7 +94,7 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
   status, dry-run guard, USER_DIRECTORY and PRESENCE; see `docs/diagrams/Diagrams.md`). They replace the old pictures
   as tracked changes in `thesis-review/FINAL_CAPSTONE_PAPER_0.90m_system-update-2026-11-21.docx`.
 - [ ] **C2 Fill the 31 "[NEEDS DATA: …]" markers** with your own results. *Level accuracy done 2026-11-21* (test of
-  21 Nov 2026, 10–90 cm, mean error 4.4 %, PASSED; Table 4.4, 4.2.1.3, Table 4.3, abstract, Chapter 5) in the Google
+  21 Nov 2026, 10–90 cm, mean error 4.4 %, PASSED; Table 4.4, 4.2.1.3, Table 4.1, abstract, Chapter 5) in the Google
   Docs copy "FINAL_CAPSTONE_PAPER_2026-11-19" on Drive; copy it into the local 2026-11-21 .docx. Still open: the pH
   accuracy test date, wireless bridge power-off test, mounting positions of the two CPE210 units,
   the network link used on 9 Nov 2026, and five website retrieval dates in the References.
