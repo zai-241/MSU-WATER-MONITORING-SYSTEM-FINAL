@@ -17,6 +17,12 @@ These replace the figures that no longer match the system. They keep the design 
 - 3-10: Set Night Watch, View Live Sensor Readings (extends Calibrate), View Predictive Analytics (included by View Report) and Detect Night Water Loss (Alert Service).
 - 3-12 ERD: pumpMode, night watch fields, pumpCommandAt/Result, calibrationUntil/Live, history sensor flags.
 
+**System update (2026-11-21):** matches the thesis-vs-code check of 20 Nov (`thesis-review/code-check-2026-11-20.md`).
+- Tanks: "Tanks 1–4" labels become "registered tank" (3-6, 3-8, 3-9, 3-10, 3-13); Data_Model_2 says tank IDs "1" to "999".
+- 3-10: "Delete User" removed; new use cases View User Online Status (extends Manage User Account), Set Own Thresholds per Tank (extends Set Water Level Threshold), Set Tank Maintenance (extends Set Pump System & Pump Mode) and Choose Tanks to Watch (extends Set Night Watch); actor "IoT Sensors (one per tank)".
+- 3-7 / 3-8 / 3-9: per-tank thresholds, dry-run guard and pumpFault, tanks to watch, maintenance for one tank, user directory and online status, only Admin and Worker browsers take over the alert checks.
+- 3-12 ERD and Data_Model_1/2: TANKS.thresholds, maintenanceMode, pumpFault; CONFIG.nightWatchTanks; new USER_DIRECTORY (Firestore `directory/{uid}`) and PRESENCE (`presence/{uid}`).
+
 3-10 and 3-12 are now taller than 9 in at full width, so in Word they are set to 9 in high and slightly narrower.
 
 **Print size (2026-11-15):** Figures 3-4, 3-5 and 3-8 to 3-14 were redrawn for a portrait page because their text was too small to read on paper. Each is 1200 units wide with body text of 19 to 22 units, so at 6 inches wide the text prints at about 7 to 8 pt (it was 3 to 4 pt). To get this, the empty space was removed and some layouts changed: 3-4 and 3-11 use vertical lanes, 3-5 runs in two halves (reading and sending on the left, database and alerts on the right), 3-10 and 3-12 are stacked in columns, and 3-13 and 3-14 use two rows. The content is the same. Insert each PNG at the full text width; do not shrink it.

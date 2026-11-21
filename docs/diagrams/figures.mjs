@@ -258,7 +258,7 @@ function fig36() {
   };
   const blockArrow = (y) => `<rect x="726" y="${y}" width="18" height="62" fill="${C.stroke}"/><polygon points="704,${y + 58} 766,${y + 58} 735,${y + 110}" fill="${C.stroke}"/>`;
   let b = '';
-  b += layer(75, 525, 'Input Layer (Perception)', 'One ESP32 Edge Node per Reservoir Tank (Tanks 1–4)');
+  b += layer(75, 525, 'Input Layer (Perception)', 'One ESP32 Edge Node per Registered Reservoir Tank');
   b += inner(157, 262, 563, 300, 'Sensors', 'Submersible Hydrostatic Level\nSensor (via Current-to-Voltage\nModule) & PH-4502C pH Sensor');
   b += inner(757, 262, 563, 300, 'Processing & Network\nHardware', 'ESP32-WROOM-32\nMicrocontroller, W5500\nEthernet & Pump Relay');
   b += blockArrow(600);
@@ -324,12 +324,12 @@ const fig37 = () => ipo([
     ['Transport & RTDB Sync', 'W5500 Ethernet + CPE210 P2P bridge to Firebase; Wi-Fi failover when Ethernet is down or slow'],
     ['Live Telemetry Sync', 'Real-time updates to the web dashboard & mobile app; history every 10 min']],
   [['Level, Pump Commands & Pump Settings', 'Live level, thresholds, pumpOn command, Pump System switch, Auto / Manual mode'],
-    ['Local Pump Logic (GPIO 32 Relay)', 'Auto start at the low threshold (30 s off time), stop at overflow; safety stops; each command checked'],
-    ['Refill Pump Control', 'Pump switched on the drum model; accepted or refused answer and a log entry']],
-  [['Alert Threshold & Night Watch Configuration', 'Water level (15%–95%), pH (6.5–8.5); night window 10 PM–3 AM'],
+    ['Local Pump Logic (GPIO 32 Relay)', 'Auto start at the low threshold (30 s off time), stop at overflow; safety stops; dry-run guard (3% rise in 10 min, 60 min max); each command checked'],
+    ['Refill Pump Control', 'Pump switched on the drum model; accepted or refused answer, pumpFault after a dry-run stop, and a log entry']],
+  [['Alert Threshold & Night Watch Configuration', 'Shared limits (default level 15%–95%, pH 6.5–8.5) or the tank\'s own; night window 10 PM–3 AM'],
     ['Alert State Machine & Validation', '5-second persistence check; repeat every 60 s until acknowledged; night level-drop check'],
     ['Real-Time In-App / Toast Alerts & Logs', 'In-app toast & audible chime, push notifications, audit entries']],
-  [['Admin Calibration & System Control', 'Thresholds, calibration, maintenance mode, live calibration view'],
+  [['Admin Calibration & System Control', 'Shared and per-tank thresholds, calibration, maintenance mode (all tanks or one tank), live calibration view'],
     ['RTDB Configuration Sync', 'Read by the ESP32 every second; live readings sent once per second while the view is open'],
     ['Updated System Behavior', 'No re-flashing required; changes apply live']],
   [['User Authentication & Role Data', 'User credentials & roles (Admin / Worker / Viewer)'],
@@ -341,9 +341,9 @@ const fig38 = () => ipo([
   [['JSON Payload from\nEach Tank\'s ESP32', 'waterLevel, waterHeight, phLevel, sensor health flags, RSSI, status (on change or every 10 s)'],
     ['Validate, Parse &\nPersist to RTDB', 'Authenticated HTTPS\nREST write directly to\nRTDB tanks/{id}'],
     ['Stored, Timestamped\nTelemetry Records', 'Live RTDB record per\ntank, lastUpdate\ntimestamp']],
-  [['Alert & Night Watch Configuration', 'Low 15%, Overflow 95%, pH 6.5–8.5; night 10 PM–3 AM, 5% fast / 3% slow drop'],
+  [['Alert & Night Watch Configuration', 'Default low 15%, overflow 95%, pH 6.5–8.5, or a tank\'s own limits; night 10 PM–3 AM, 5% fast / 3% slow drop, tanks to watch'],
     ['Alert Service: 5-Second Check & Night Watch', 'Checks each tank against the limits (a breach must last 5 s); at night compares the level with the last 30 min'],
-    ['Alert Notifications\n& Logs', 'Alert in /notifications (low level, pH: critical; overflow: warning; possible leak: danger); ESP32 logs threshold alerts in /logs']],
+    ['Alert Notifications\n& Logs', 'Alert in /notifications (low level, pH, pump stopped: critical; overflow: warning; possible leak: danger); ESP32 logs threshold alerts in /logs']],
   [['Device Push\nTokens', 'fcmTokens saved for\neach user in\nuserState/{uid}'],
     ['Push, Repeat &\nResolve Alerts', 'FCM push when the alert\nstarts; re-show every 60 s\nuntil acknowledged;\nresolve after 5 s normal'],
     ['Push & Real-Time\nToast Alerts', 'Push to Web & Android;\ntoast & audible chime\nin open dashboards']],
@@ -357,17 +357,17 @@ const fig38 = () => ipo([
     ['Query Logs & Build Datasets', 'Filter RTDB telemetry & diagnostic logs by tank and range; build trend arrays and usage analytics (peak hours, peak day, forecasts)'],
     ['Interactive Analytics\n& Exportable Reports', 'Recharts trends, predictive analytics, Pump Activity Log & reports (PDF, Excel, CSV)']],
   [['Admin Calibration\n& Capacity Input', 'Vmin/Vmax, tankHeight, phSlope, phOffset, capacityLiters (per tank); live calibration view (calibrationUntil)'],
-    ['Update Calibration\nParams in RTDB', 'Admin selects Tank 1–4\nand writes parameters\nto tanks/{id} fields'],
+    ['Update Calibration\nParams in RTDB', 'Admin selects a tank\nand writes parameters\nto tanks/{id} fields'],
     ['Dynamic Sensor\nCalibration', 'ESP32 applies updated calibration on next poll; live readings once per second while the view is open']],
   [['Pump Command', 'pumpOn written by an Admin or the assigned Worker'],
     ['Rules Check & Controller Answer', 'Security rules allow the write while the lock is off; the ESP32 accepts or refuses it'],
     ['Pump State & Pump Activity Log', 'pumpCommandAt and pumpCommandResult; accepted or refused entry in /logs']],
   [['User Registry\nManagement', 'User details\nand role'],
-    ['Register Auth &\nFirestore Profile', 'Firebase Auth user\ncreation; profile in\nusers/{uid}, role in\nroles/{uid}'],
-    ['Active User Registry\nProfile', 'User profile visible in\nAdmin Panel with\nrole-gated access']],
+    ['Register Auth &\nFirestore Profile', 'Firebase Auth user creation; profile in users/{uid}, name in directory/{uid}, role in roles/{uid}'],
+    ['Active User Registry\nProfile', 'Profiles visible to admins only, with online status; others see names only']],
   [['Stored History, Logs\n& Notifications', 'Records with\ntimestamps'],
     ['Retention &\nHeartbeat', 'Delete records older than\n90 days (daily); heartbeat\nwritten every 10 s'],
-    ['Lean Database &\nFail-Safe Alerting', 'Old records removed;\nif the heartbeat stops,\nbrowsers check alerts &\nshow "Alert Service Offline"']],
+    ['Lean Database &\nFail-Safe Alerting', 'Old records removed; if the heartbeat stops, Admin and Worker browsers check alerts & show "Alert Service Offline"']],
 ]);
 
 const fig39 = () => ipo([
@@ -375,7 +375,7 @@ const fig39 = () => ipo([
     ['onValue listener,\nthrottle & stabilize UI', 'Smooth interpolation,\ndeadband, 1.5 s throttle'],
     ['Real-time tank cards\nwith water gauges', 'Level %, height, pH, safe/warning/danger badge, pump switch']],
   [['Alert & sensor fault\nstate from RTDB', 'lowLevelAlert,\nhighLevelAlert, phAlert,\nphSensorOk,\nlevelSensorOk'],
-    ['Show alerts; fallback\nchecks', 'Toast & chime on new alerts; SystemMonitor runs the 5 s and night checks only if the Alert Service stops'],
+    ['Show alerts; fallback\nchecks', 'Toast & chime on new alerts; on Admin and Worker pages, SystemMonitor runs the 5 s and night checks only if the Alert Service stops'],
     ['Inline alert badges &\nsensor fault notices', 'CRITICAL / WARNING / RECOVERED / FAULT tags; "monitoring continues" notice']],
   [['Pump switch on a tank card', 'Admin, or a Worker on an assigned tank'],
     ['Write pumpOn, wait for the answer', 'Spinner until pumpCommandResult arrives (15 s timeout); command logged'],
@@ -386,20 +386,20 @@ const fig39 = () => ipo([
   [['Push notifications\n(FCM)', 'Sent by the Alert\nService when an\nalert starts'],
     ['Register device &\nshow notification', 'Device token saved in\nuserState/{uid};\ntap opens the alert'],
     ['Alerts even when the\napp is closed', 'System notification on\nWeb & Android']],
-  [['Reports request &\ndate range filter', 'Tank selection (Tanks 1–4),\n7 / 14 / 30-day range'],
+  [['Reports request &\ndate range filter', 'Tank selection (any registered tank), 7 / 14 / 30-day range'],
     ['Query RTDB telemetry,\nbuild chart datasets', 'Recharts time-series charts, hourly/daily aggregation; predictive analytics computed in the browser'],
     ['Trend charts &\nexportable reports', 'Predictive analytics, Pump Activity Log, problem counts; PDF / Excel / CSV from the Reports page']],
   [['Audit log search &\ncategory filter', 'Keyword query; tabs\nAll / Alerts / System /\nErrors'],
     ['Filter logs/ node,\nhighlight matches', 'Regex-safe highlight, sort\nby timestamp desc'],
     ['Filtered audit log with\nhighlighted terms', 'Paginated list, clear-all\nfor admin role only']],
-  [['Admin configuration\n& settings input', 'Thresholds; night watch; Pump System & pump mode; calibration & capacity of the selected tank (1–4); maintenance mode'],
+  [['Admin configuration\n& settings input', 'Shared and per-tank thresholds; night watch & tanks to watch; Pump System & pump mode; calibration & capacity of the selected tank; maintenance mode (all or one tank)'],
     ['Validate input, write\nto config/ & tanks/', 'updateConfig /\nupdateTank RTDB write,\ntoast confirm'],
     ['Updated system\nconfig & calibration\nsettings', 'Changes apply live,\nESP32 picks up on poll']],
   [['Live calibration view', 'Start or +10 min for one tank (30 min at most)'],
     ['Write calibrationUntil, listen to calibrationLive', 'Readings once per second; "Use as Vmin / Vmax / pH neutral" fills the form'],
     ['Live sensor readings', 'Level voltage, height, %, pH voltage; Save applies the values']],
   [['User management', 'New user, role\n(admin/worker/viewer)'],
-    ['Register via\nsecondary Auth,\nFirestore profile', 'onSnapshot user list;\nactivate/deactivate,\ndelete'],
+    ['Register via\nsecondary Auth,\nFirestore profile', 'onSnapshot user list; activate/deactivate (no delete); online status'],
     ['Active user registry\nlist, role-based\naccess live', 'Admin panel user\ntable updated in real\ntime']],
   [['Tank assignment', 'Worker chosen for\neach tank'],
     ['Write assignedWorker\nto RTDB tanks/{id}', 'Saved with the tank,\nnot in Firestore'],
@@ -441,7 +441,7 @@ function fig310() {
   uc('pdm', BX, row(6), 'Set Pump\nSystem &\nPump Mode', 'green');
   uc('nw', BX - 60, row(7), 'Set Night Watch', 'green');
   uc('add', BX, row(8), 'Add User\n(with Role)', 'green');
-  uc('del', BX, row(9), 'Delete User', 'green');
+  uc('onl', BX, row(9), 'View User\nOnline Status', 'green');
   uc('act', BX, row(10), 'Activate/Deactivate\nAccount', 'green');
   uc('vrd', BX, row(11), 'View Report\non Dashboard', 'green');
   uc('exp', BX, row(12), 'Export Report to\n(PDF/Excel/CSV)', 'green');
@@ -452,8 +452,11 @@ function fig310() {
   uc('cur', BX, row(19), 'Check User\nRole', 'green');
   uc('lus', BX, row(20), 'Load User\nSession', 'green');
   // column C and the system use cases
-  uc('sel', CX, row(3), 'Select Tank\n(Tank 1–4)', 'green');
+  uc('sel', CX, row(3), 'Select Tank', 'green');
   uc('live', CX, row(4), 'View Live\nSensor Readings', 'green');
+  uc('own', CX, row(1), 'Set Own\nThresholds\nper Tank', 'green');
+  uc('tmn', CX, row(6), 'Set Tank\nMaintenance', 'green');
+  uc('twt', CX, row(7), 'Choose Tanks\nto Watch', 'green');
   uc('pa', CX, row(11), 'View Predictive\nAnalytics', 'green');
   uc('vdd', CX, row(15), 'View\nDashboard Data', 'green');
   uc('pump', CX, row(16), 'Switch Pump');
@@ -487,7 +490,8 @@ function fig310() {
   for (const id of ['setph', 'setwl', 'cal', 'awc', 'loc', 'pdm', 'nw']) rel('cfg', id, 'include');
   rel('cal', 'sel', 'include'); rel('live', 'cal', 'extend');
   rel('vrd', 'pa', 'include');
-  for (const id of ['add', 'del', 'act']) rel(id, 'mua', 'extend');
+  for (const id of ['add', 'onl', 'act']) rel(id, 'mua', 'extend');
+  rel('own', 'setwl', 'extend'); rel('tmn', 'pdm', 'extend'); rel('twt', 'nw', 'extend');
   rel('gar', 'vrd', 'include'); rel('gar', 'fd', 'include'); rel('exp', 'gar', 'extend');
   rel('vd', 'mtt', 'include'); rel('mtt', 'vdd', 'include'); rel('pump', 'mtt', 'extend');
   rel('pd', 'mtt', 'include'); rel('pd', 'fd', 'include');
@@ -507,7 +511,7 @@ function fig310() {
   b += cropCircleAt(IMG, [139, 404, 62], ...admin, AR) + name(admin, 'Admin');
   b += cropCircleAt(IMG, [139, 900, 62], ...worker, AR) + name(worker, 'Worker');
   b += cropCircleAt(IMG, [139, 1420, 59], ...viewer, AR) + name(viewer, 'Viewer');
-  b += cropCircleAt(IMG, [1710, 1030, 70], ...iot, AR) + name(iot, 'IoT Sensors\n(Tanks 1–4)');
+  b += cropCircleAt(IMG, [1710, 1030, 70], ...iot, AR) + name(iot, 'IoT Sensors\n(one per tank)');
   const [sx, sy] = svc;
   b += `<circle cx="${sx}" cy="${sy}" r="${AR}" fill="#6FAEDC"/>`;
   for (const dy of [-24, -5, 14]) {
@@ -574,7 +578,7 @@ function fig311() {
 // Two columns of tables; links between them run in the middle gap and down the right margin.
 // ======================================================================
 function fig312() {
-  const W = PAGE_W, H = 1976, ROW = 26, HEAD = 50, TW = 450, X1 = 12, X2 = 622;
+  const W = PAGE_W, H = 2090, ROW = 26, HEAD = 50, TW = 450, X1 = 12, X2 = 622;
   const RT = 'Firebase Realtime Database';
   let b = '', ents = {};
   const ent = (id, x, y, title, sub, rows, fs = false) => {
@@ -604,16 +608,18 @@ function fig312() {
     ['', 'maintenanceMode', 'BOOLEAN'], ['', 'offlineThresholdSec', 'NUMBER'], ['', 'repeatIntervalSec', 'NUMBER'],
     ['', 'soundEnabled', 'BOOLEAN'], ['', 'pushEnabled', 'BOOLEAN'],
     ['', 'pumpDemoMode', 'BOOLEAN'], ['', 'pumpControlLock', 'BOOLEAN'], ['', 'pumpMode', 'STRING'],
-    ['', 'nightWatchEnabled', 'BOOLEAN'], ['', 'nightStart/EndHour', 'NUMBER'], ['', 'nightFast/SlowDropPercent', 'NUMBER']]);
-  ent('tanks', X1, 536, 'TANKS', `${RT}  /tanks/{id}`, [
+    ['', 'nightWatchEnabled', 'BOOLEAN'], ['', 'nightStart/EndHour', 'NUMBER'], ['', 'nightFast/SlowDropPercent', 'NUMBER'],
+    ['', 'nightWatchTanks', 'MAP']]);
+  ent('tanks', X1, 562, 'TANKS', `${RT}  /tanks/{id}`, [
     ['PK', 'id', 'STRING'], ['', 'name', 'STRING'], ['', 'location', 'STRING'], ['', 'enabled', 'BOOLEAN'],
     ['FK', 'assignedWorker', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'], ['', 'phLevel', 'NUMBER'],
     ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'], ['', 'pumpOn', 'BOOLEAN'],
     ['', 'pumpCommandAt', 'TIMESTAMP'], ['', 'pumpCommandResult', 'STRING'], ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'levelVmin', 'NUMBER'], ['', 'levelVmax', 'NUMBER'],
     ['', 'tankHeight', 'NUMBER'], ['', 'capacityLiters', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'],
     ['', 'phSlope', 'NUMBER'], ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'], ['', 'firebaseConnected', 'BOOLEAN'],
-    ['', 'controllerOffline', 'BOOLEAN'], ['', 'calibrationUntil', 'TIMESTAMP'], ['', 'calibrationLive', 'OBJECT'], ['', 'lastUpdate', 'TIMESTAMP']]);
-  ent('hist', X1, 1528, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
+    ['', 'controllerOffline', 'BOOLEAN'], ['', 'calibrationUntil', 'TIMESTAMP'], ['', 'calibrationLive', 'OBJECT'],
+    ['', 'thresholds (own limits)', 'OBJECT'], ['', 'maintenanceMode', 'BOOLEAN'], ['', 'pumpFault', 'STRING'], ['', 'lastUpdate', 'TIMESTAMP']]);
+  ent('hist', X1, 1632, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
     ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
     ['', 'phLevel', 'NUMBER'], ['', 'pumpOn', 'BOOLEAN'], ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'timestamp', 'TIMESTAMP']]);
   ent('roles', X2, 12, 'ROLES', `${RT}  /roles/{uid}`, [
@@ -633,9 +639,15 @@ function fig312() {
     ['', 'resolvedAt', 'TIMESTAMP'], ['', 'lastRepeatedAt', 'TIMESTAMP']]);
   ent('worker', X2, 1428, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
     ['', 'lastSeen', 'TIMESTAMP'], ['', 'startedAt', 'TIMESTAMP']]);
+  ent('udir', X2, 1600, 'USER_DIRECTORY', 'Cloud Firestore  directory/{uid}', [
+    ['PK,FK', 'uid', 'STRING'], ['', 'username', 'STRING']], true);
+  ent('pres', X2, 1760, 'PRESENCE', `${RT}  /presence/{uid}`, [
+    ['PK,FK', 'uid', 'STRING'], ['', 'connections/{id}/since', 'TIMESTAMP'], ['', 'connections/{id}/app', 'STRING'], ['', 'lastSeen', 'TIMESTAMP']]);
   const small = { size: 15, weight: 400, italic: true, fill: '#444', family: ARIAL };
   b += text(X2 + 150, (bottom('roles') + 198) / 2, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { ...small, anchor: 'start' });
   b += text(X2 + TW / 2, bottom('worker') + 20, 'Cloud-hosted Alert Service heartbeat (no relationships)', small);
+  b += text(X2 + TW / 2, bottom('udir') + 20, 'Name of each USERS record (uid = USERS.id), readable by all users', small);
+  b += text(X2 + TW / 2, bottom('pres') + 20, 'Online status of each USERS record (uid = USERS.id), admins only', small);
 
   // crow's foot ends: p = point on the entity edge, d = unit direction away from the entity
   const end = ([px, py], [dx, dy], kind) => {
@@ -662,7 +674,7 @@ function fig312() {
   b += link([[VX, bottom('config')], [VX, ents.tanks.y]], 'one', 'zeroMany') + it(VX + 24, (bottom('config') + ents.tanks.y) / 2, 'governs thresholds of');
   b += link([[VX, bottom('tanks')], [VX, ents.hist.y]], 'one', 'zeroMany') + it(VX + 24, (bottom('tanks') + ents.hist.y) / 2, 'stores 10-minute samples in');
   // across the middle gap
-  b += link([[E1, rowY('tanks', 4)], [MID, rowY('tanks', 4)], [MID, rowY('users', 0)], [X2, rowY('users', 0)]], 'zeroMany', 'zeroOne') + itOn(MID, 430, 'is assigned to');
+  b += link([[E1, rowY('tanks', 4)], [MID, rowY('tanks', 4)], [MID, rowY('users', 0)], [X2, rowY('users', 0)]], 'zeroMany', 'zeroOne') + itOn(MID, 450, 'is assigned to');
   b += link([[E1, rowY('logs', 1)], [X2, rowY('logs', 1)]], 'zeroOne', 'zeroMany') + it(MID, rowY('logs', 1) - 30, 'is the source of', 'middle');
   b += link([[E1, rowY('notif', 1)], [X2, rowY('notif', 1)]], 'one', 'zeroMany') + it(MID, rowY('notif', 1) - 30, 'raises', 'middle');
   // right column
@@ -675,7 +687,7 @@ function fig312() {
     itUp(E2 + 88, 1085, 'acknowledges');
 
   // legend, across the bottom
-  const ly = 1844, lg ={ size: 17, weight: 400, anchor: 'start', family: ARIAL };
+  const ly = 1958, lg ={ size: 17, weight: 400, anchor: 'start', family: ARIAL };
   b += `<rect x="${X1}" y="${ly}" width="${W - 2 * X1}" height="120" fill="#FFF" stroke="#999" stroke-width="1.5"/>`;
   b += text(X1 + 14, ly + 20, 'Legend', { size: 18, anchor: 'start', family: ARIAL });
   const r = (i) => ly + 46 + i * 26;
@@ -751,19 +763,21 @@ function dmKit() {
 }
 
 function figDataModel1() {
-  const { W, TW, COL, FS, RT, MONO } = DM, H = 1850;
+  const { W, TW, COL, FS, RT, MONO } = DM, H = 2225;
   const k = dmKit();
   // ---- column 1: Firestore, ROLES, USER_STATE, legend
   let x = COL[0];
-  k.b += `<rect x="${x}" y="30" width="${TW}" height="210" fill="${FS}" stroke="#111" stroke-width="2.5"/>`;
+  k.b += `<rect x="${x}" y="30" width="${TW}" height="270" fill="${FS}" stroke="#111" stroke-width="2.5"/>`;
   k.b += text(x + 18, 64, 'Cloud Firestore (document database)', { size: 29, anchor: 'start', family: ARIAL });
-  k.b += `<rect x="${x + 30}" y="104" width="140" height="52" rx="4" fill="#FFF" stroke="#111" stroke-width="2"/>` + text(x + 100, 130, 'users', { size: 24, family: MONO });
-  k.b += `<line x1="${x + 170}" y1="130" x2="${x + 220}" y2="130" stroke="#111" stroke-width="2"/>`;
-  k.b += `<rect x="${x + 220}" y="104" width="140" height="52" rx="4" fill="#FFF" stroke="#111" stroke-width="2" stroke-dasharray="7 5"/>` + text(x + 290, 130, '{uid}', { size: 24, weight: 400, family: MONO });
-  k.note(x + 100, 192, 'collection', { anchor: 'middle' });
-  k.note(x + 290, 192, 'document\n(Auth UID)', { anchor: 'middle' });
-  k.note(x + 390, 130, 'the only collection;\nall other paths\nare denied');
-  const usersEnd = k.tbl(x, 280, 'USERS', 'users/{uid}', ['Admin Panel (create, role, status);', 'the user edits only username, jobTitle'], [
+  for (const [cy, coll] of [[124, 'users'], [196, 'directory']]) {
+    k.b += `<rect x="${x + 30}" y="${cy - 26}" width="170" height="52" rx="4" fill="#FFF" stroke="#111" stroke-width="2"/>` + text(x + 115, cy, coll, { size: 24, family: MONO });
+    k.b += `<line x1="${x + 200}" y1="${cy}" x2="${x + 240}" y2="${cy}" stroke="#111" stroke-width="2"/>`;
+    k.b += `<rect x="${x + 240}" y="${cy - 26}" width="140" height="52" rx="4" fill="#FFF" stroke="#111" stroke-width="2" stroke-dasharray="7 5"/>` + text(x + 310, cy, '{uid}', { size: 24, weight: 400, family: MONO });
+  }
+  k.note(x + 115, 256, 'collection', { anchor: 'middle' });
+  k.note(x + 310, 256, 'document (Auth UID)', { anchor: 'middle' });
+  k.note(x + 400, 160, 'two collections;\nall other paths\nare denied');
+  const usersEnd = k.tbl(x, 330, 'USERS', 'users/{uid}', ['Admin Panel (create, role, status);', 'read: the user (own) and admins'], [
     ['id', 'STRING'], ['username', 'STRING'], ['email', 'STRING'], ['role (admin | worker | viewer)', 'STRING'],
     ['jobTitle', 'STRING'], ['status (active | inactive)', 'STRING'], ['createdAt', 'TIMESTAMP']], FS);
   k.b += arrow([[x + 360, usersEnd], [x + 360, usersEnd + 102]], { dash: '10 7', sw: 2.5 });
@@ -774,7 +788,9 @@ function figDataModel1() {
   const usEnd = k.tbl(x, rolesEnd + 76, 'USER_STATE', 'userState/{uid}', 'web app or APK, only by the same user', [
     ['notificationsLastReadAt', 'TIMESTAMP'], ['notificationsReadIds/{alertId}', 'BOOLEAN'],
     ['fcmTokens/{token}/platform', 'STRING'], ['fcmTokens/{token}/updatedAt', 'TIMESTAMP']]);
-  k.legend(x, usEnd + 40, 280, [
+  const prEnd = k.tbl(x, usEnd + 40, 'PRESENCE', 'presence/{uid}', 'each user, for themselves; read by admins', [
+    ['connections/{id}/since', 'TIMESTAMP'], ['connections/{id}/app (web | android)', 'STRING'], ['lastSeen', 'TIMESTAMP']]);
+  k.legend(x, prEnd + 40, 280, [
     { swatch: FS, t: 'Cloud Firestore' }, { swatch: RT, t: 'Firebase Realtime Database' },
     { pill: 'tanks', t: 'fixed path name', gap: 56 }, { pill: '{key}', t: 'generated key (ID, UID, push key)', gap: 50 },
   ]);
@@ -784,7 +800,7 @@ function figDataModel1() {
   const tree = [
     [['tanks', '{tankId}'], 'TANKS'], [['config'], 'CONFIG'], [['history', 'tanks', '{tankId}', '{pushKey}'], 'HISTORY'],
     [['logs', '{pushKey}'], 'LOGS'], [['notifications', '{alertId}'], 'NOTIFICATIONS'], [['roles', '{uid}'], 'ROLES'],
-    [['userState', '{uid}'], 'USER_STATE'], [['system', 'worker'], 'SYSTEM'],
+    [['userState', '{uid}'], 'USER_STATE'], [['presence', '{uid}'], 'PRESENCE'], [['system', 'worker'], 'SYSTEM'],
   ];
   const tH = 160 + tree.length * 68;
   k.b += `<rect x="${x}" y="30" width="${TW}" height="${tH}" fill="#FFF" stroke="#111" stroke-width="2.5"/>`;
@@ -798,24 +814,27 @@ function figDataModel1() {
     if (end < x + 520) k.note(x + 530, y, ent, { size: 20 });
   });
   k.note(x + 18, 30 + tH - 26, 'Each path leads to the table of the same name.', { size: 20 });
-  const cfgEnd = k.tbl(x, 30 + tH + 40, 'CONFIG', 'config', 'Admin Panel (one record for all tanks)', [
+  const cfgEnd = k.tbl(x, 30 + tH + 40, 'CONFIG', 'config', ['Admin Panel (shared by all tanks; a tank\'s', 'own limits are in tanks/{id}/thresholds)'], [
     ['lowLevelThreshold (%, default 15)', 'NUMBER'], ['overflowThreshold (%, default 95)', 'NUMBER'],
     ['minPh (default 6.5)', 'NUMBER'], ['maxPh (default 8.5)', 'NUMBER'], ['maintenanceMode', 'BOOLEAN'],
     ['pumpControlLock', 'BOOLEAN'], ['pumpDemoMode (Pump System)', 'BOOLEAN'], ['pumpMode (auto or manual)', 'STRING'],
     ['offlineThresholdSec (default 30)', 'NUMBER'], ['repeatIntervalSec (default 60)', 'NUMBER'], ['soundEnabled', 'BOOLEAN'], ['pushEnabled', 'BOOLEAN'],
     ['nightWatchEnabled (missing = on)', 'BOOLEAN'], ['nightStartHour, nightEndHour (22, 3)', 'NUMBER'],
-    ['nightFastDropPercent (default 5)', 'NUMBER'], ['nightSlowDropPercent (default 3)', 'NUMBER']]);
-  k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system/worker', 'Alert Service heartbeat', [
+    ['nightFastDropPercent (default 5)', 'NUMBER'], ['nightSlowDropPercent (default 3)', 'NUMBER'],
+    ['nightWatchTanks/{tankId} (missing = on)', 'BOOLEAN']]);
+  const sysEnd = k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system/worker', 'Alert Service heartbeat', [
     ['lastSeen', 'TIMESTAMP'], ['startedAt', 'TIMESTAMP']]);
+  k.tbl(x, sysEnd + 40, 'USER_DIRECTORY', 'directory/{uid}', ['Admins (create, rename, sync);', 'read by all signed-in users'], [
+    ['username (name only)', 'STRING']], FS);
   return svg(W, H, k.b);
 }
 
 function figDataModel2() {
-  const { W, COL, RT } = DM, H = 2090;
+  const { W, COL, RT } = DM, H = 2230;
   const k = dmKit();
   let x = COL[0];
-  const tnkEnd = k.tbl(x, 30, 'TANKS', 'tanks/{tankId}', ['ESP32 (live readings), Admin (setup,', 'calibration, capacity), Worker (pumpOn),', 'Alert Service (controllerOffline)'], [
-    ['id ("1" to "4")', 'STRING'], ['name', 'STRING'], ['location', 'STRING'], ['enabled', 'BOOLEAN'], ['assignedWorker (user UID)', 'STRING'],
+  const tnkEnd = k.tbl(x, 30, 'TANKS', 'tanks/{tankId}', ['ESP32 (live readings, pumpFault), Admin (setup,', 'calibration, capacity, thresholds, maintenance),', 'Worker (pumpOn), Alert Service (controllerOffline)'], [
+    ['id ("1" to "999")', 'STRING'], ['name', 'STRING'], ['location', 'STRING'], ['enabled', 'BOOLEAN'], ['assignedWorker (user UID)', 'STRING'],
     ['waterLevel (%)', 'NUMBER'], ['waterHeight (m)', 'NUMBER'], ['phLevel', 'NUMBER'], ['status (safe|warning|danger|offline)', 'STRING'],
     ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn (state and command)', 'BOOLEAN'],
     ['pumpCommandAt', 'TIMESTAMP'], ['pumpCommandResult', 'STRING'],
@@ -823,24 +842,25 @@ function figDataModel2() {
     ['tankHeight (m)', 'NUMBER'], ['capacityLiters (default 200)', 'NUMBER'], ['levelOffset', 'NUMBER'], ['phNeutralVoltage (V)', 'NUMBER'],
     ['phSlope', 'NUMBER'], ['phOffset', 'NUMBER'], ['rssi (dBm)', 'NUMBER'], ['wifiConnected', 'BOOLEAN'], ['ethConnected', 'BOOLEAN'],
     ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['calibrationUntil (max 30 min ahead)', 'TIMESTAMP'],
-    ['calibrationLive (V, m, %, pH V)', 'OBJECT'], ['lastUpdate', 'TIMESTAMP']]);
+    ['calibrationLive (V, m, %, pH V)', 'OBJECT'], ['thresholds (own low, overflow, pH)', 'OBJECT'],
+    ['maintenanceMode (this tank)', 'BOOLEAN'], ['pumpFault (no-rise | max-run)', 'STRING'], ['lastUpdate', 'TIMESTAMP']]);
   k.tbl(x, tnkEnd + 40, 'HISTORY', 'history/tanks/{tankId}/{pushKey}', 'ESP32, one sample every 10 minutes', [
     ['waterLevel', 'NUMBER'], ['waterHeight', 'NUMBER'], ['phLevel', 'NUMBER'], ['pumpOn', 'BOOLEAN'],
     ['levelSensorOk, phSensorOk', 'BOOLEAN'], ['timestamp (indexed)', 'TIMESTAMP']]);
 
   x = COL[1];
-  const ntfEnd = k.tbl(x, 30, 'NOTIFICATIONS', 'notifications/{alertId}', ['Alert Service (or open dashboards while', 'it is down); users acknowledge'], [
+  const ntfEnd = k.tbl(x, 30, 'NOTIFICATIONS', 'notifications/{alertId}', ['Alert Service (or open Admin and Worker', 'dashboards while it is down); users acknowledge'], [
     ['id (alert-{tankId}-{type})', 'STRING'], ['tankId', 'STRING'], ['title', 'STRING'], ['message', 'STRING'], ['type (info | warning | danger)', 'STRING'],
     ['timestamp (indexed)', 'TIMESTAMP'], ['read', 'BOOLEAN'], ['acknowledged', 'BOOLEAN'], ['acknowledgedBy (name)', 'STRING'],
     ['acknowledgedByUid', 'STRING'], ['acknowledgedAt', 'TIMESTAMP'], ['resolved', 'BOOLEAN'], ['resolvedAt', 'TIMESTAMP'], ['lastRepeatedAt', 'TIMESTAMP']]);
   const logEnd = k.tbl(x, ntfEnd + 40, 'LOGS', 'logs/{pushKey}', 'ESP32, web app, Alert Service (append only)', [
-    ['id', 'STRING'], ['tankId (Tanks 2–4; none = Tank 1)', 'STRING'], ['action', 'STRING'], ['details', 'STRING'],
+    ['id', 'STRING'], ['tankId (none = Tank 1)', 'STRING'], ['action', 'STRING'], ['details', 'STRING'],
     ['performedBy (name)', 'STRING'], ['logLevel (see legend)', 'STRING'], ['timestamp (indexed)', 'TIMESTAMP']]);
   k.legend(x, logEnd + 40, 400, [
     { t: 'logLevel = INFO | WARNING | ERROR | CRITICAL' },
     { swatch: RT, t: 'Firebase Realtime Database' },
     { t: 'TIMESTAMP = milliseconds since 1970' },
-    { t: '{tankId} = "1" to "4" (one record per tank)' },
+    { t: '{tankId} = "1" to "999" (one record per tank)' },
     { t: 'Records older than 90 days are deleted daily', grey: true, gap: 32 },
     { t: 'by the Alert Service (notifications, logs, history).', grey: true },
   ]);
@@ -903,9 +923,9 @@ function fig313() {
   b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#111', sw: 2 });
   b += A([[594, 322], [620, 322]]);
   b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Refill\nPump)', 16);
-  // one sensor node per tank: the group is repeated at Tanks 1–4
+  // one sensor node per tank: the group is repeated at every registered tank
   b += rect(8, 50, 682, 452, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
-  b += P(349, 28, 'One Sensor Node per Tank (Tanks 1–4)');
+  b += P(349, 28, 'One Sensor Node per Registered Tank');
   // labels
   b += P(112, 262, 'Hydrostatic Water\nLevel Sensor\n(4–20 mA)');
   b += P(330, 85, 'Current-to-Voltage\nModule');

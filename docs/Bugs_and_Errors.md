@@ -4,7 +4,7 @@ First checked on 2026-11-14 against `main` at `2c05cd1`. **Updated 2026-11-20 ag
 **Open now** below for everything still open. Groups 1–8 further down are the record of the 14 Nov work.
 
 **Status on 2026-11-20:** `npm test` 238 passed (35 files), `npm run typecheck` 0 errors, `npm run lint` 0 errors
-and 0 warnings. Open: code item A4 (low, optional) and thesis items C1–C4 (A1, A2, A3, A5, A6 fixed).
+and 0 warnings. Open: code item A4 (low, optional) and thesis items C2–C4 (A1, A2, A3, A5, A6 and C1 fixed).
 All manual steps (B1–B3) are done.
 
 **Status on 2026-11-14:** Groups 1 and 3–7 are done. Group 2 is fixed in the code but needs two manual steps
@@ -88,11 +88,11 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
   and 21 incomplete statements. All 58 text fixes are written as tracked changes ("Claude System Update") into
   `thesis-review/FINAL_CAPSTONE_PAPER_0.90m_system-update-2026-11-21.docx` (script: `thesis-review/update-1120/`).
   Review and accept them in Word. Run the check again after the next system change.
-- [ ] **C1 Redraw four figures** (text is fixed, the pictures are not): Figure 3.10 (use case: remove "Delete User",
-  "Select Tank" without "Tank 1–4", "IoT Sensors (one per tank)") and Figures 3.12–3.14 (ERD and data model: add
-  USER_DIRECTORY, PRESENCE, `tanks/{id}/thresholds`, `maintenanceMode`, `pumpFault`, `config/nightWatchTanks`).
-  First update `docs/diagrams/figures.mjs`: it still draws "LAN8720", "Delete User" and "Tank 1–4", while the
-  figures in the paper already show W5500, so a rebuild from it would bring LAN8720 back.
+- [x] **C1 Redraw the figures.** *Done 2026-11-21:* the 19 Nov figure source (W5500) was merged into `main` from
+  `update-chapter3-figures-2026-11-19`, then Figures 3.6–3.10, 3.12, 3.13, 3.14 and 3.15 were redrawn (no "Delete
+  User", registered tanks instead of "Tanks 1–4", per-tank thresholds, tank maintenance, tanks to watch, online
+  status, dry-run guard, USER_DIRECTORY and PRESENCE; see `docs/diagrams/Diagrams.md`). They replace the old pictures
+  as tracked changes in `thesis-review/FINAL_CAPSTONE_PAPER_0.90m_system-update-2026-11-21.docx`.
 - [ ] **C2 Fill the 31 "[NEEDS DATA: …]" markers** with your own results: level accuracy test (tape and dashboard
   readings, dates, percentage errors), wireless bridge power-off test, mounting positions of the two CPE210 units,
   the network link used on 9 Nov 2026, and five website retrieval dates in the References.
