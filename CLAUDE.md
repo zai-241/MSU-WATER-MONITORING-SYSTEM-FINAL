@@ -1,9 +1,20 @@
 # MSU Water Monitoring System: System Map
 
 IoT water level and pH monitoring for reservoir tanks at the MSU Motor Pool (Tanks 1–4 built in, more can be added); only Tank 1
-(tested on a 200 L drum model of Reservoir Tank No. 1) has hardware. This is also the
-capstone thesis project. This file is the single source of truth for how the parts fit together.
+(the Pilot Test Tank, a 200 L drum) has hardware. This is also the capstone thesis project.
+This file is the single source of truth for how the parts fit together.
 **Update it whenever the system design changes** (new part, new database path, new deploy step).
+
+Two phases, and the paper must keep them apart:
+- **Pilot testing (done):** the ground-level 200 L drum (0.90 m high) in Brgy. Datu Saber, Marawi City, is Tank 1 in
+  the system (dashboard name "Pilot Test Tank"). Sensor calibration (level and pH) and hardware debugging were done
+  on it, for safety and controlled testing. Every measured result in the paper comes from this drum.
+- **Actual deployment (target):** the system is designed for real-time monitoring of Reservoir Tank No. 1, the
+  elevated water tank of the MSU Motor Pool on 3rd Street behind CICS: 16,852.25 US gal (about 63,793 L), about 4.0 m
+  water height. Nothing is installed there yet. Moving there means setting tank height 4.0 m and `capacityLiters`
+  63793 in the Admin Panel and recalibrating Vmin/Vmax. With Tank 1's current HW-685 setting (0.600 V empty, about
+  0.84 V per m) the reading would pass the 3.25 V fault limit above about 3.2 m, so SPAN must be turned down until
+  4.0 m reads at most 3.0 V (`docs/Level_Sensor_Zero_Span_Calibration.md`, C2).
 
 ## The five parts
 
@@ -138,5 +149,7 @@ The sketches have no fallback credentials: a build without all five values in `s
 
 - When a change touches a number or behavior described in the thesis (thresholds, intervals, filter
   stages, roles), say so, and run the `thesis-code-checker` agent before adviser meetings or the defense.
+- Paper edits go into the Google Doc (Drive: "FINAL_CAPSTONE_PAPER_2026-11-19") as **suggestions**. Never edit or save
+  a capstone paper .docx on a local machine; local .docx files are for reading only.
 - Deploy database rules only after the needed `/roles` entries exist, or the ESP32 gets rejected.
 - Keep it free: no paid Firebase plan features, no Play Store fees.
