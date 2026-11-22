@@ -574,139 +574,11 @@ function fig311() {
 }
 
 // ======================================================================
-// Figure 3-12: ERD (typed tables, crow's foot)
-// Two columns of tables; links between them run in the middle gap and down the right margin.
-// ======================================================================
-function fig312() {
-  const W = PAGE_W, H = 2090, ROW = 26, HEAD = 50, TW = 450, X1 = 12, X2 = 622;
-  const RT = 'Firebase Realtime Database';
-  let b = '', ents = {};
-  const ent = (id, x, y, title, sub, rows, fs = false) => {
-    const h = HEAD + rows.length * ROW;
-    ents[id] = { x, y, h, rows };
-    let s = `<rect x="${x}" y="${y}" width="${TW}" height="${HEAD}" fill="${fs ? '#FCE8CC' : '#D6E4F5'}"/>`;
-    s += text(x + TW / 2, y + 18, title, { size: 22, family: ARIAL });
-    s += text(x + TW / 2, y + 38, sub, { size: 15, weight: 400, italic: true, fill: '#444', family: ARIAL });
-    rows.forEach(([key, name, type], i) => {
-      const ry = y + HEAD + i * ROW;
-      s += `<rect x="${x}" y="${ry}" width="${TW}" height="${ROW}" fill="${i % 2 ? '#F4F4F4' : '#FFFFFF'}"/>`;
-      s += `<line x1="${x}" y1="${ry}" x2="${x + TW}" y2="${ry}" stroke="#CCCCCC"/>`;
-      if (key) s += text(x + 29, ry + ROW / 2, key, { size: 14, family: ARIAL });
-      s += text(x + 68, ry + ROW / 2, name, { size: 19, weight: 400, anchor: 'start', family: ARIAL });
-      s += text(x + 336, ry + ROW / 2, type, { size: 16, weight: 400, anchor: 'start', fill: '#444', family: ARIAL });
-    });
-    s += `<line x1="${x + 58}" y1="${y + HEAD}" x2="${x + 58}" y2="${y + h}" stroke="#CCCCCC"/><line x1="${x + 326}" y1="${y + HEAD}" x2="${x + 326}" y2="${y + h}" stroke="#CCCCCC"/>`;
-    s += `<line x1="${x}" y1="${y + HEAD}" x2="${x + TW}" y2="${y + HEAD}" stroke="#111" stroke-width="2"/>`;
-    s += `<rect x="${x}" y="${y}" width="${TW}" height="${h}" fill="none" stroke="#111" stroke-width="2"/>`;
-    b += s;
-  };
-  const rowY = (id, i) => ents[id].y + HEAD + i * ROW + ROW / 2;
-  const bottom = (id) => ents[id].y + ents[id].h;
-
-  ent('config', X1, 12, 'CONFIG', `${RT}  /config  (single record)`, [
-    ['', 'lowLevelThreshold', 'NUMBER'], ['', 'overflowThreshold', 'NUMBER'], ['', 'minPh', 'NUMBER'], ['', 'maxPh', 'NUMBER'],
-    ['', 'maintenanceMode', 'BOOLEAN'], ['', 'offlineThresholdSec', 'NUMBER'], ['', 'repeatIntervalSec', 'NUMBER'],
-    ['', 'soundEnabled', 'BOOLEAN'], ['', 'pushEnabled', 'BOOLEAN'],
-    ['', 'pumpDemoMode', 'BOOLEAN'], ['', 'pumpControlLock', 'BOOLEAN'], ['', 'pumpMode', 'STRING'],
-    ['', 'nightWatchEnabled', 'BOOLEAN'], ['', 'nightStart/EndHour', 'NUMBER'], ['', 'nightFast/SlowDropPercent', 'NUMBER'],
-    ['', 'nightWatchTanks', 'MAP']]);
-  ent('tanks', X1, 562, 'TANKS', `${RT}  /tanks/{id}`, [
-    ['PK', 'id', 'STRING'], ['', 'name', 'STRING'], ['', 'location', 'STRING'], ['', 'enabled', 'BOOLEAN'],
-    ['FK', 'assignedWorker', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'], ['', 'phLevel', 'NUMBER'],
-    ['', 'status', 'STRING'], ['', 'lowLevelAlert', 'STRING'], ['', 'highLevelAlert', 'STRING'], ['', 'phAlert', 'STRING'], ['', 'pumpOn', 'BOOLEAN'],
-    ['', 'pumpCommandAt', 'TIMESTAMP'], ['', 'pumpCommandResult', 'STRING'], ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'levelVmin', 'NUMBER'], ['', 'levelVmax', 'NUMBER'],
-    ['', 'tankHeight', 'NUMBER'], ['', 'capacityLiters', 'NUMBER'], ['', 'levelOffset', 'NUMBER'], ['', 'phNeutralVoltage', 'NUMBER'],
-    ['', 'phSlope', 'NUMBER'], ['', 'phOffset', 'NUMBER'], ['', 'rssi', 'NUMBER'], ['', 'wifiConnected', 'BOOLEAN'], ['', 'ethConnected', 'BOOLEAN'], ['', 'firebaseConnected', 'BOOLEAN'],
-    ['', 'controllerOffline', 'BOOLEAN'], ['', 'calibrationUntil', 'TIMESTAMP'], ['', 'calibrationLive', 'OBJECT'],
-    ['', 'thresholds (own limits)', 'OBJECT'], ['', 'maintenanceMode', 'BOOLEAN'], ['', 'pumpFault', 'STRING'], ['', 'lastUpdate', 'TIMESTAMP']]);
-  ent('hist', X1, 1632, 'HISTORY_TANKS', `${RT}  /history/tanks/{tankId}`, [
-    ['PK', 'sampleKey', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'waterLevel', 'NUMBER'], ['', 'waterHeight', 'NUMBER'],
-    ['', 'phLevel', 'NUMBER'], ['', 'pumpOn', 'BOOLEAN'], ['', 'levelSensorOk', 'BOOLEAN'], ['', 'phSensorOk', 'BOOLEAN'], ['', 'timestamp', 'TIMESTAMP']]);
-  ent('roles', X2, 12, 'ROLES', `${RT}  /roles/{uid}`, [
-    ['PK,FK', 'uid', 'STRING'], ['', 'role', 'STRING']]);
-  ent('users', X2, 198, 'USERS', 'Cloud Firestore  users/{uid}', [
-    ['PK', 'id (Auth UID)', 'STRING'], ['', 'username', 'STRING'], ['', 'email', 'STRING'], ['', 'role', 'STRING'],
-    ['', 'jobTitle', 'STRING'], ['', 'status', 'STRING'], ['', 'createdAt', 'TIMESTAMP']], true);
-  ent('ustate', X2, 514, 'USER_STATE', `${RT}  /userState/{uid}`, [
-    ['PK,FK', 'uid', 'STRING'], ['', 'notificationsLastReadAt', 'TIMESTAMP'], ['', 'notificationsReadIds', 'MAP'], ['', 'fcmTokens', 'MAP']]);
-  ent('logs', X2, 718, 'LOGS', `${RT}  /logs/{id}`, [
-    ['PK', 'id', 'STRING'], ['FK', 'tankId (optional)', 'STRING'], ['', 'action', 'STRING'], ['', 'details', 'STRING'],
-    ['', 'performedBy (name)', 'STRING'], ['', 'logLevel', 'STRING'], ['', 'timestamp', 'TIMESTAMP']]);
-  ent('notif', X2, 1000, 'NOTIFICATIONS', `${RT}  /notifications/{id}`, [
-    ['PK', 'id', 'STRING'], ['FK', 'tankId', 'STRING'], ['', 'title', 'STRING'], ['', 'message', 'STRING'], ['', 'type', 'STRING'],
-    ['', 'timestamp', 'TIMESTAMP'], ['', 'acknowledged', 'BOOLEAN'], ['', 'acknowledgedBy (name)', 'STRING'],
-    ['FK', 'acknowledgedByUid', 'STRING'], ['', 'acknowledgedAt', 'TIMESTAMP'], ['', 'resolved', 'BOOLEAN'],
-    ['', 'resolvedAt', 'TIMESTAMP'], ['', 'lastRepeatedAt', 'TIMESTAMP']]);
-  ent('worker', X2, 1428, 'ALERT_SERVICE_HEARTBEAT', `${RT}  /system`, [
-    ['', 'lastSeen', 'TIMESTAMP'], ['', 'startedAt', 'TIMESTAMP']]);
-  ent('udir', X2, 1600, 'USER_DIRECTORY', 'Cloud Firestore  directory/{uid}', [
-    ['PK,FK', 'uid', 'STRING'], ['', 'username', 'STRING']], true);
-  ent('pres', X2, 1760, 'PRESENCE', `${RT}  /presence/{uid}`, [
-    ['PK,FK', 'uid', 'STRING'], ['', 'connections/{id}/since', 'TIMESTAMP'], ['', 'connections/{id}/app', 'STRING'], ['', 'lastSeen', 'TIMESTAMP']]);
-  const small = { size: 15, weight: 400, italic: true, fill: '#444', family: ARIAL };
-  b += text(X2 + 150, (bottom('roles') + 198) / 2, 'role = admin, worker, viewer or device\n(device = ESP32 controller account)', { ...small, anchor: 'start' });
-  b += text(X2 + TW / 2, bottom('worker') + 20, 'Cloud-hosted Alert Service heartbeat (no relationships)', small);
-  b += text(X2 + TW / 2, bottom('udir') + 20, 'Name of each USERS record (uid = USERS.id), readable by all users', small);
-  b += text(X2 + TW / 2, bottom('pres') + 20, 'Online status of each USERS record (uid = USERS.id), admins only', small);
-
-  // crow's foot ends: p = point on the entity edge, d = unit direction away from the entity
-  const end = ([px, py], [dx, dy], kind) => {
-    const nx = -dy, ny = dx, at = (k) => [px + dx * k, py + dy * k];
-    const bar = (k) => { const [x, y] = at(k); return `<line x1="${x + nx * 11}" y1="${y + ny * 11}" x2="${x - nx * 11}" y2="${y - ny * 11}" stroke="#111" stroke-width="2"/>`; };
-    const circ = (k) => { const [x, y] = at(k); return `<circle cx="${x}" cy="${y}" r="7" fill="#FFF" stroke="#111" stroke-width="2"/>`; };
-    if (kind === 'one') return bar(12) + bar(21);
-    if (kind === 'zeroOne') return bar(14) + circ(31);
-    const [fx, fy] = at(24); // zero or many
-    return `<line x1="${px + nx * 13}" y1="${py + ny * 13}" x2="${fx}" y2="${fy}" stroke="#111" stroke-width="2"/><line x1="${px - nx * 13}" y1="${py - ny * 13}" x2="${fx}" y2="${fy}" stroke="#111" stroke-width="2"/>` + circ(33);
-  };
-  const link = (pts, a, b2, dash) => {
-    const [p0, p1] = [pts[0], pts[1]], [q0, q1] = [pts[pts.length - 1], pts[pts.length - 2]];
-    const u = (p, q) => { const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy); return [dx / l, dy / l]; };
-    return `<polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="#111" stroke-width="2"${dash ? ' stroke-dasharray="10 7"' : ''}/>` +
-      end(p0, u(p0, p1), a) + end(q0, u(q0, q1), b2);
-  };
-  const IT = { size: 17, weight: 400, italic: true, family: ARIAL };
-  const it = (x, y, t, anchor = 'start') => text(x, y, t, { ...IT, anchor });
-  const itUp = (x, y, t) => text(x, y, t, { ...IT, rotate: -90 });
-  const itOn = (x, y, t) => `<rect x="${x - estW(t, 17) / 2 - 5}" y="${y - 13}" width="${estW(t, 17) + 10}" height="26" fill="#FFF"/>` + it(x, y, t, 'middle');
-  const E1 = X1 + TW, E2 = X2 + TW, MID = (E1 + X2) / 2, VX = X1 + 118, UX = X2 + 70;
-  // left column, top to bottom
-  b += link([[VX, bottom('config')], [VX, ents.tanks.y]], 'one', 'zeroMany') + it(VX + 24, (bottom('config') + ents.tanks.y) / 2, 'governs thresholds of');
-  b += link([[VX, bottom('tanks')], [VX, ents.hist.y]], 'one', 'zeroMany') + it(VX + 24, (bottom('tanks') + ents.hist.y) / 2, 'stores 10-minute samples in');
-  // across the middle gap
-  b += link([[E1, rowY('tanks', 4)], [MID, rowY('tanks', 4)], [MID, rowY('users', 0)], [X2, rowY('users', 0)]], 'zeroMany', 'zeroOne') + itOn(MID, 450, 'is assigned to');
-  b += link([[E1, rowY('logs', 1)], [X2, rowY('logs', 1)]], 'zeroOne', 'zeroMany') + it(MID, rowY('logs', 1) - 30, 'is the source of', 'middle');
-  b += link([[E1, rowY('notif', 1)], [X2, rowY('notif', 1)]], 'one', 'zeroMany') + it(MID, rowY('notif', 1) - 30, 'raises', 'middle');
-  // right column
-  b += link([[UX, ents.users.y], [UX, bottom('roles')]], 'one', 'zeroOne') + it(UX + 22, (bottom('roles') + ents.users.y) / 2, 'has');
-  b += link([[UX, bottom('users')], [UX, ents.ustate.y]], 'one', 'zeroOne') + it(UX + 22, (bottom('users') + ents.ustate.y) / 2, 'has');
-  // down the right margin
-  b += link([[E2, rowY('users', 6)], [E2 + 56, rowY('users', 6)], [E2 + 56, rowY('logs', 4)], [E2, rowY('logs', 4)]], 'zeroOne', 'zeroMany', true) +
-    itUp(E2 + 74, (rowY('users', 6) + rowY('logs', 4)) / 2, 'performs / is recorded in (by name)');
-  b += link([[E2, rowY('users', 0)], [E2 + 106, rowY('users', 0)], [E2 + 106, rowY('notif', 8)], [E2, rowY('notif', 8)]], 'zeroOne', 'zeroMany') +
-    itUp(E2 + 88, 1085, 'acknowledges');
-
-  // legend, across the bottom
-  const ly = 1958, lg ={ size: 17, weight: 400, anchor: 'start', family: ARIAL };
-  b += `<rect x="${X1}" y="${ly}" width="${W - 2 * X1}" height="120" fill="#FFF" stroke="#999" stroke-width="1.5"/>`;
-  b += text(X1 + 14, ly + 20, 'Legend', { size: 18, anchor: 'start', family: ARIAL });
-  const r = (i) => ly + 46 + i * 26;
-  const foot = (i, kind, t) => `<line x1="34" y1="${r(i)}" x2="84" y2="${r(i)}" stroke="#111" stroke-width="2"/>` + end([34, r(i)], [1, 0], kind) + text(100, r(i), t, lg);
-  b += foot(0, 'one', 'exactly one') + foot(1, 'zeroMany', 'zero or many') + foot(2, 'zeroOne', 'zero or one');
-  b += `<line x1="300" y1="${r(0)}" x2="350" y2="${r(0)}" stroke="#111" stroke-width="2" stroke-dasharray="10 7"/>` + text(364, r(0), 'linked by name, not a strict key', lg);
-  b += text(300, r(1), 'PK = primary key', lg) + text(300, r(2), 'FK = foreign (logical) key', lg);
-  b += `<rect x="660" y="${r(0) - 10}" width="28" height="20" fill="#FCE8CC" stroke="#999"/>` + text(700, r(0), 'Cloud Firestore', lg);
-  b += `<rect x="660" y="${r(1) - 10}" width="28" height="20" fill="#D6E4F5" stroke="#999"/>` + text(700, r(1), 'Firebase Realtime Database', lg);
-  b += text(660, r(2), 'Keys are kept by the application; Firebase does not enforce them.', { ...lg, size: 16, fill: '#444' });
-  return svg(W, H, b);
-}
-
-// ======================================================================
-// Figures 3-13 and 3-14 (Data Model): Cloud Firestore and Firebase Realtime Database
+// Figures 3-12 and 3-13 (Data Model): Cloud Firestore and Firebase Realtime Database
 // Two portrait figures sized for a 6.5-inch page width (text about 8-9 pt when inserted full width):
-//   Figure 3-13: Firestore, the RTDB path tree, ROLES, USER_STATE, CONFIG, SYSTEM
-//   Figure 3-14: TANKS, HISTORY, NOTIFICATIONS, LOGS
-// Relationships are in the ERD (Figure 3-12); these figures are the storage view.
+//   Figure 3-12: Firestore, the RTDB path tree, ROLES, USER_STATE, CONFIG, SYSTEM
+//   Figure 3-13: TANKS, HISTORY, NOTIFICATIONS, LOGS
+// They replace the ERD (removed 2026-11-22: the adviser asked for the Firebase data model instead).
 // ======================================================================
 const DM = { W: 1540, TW: 720, ROW: 44, COL: [30, 790], FS: '#FCE8CC', RT: '#D6E4F5', MONO: 'Consolas, monospace' };
 function dmKit() {
@@ -868,7 +740,7 @@ function figDataModel2() {
 }
 
 // ======================================================================
-// Figure 3-15: Architectural Design (photos from the original figure)
+// Figure 3-14: Architectural Design (photos from the original figure)
 // Top row: sensor node, bridge, router. Bottom row: cloud services and the client.
 // ======================================================================
 function serverIcon(cx, cy, r = 46) {
@@ -946,7 +818,7 @@ function fig313() {
 }
 
 // ======================================================================
-// Figure 3-16: Network Design Topology (photos from the original figure, labels redrawn larger)
+// Figure 3-15: Network Design Topology (photos from the original figure, labels redrawn larger)
 // ======================================================================
 function fig314() {
   const W = PAGE_W, H = 815, NET = 'net', IMG = 'arch';
@@ -992,9 +864,8 @@ export const figures = [
   ['Figure 3-9: Input-Process-Output (IPO) Model for Web Dashboard and Mobile Application', fig39],
   ['Figure 3-10: Use Case Diagram for the Water Level and Quality Monitoring System', fig310],
   ['Figure 3-11: Activity Diagram', fig311],
-  ['Figure 3-12: Entity-Relationship Diagram (ERD)', fig312],
-  ['Figure 3-13: Data Model of the Cloud Firestore and Realtime Database Structure', figDataModel1],
-  ['Figure 3-14: Data Model of the Realtime Database Tank, History, Notification and Log Records', figDataModel2],
-  ['Figure 3-15: Architectural Design of the System', fig313],
-  ['Figure 3-16: Network Design Topology', fig314],
+  ['Figure 3-12: Data Model of the Cloud Firestore and Realtime Database Structure', figDataModel1],
+  ['Figure 3-13: Data Model of the Realtime Database Tank, History, Notification and Log Records', figDataModel2],
+  ['Figure 3-14: Architectural Design of the System', fig313],
+  ['Figure 3-15: Network Design Topology', fig314],
 ].map(([title, draw]) => ({ title, file: title.split(':')[0].replace(/\s+/g, '_'), draw }));

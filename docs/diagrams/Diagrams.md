@@ -6,7 +6,9 @@ These replace the figures that no longer match the system. They keep the design 
 
 **To change a figure:** edit `figures.mjs`, then run `node docs/diagrams/build.mjs` (one-time setup: `npm i --no-save --prefix docs/diagrams puppeteer-core`). It needs Microsoft Edge and an internet connection for the fonts.
 
-**File names follow the paper's figure numbers (2026-11-21):** Figures 3-13 and 3-14 are the two data model figures (they were `Data_Model_1` and `Data_Model_2`), Figure 3-15 is the Architectural Design (was `Figure_3-13`) and Figure 3-16 is the Network Design Topology (was `Figure_3-14`). The notes and tables above the figures that were written before this date use the old numbers.
+**File names follow the paper's figure numbers.** 2026-11-22: the adviser asked for the Firebase data model instead of an ERD, so section 3.4.7 is now "Data Model" and the ERD figure is gone. Figures 3-12 and 3-13 are the two data model figures, Figure 3-14 is the Architectural Design and Figure 3-15 the Network Design Topology. (2026-11-21 they were 3-13, 3-14, 3-15 and 3-16 after the ERD at 3-12; before that `Data_Model_1`, `Data_Model_2`, `Figure_3-13` and `Figure_3-14`.) The notes and tables below that were written before 22 Nov use the old numbers; their "3-12 ERD" rows no longer apply.
+
+For Google Docs, `thesis-review/data-model-2026-11-22/` (local only) has 2000 px wide copies of the two data model figures: Docs refuses images over 25 megapixels, and the full-size PNGs here are about 31.
 
 **System update (2026-11-19):** 3-5, 3-6, 3-13 and 3-14 say W5500 Ethernet instead of LAN8720; 3-13 shows the pump relay on GPIO 32 as installed (refill pump of the drum model); 3-10 uses "Pump System" instead of "Pump Demo Mode"; Data_Model_1/2 add pumpMode, the night watch settings, pumpCommandAt/Result, calibrationUntil/Live and the history sensor flags. The W5500 picture in 3-13 is still the module photo from the original figure.
 
@@ -125,30 +127,24 @@ Removes Edit User and Assign Role; adds View System Logs, View Notification Hist
 
 Adds an Alert Service lane; telemetry is logged before the decision.
 
-## Figure 3-12: Entity-Relationship Diagram (ERD)
+## Figure 3-12: Data Model of the Cloud Firestore and Realtime Database Structure
 
-![Figure 3-12: Entity-Relationship Diagram (ERD)](images/Figure_3-12.png)
+![Figure 3-12: Data Model of the Cloud Firestore and Realtime Database Structure](images/Figure_3-12.png)
 
-Adds ROLES, USER_STATE and ALERT_SERVICE_HEARTBEAT, the missing fields (including each tank's capacityLiters and LOGS.tankId), and TANKS raises NOTIFICATIONS and is the source of LOGS. Pump demo fields: TANKS.pumpOn, CONFIG.pumpDemoMode and pumpControlLock.
+## Figure 3-13: Data Model of the Realtime Database Tank, History, Notification and Log Records
 
-## Figure 3-13: Data Model of the Cloud Firestore and Realtime Database Structure
+![Figure 3-13: Data Model of the Realtime Database Tank, History, Notification and Log Records](images/Figure_3-13.png)
 
-![Figure 3-13: Data Model of the Cloud Firestore and Realtime Database Structure](images/Figure_3-13.png)
+Section 3.4.7 Data Model (Figures 3-12 and 3-13; they replaced the ERD on 22 Nov). They show the two Firestore collections (`users`, `directory`), the RTDB path tree, each record's key, fields and types, and who writes it. The model is split in two portrait figures so the text stays readable (about 8–9 pt) when a figure is inserted at the full 6.5-inch text width. The same model is written out in `docs/Methodology.md` §5.
 
-## Figure 3-14: Data Model of the Realtime Database Tank, History, Notification and Log Records
+## Figure 3-14: Architectural Design of the System
 
-![Figure 3-14: Data Model of the Realtime Database Tank, History, Notification and Log Records](images/Figure_3-14.png)
-
-Placed after the ERD as Figures 3-13 and 3-14. They are the storage view of the ERD: the one Firestore collection (`users`), the RTDB path tree, each record's key, fields and types, and who writes it. The model is split in two portrait figures so the text stays readable (about 8–9 pt) when a figure is inserted at the full 6.5-inch text width. The same model is written out in `docs/Methodology.md` §5.
-
-## Figure 3-15: Architectural Design of the System
-
-![Figure 3-15: Architectural Design of the System](images/Figure_3-15.png)
+![Figure 3-14: Architectural Design of the System](images/Figure_3-14.png)
 
 Adds the current-to-voltage module, the CPE210 bridge pair, the cloud-hosted Alert Service and Firebase Cloud Messaging; the sensor node is repeated for each tank (Tanks 1–4).
 
-## Figure 3-16: Network Design Topology
+## Figure 3-15: Network Design Topology
 
-![Figure 3-16: Network Design Topology](images/Figure_3-16.png)
+![Figure 3-15: Network Design Topology](images/Figure_3-15.png)
 
 Wi-Fi is a standby link; one ESP32 node per tank, with Tank 1 tested on the drum model and Tanks 2–4 planned; the P2P link was 15–20 m in testing; adds the cloud-hosted Alert Service.
