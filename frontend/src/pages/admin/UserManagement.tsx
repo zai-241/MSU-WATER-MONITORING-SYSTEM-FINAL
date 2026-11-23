@@ -113,6 +113,17 @@ const UserManagement = ({ users, loading, addUser, updateUser }: UserManagementP
     }
   };
 
+  // Deactivating signs the user out at once, so it is confirmed first (activating is not)
+  const [deactivatingUser, setDeactivatingUser] = useState<UserProfile | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
+  const confirmDeactivate = async () => {
+    if (!deactivatingUser) return;
+    setIsDeactivating(true);
+    await handleDeactivateToggle(deactivatingUser.id, 'active');
+    setIsDeactivating(false);
+    setDeactivatingUser(null);
+  };
+
   const activeUsers = users.filter(u => u.status === 'active').length;
   const inactiveUsers = users.filter(u => u.status === 'inactive').length;
   const onlineUsers = users.filter(u => statusOf(u.id).online).length;
@@ -193,6 +204,25 @@ const UserManagement = ({ users, loading, addUser, updateUser }: UserManagementP
           </div>
         )}
 
+        {deactivatingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50">
+            <div role="alertdialog" aria-labelledby="deactivate-user-title" className="bg-card rounded-xl p-6 shadow-lg max-w-sm w-full mx-4 space-y-4">
+              <h4 id="deactivate-user-title" className="text-lg font-semibold">Deactivate {deactivatingUser.username}?</h4>
+              <p className="text-sm text-muted-foreground">
+                <span className="font-mono">{deactivatingUser.email}</span> will be signed out right away on every device
+                and cannot sign in again until an admin activates the account.
+                {deactivatingUser.role === 'worker' && ' They also lose pump control of their assigned tanks.'}
+              </p>
+              <div className="flex gap-3">
+                <button disabled={isDeactivating} onClick={() => setDeactivatingUser(null)} className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-secondary transition disabled:opacity-50">Cancel</button>
+                <button disabled={isDeactivating} onClick={confirmDeactivate} className="flex-1 rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-danger-foreground hover:opacity-90 transition flex items-center justify-center gap-1.5 disabled:opacity-50">
+                  {isDeactivating ? <Loader2 size={14} className="animate-spin" /> : 'Deactivate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground space-y-2">
@@ -259,7 +289,7 @@ const UserManagement = ({ users, loading, addUser, updateUser }: UserManagementP
                     <td className="py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {(currentUser?.role === 'admin' && user.role !== 'admin' && user.id !== currentUser?.id) ? (
-                          <button onClick={() => handleDeactivateToggle(user.id, user.status)}
+                          <button onClick={() => (user.status === 'active' ? setDeactivatingUser(user) : handleDeactivateToggle(user.id, user.status))}
                             className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-bold ${user.status === 'active' ? 'border-danger/30 text-danger' : 'border-safe/30 text-safe'
                               }`}>
                             {user.status === 'active' ? 'Deactivate' : 'Activate'}

@@ -21,6 +21,8 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+  // Address the reset link went to; while set, the "check your Gmail" popup is shown
+  const [resetSentTo, setResetSentTo] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
 
   // Load saved credentials on mount if remember-me was active
@@ -125,7 +127,7 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
 
     try {
       await resetPassword(resolvedResetEmail);
-      toast.success('Password reset email sent! Check your inbox.');
+      setResetSentTo(resolvedResetEmail);
       setIsForgotPassword(false);
       setResetEmail('');
     } catch (err) {
@@ -165,7 +167,6 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
                   value={email}
                   disabled={isSubmitting}
                   onChange={e => { setEmail(e.target.value); setError(''); }}
-                  placeholder="e.g. zailanorpundato"
                   className="w-full rounded-lg border border-input bg-secondary/30 pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 transition"
                 />
                 <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -189,7 +190,6 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
                   value={password}
                   disabled={isSubmitting}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
-                  placeholder="••••••••"
                   className="w-full rounded-lg border border-input bg-secondary/30 pl-10 pr-10 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 transition"
                 />
                 <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -250,7 +250,6 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
                   value={resetEmail}
                   disabled={isResetting}
                   onChange={e => { setResetEmail(e.target.value); setError(''); }}
-                  placeholder="e.g. zailanorpundato"
                   className="w-full rounded-lg border border-input bg-secondary/30 pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 transition"
                 />
                 <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -290,6 +289,31 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
           </form>
         )}
       </div>
+
+      {resetSentTo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div role="alertdialog" aria-labelledby="reset-sent-title" className="bg-card border border-border/40 rounded-xl p-6 shadow-xl max-w-sm w-full mx-4 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <Mail size={22} className="text-safe" />
+              <h4 id="reset-sent-title" className="text-lg font-bold text-foreground">Reset link sent</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              We sent a password reset link to <strong className="text-foreground break-all">{resetSentTo}</strong>.
+            </p>
+            <p className="text-sm text-foreground bg-secondary/40 border border-border rounded-lg p-3">
+              Open your <strong>Gmail app</strong> and look in the <strong>Primary</strong> tab.
+              If it is not there, check the <strong>Spam</strong> folder.
+            </p>
+            <button
+              type="button"
+              onClick={() => setResetSentTo(null)}
+              className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-95 transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

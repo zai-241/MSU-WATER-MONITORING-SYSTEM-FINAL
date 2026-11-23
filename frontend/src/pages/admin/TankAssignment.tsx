@@ -30,6 +30,14 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
   const [deletingTank, setDeletingTank] = useState<Tank | null>(null);
   const [isDeletingTank, setIsDeletingTank] = useState(false);
 
+  // Confirmations: disabling a tank, and changing its assigned operator
+  const [disablingTank, setDisablingTank] = useState<Tank | null>(null);
+  const [operatorChange, setOperatorChange] = useState<{ tank: Tank; workerId: string | null } | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  const userName = (id: string | null | undefined) =>
+    id ? users.find(u => u.id === id)?.username ?? 'an operator' : null;
+
   const handleWorkerChange = async (tankId: string, workerId: string | null) => {
     try {
       await updateTank(tankId, { assignedWorker: workerId });
@@ -49,6 +57,22 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
     } catch (err) {
       toast.error(errorMessage(err) || 'Failed to update tank availability');
     }
+  };
+
+  const confirmDisable = async () => {
+    if (!disablingTank) return;
+    setIsConfirming(true);
+    await handleToggleEnabled(disablingTank.id, true);
+    setIsConfirming(false);
+    setDisablingTank(null);
+  };
+
+  const confirmOperatorChange = async () => {
+    if (!operatorChange) return;
+    setIsConfirming(true);
+    await handleWorkerChange(operatorChange.tank.id, operatorChange.workerId);
+    setIsConfirming(false);
+    setOperatorChange(null);
   };
 
   const handleAddTankSubmit = async () => {
@@ -175,7 +199,11 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
                   <select
                     disabled={!tank.enabled}
                     value={tank.assignedWorker || ''}
-                    onChange={e => handleWorkerChange(tank.id, e.target.value || null)}
+                    aria-label={`Assigned operator for ${tank.name}`}
+                    onChange={e => {
+                      const workerId = e.target.value || null;
+                      if (workerId !== (tank.assignedWorker || null)) setOperatorChange({ tank, workerId });
+                    }}
                     className="rounded-lg border border-input bg-secondary/50 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
                   >
                     <option value="">Unassigned</option>
@@ -192,7 +220,7 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
                 <td className="py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <button
-                      onClick={() => handleToggleEnabled(tank.id, tank.enabled)}
+                      onClick={() => (tank.enabled ? setDisablingTank(tank) : handleToggleEnabled(tank.id, false))}
                       className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold ${tank.enabled ? 'border-danger/30 text-danger animate-pulse hover:bg-danger/5' : 'border-safe/30 text-safe hover:bg-safe/5'
                         }`}
                     >
@@ -360,6 +388,78 @@ const TankAssignment = ({ users }: TankAssignmentProps) => {
           </div>
         </div>
       )}
+
+      {/* Disable Tank confirmation */}
+      {disablingTank && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div role="alertdialog" aria-labelledby="disable-tank-title" className="bg-card border border-border/40 rounded-xl p-6 shadow-xl max-w-sm w-full mx-4 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <Power size={22} className="text-danger" />
+              <h4 id="disable-tank-title" className="text-lg font-bold text-foreground">Disable {disablingTank.name}?</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              The pump is switched off
+              {disablingTank.assignedWorker ? <>, <strong>{userName(disablingTank.assignedWorker)}</strong> is unassigned</> : ''}
+              {' '}and the tank stops raising alerts until you enable it again. Its data is kept.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                disabled={isConfirming}
+                onClick={() => setDisablingTank(null)}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isConfirming}
+                onClick={confirmDisable}
+                className="flex-1 rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-danger-foreground hover:opacity-90 transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {isConfirming ? <Loader2 size={16} className="animate-spin" /> : 'Disable Tank'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assigned Operator confirmation */}
+      {operatorChange && (() => {
+        const from = userName(operatorChange.tank.assignedWorker);
+        const to = userName(operatorChange.workerId);
+        const title = !to ? 'Unassign operator?' : from ? 'Change assigned operator?' : 'Assign operator?';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div role="alertdialog" aria-labelledby="operator-change-title" className="bg-card border border-border/40 rounded-xl p-6 shadow-xl max-w-sm w-full mx-4 space-y-4 animate-in zoom-in-95 duration-200">
+              <h4 id="operator-change-title" className="text-lg font-bold text-foreground">{title}</h4>
+              <p className="text-sm text-muted-foreground">
+                {!to ? (
+                  <><strong>{from}</strong> will be removed from <strong>{operatorChange.tank.name}</strong> and can no longer switch its pump. Until someone else is assigned, only admins can.</>
+                ) : from ? (
+                  <><strong>{operatorChange.tank.name}</strong> moves from <strong>{from}</strong> to <strong>{to}</strong>. Only {to} will be able to switch its pump.</>
+                ) : (
+                  <><strong>{to}</strong> will be assigned to <strong>{operatorChange.tank.name}</strong> and can switch its pump from the Dashboard.</>
+                )}
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  disabled={isConfirming}
+                  onClick={() => setOperatorChange(null)}
+                  className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary transition text-foreground disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={isConfirming}
+                  onClick={confirmOperatorChange}
+                  className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-90 transition flex items-center justify-center gap-1.5 disabled:opacity-50 ${to ? 'bg-primary text-primary-foreground' : 'bg-danger text-danger-foreground'}`}
+                >
+                  {isConfirming ? <Loader2 size={16} className="animate-spin" /> : !to ? 'Unassign' : from ? 'Change' : 'Assign'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete Tank Modal */}
       {deletingTank && (
