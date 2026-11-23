@@ -6,7 +6,7 @@ This file is the single source of truth for how the parts fit together.
 **Update it whenever the system design changes** (new part, new database path, new deploy step).
 
 Two phases, and the paper must keep them apart:
-- **Pilot testing (done):** the ground-level 200 L drum (0.90 m high) in Brgy. Datu Saber, Marawi City, is Tank 1 in
+- **Pilot testing (done):** the 200 L drum (0.90 m high) on an elevated stand (to simulate a gravity-fed reservoir) in Brgy. Datu Saber, Marawi City, is Tank 1 in
   the system (dashboard name "Pilot Test Tank"). Sensor calibration (level and pH) and hardware debugging were done
   on it, for safety and controlled testing. Every measured result in the paper comes from this drum.
 - **Actual deployment (target):** the system is designed for real-time monitoring of Reservoir Tank No. 1, the
