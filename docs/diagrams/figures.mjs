@@ -325,7 +325,7 @@ const fig37 = () => ipo([
     ['Live Telemetry Sync', 'Real-time updates to the web dashboard & mobile app; history every 10 min']],
   [['Level, Pump Commands & Pump Settings', 'Live level, thresholds, pumpOn command, Pump System switch, Auto / Manual mode'],
     ['Local Pump Logic (GPIO 32 Relay)', 'Auto start at the low threshold (30 s off time), stop at overflow; safety stops; dry-run guard (3% rise in 10 min, 60 min max); each command checked'],
-    ['Refill Pump Control', 'Pump switched on the drum model; accepted or refused answer, pumpFault after a dry-run stop, and a log entry']],
+    ['Refill Pump Control', 'Pump switched on the Pilot Test Tank; accepted or refused answer, pumpFault after a dry-run stop, and a log entry']],
   [['Alert Threshold & Night Watch Configuration', 'Shared limits (default level 15%–95%, pH 6.5–8.5) or the tank\'s own; night window 10 PM–3 AM'],
     ['Alert State Machine & Validation', '5-second persistence check; repeat every 60 s until acknowledged; night level-drop check'],
     ['Real-Time In-App / Toast Alerts & Logs', 'In-app toast & audible chime, push notifications, audit entries']],
@@ -635,7 +635,7 @@ function dmKit() {
 }
 
 function figDataModel1() {
-  const { W, TW, COL, FS, RT, MONO } = DM, H = 2225;
+  const { W, TW, COL, FS, RT, MONO } = DM, H = 2370;
   const k = dmKit();
   // ---- column 1: Firestore, ROLES, USER_STATE, legend
   let x = COL[0];
@@ -673,6 +673,7 @@ function figDataModel1() {
     [['tanks', '{tankId}'], 'TANKS'], [['config'], 'CONFIG'], [['history', 'tanks', '{tankId}', '{pushKey}'], 'HISTORY'],
     [['logs', '{pushKey}'], 'LOGS'], [['notifications', '{alertId}'], 'NOTIFICATIONS'], [['roles', '{uid}'], 'ROLES'],
     [['userState', '{uid}'], 'USER_STATE'], [['presence', '{uid}'], 'PRESENCE'], [['system', 'worker'], 'SYSTEM'],
+    [['system', 'nightWatch', '{tankId}'], 'SYSTEM'],
   ];
   const tH = 160 + tree.length * 68;
   k.b += `<rect x="${x}" y="30" width="${TW}" height="${tH}" fill="#FFF" stroke="#111" stroke-width="2.5"/>`;
@@ -694,8 +695,8 @@ function figDataModel1() {
     ['nightWatchEnabled (missing = on)', 'BOOLEAN'], ['nightStartHour, nightEndHour (22, 3)', 'NUMBER'],
     ['nightFastDropPercent (default 5)', 'NUMBER'], ['nightSlowDropPercent (default 3)', 'NUMBER'],
     ['nightWatchTanks/{tankId} (missing = on)', 'BOOLEAN']]);
-  const sysEnd = k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system/worker', 'Alert Service heartbeat', [
-    ['lastSeen', 'TIMESTAMP'], ['startedAt', 'TIMESTAMP']]);
+  const sysEnd = k.tbl(x, cfgEnd + 40, 'SYSTEM', 'system', ['Alert Service: heartbeat, and the night watch', 'state (saved at most once a minute)'], [
+    ['worker/lastSeen', 'TIMESTAMP'], ['worker/startedAt', 'TIMESTAMP'], ['nightWatch/{tankId} (leak-check state)', 'OBJECT']]);
   k.tbl(x, sysEnd + 40, 'USER_DIRECTORY', 'directory/{uid}', ['Admins (create, rename, sync);', 'read by all signed-in users'], [
     ['username (name only)', 'STRING']], FS);
   return svg(W, H, k.b);
@@ -791,7 +792,7 @@ function fig313() {
   b += `<rect x="286" y="127" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="330" y="129" width="44" height="18" rx="2" fill="#111"/>`;
   for (let i = 0; i < 4; i++) b += `<rect x="${292 + i * 20}" y="165" width="10" height="16" fill="#E2B33B"/>`;
   b += serverIcon(800, 690) + bellIcon(520, 690);
-  // pump relay on GPIO 32 (installed on the Tank 1 drum model)
+  // pump relay on GPIO 32 (installed on Tank 1, the Pilot Test Tank)
   b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#111', sw: 2 });
   b += A([[594, 322], [620, 322]]);
   b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Refill\nPump)', 16);
@@ -850,12 +851,56 @@ function fig314() {
   b += crop(NET, [1045, 278, 66, 74], 1098, 446);
   b += crop(NET, [1168, 328, 244, 122], 950, 625);
   b += P(1085, 776, 'Client Dashboard\nEndpoints');
-  b += P(240, 690, 'Sensor Site: One ESP32 Node per\nTank (Tank 1: Drum Model of Reservoir\nTank No. 1; Tanks 2–4 Planned)', 18);
+  b += P(240, 690, 'Sensor Site: One ESP32 Node per\nTank (Tank 1: Pilot Test Tank,\n200 L Drum; Other Tanks Planned)', 18);
   b += P(690, 700, 'Motor Pool Office / Gateway', 24, { weight: 700 });
   return svg(W, H, b, imageDef(IMG, 'old-3-13-architecture.png', 1385, 579) + imageDef(NET, 'old-3-14-network.png', 1430, 523));
 }
 
+// ======================================================================
+// Figure 3-1: Iterative and Incremental Agile Methodology Cycle
+// Three increments; each repeats Analyze, Plan, Design, Build, Test and ends in a working release.
+// ======================================================================
+function fig31() {
+  // Ring-and-arrow style: each increment is a ring of five chevron segments (the phases, clockwise
+  // from the top), sitting on one arrow band that carries the work from increment to increment.
+  const W = PAGE_W, H = 395, CY = 195, RO = 162, RI = 96, RM = (RO + RI) / 2, F = 19;
+  const NAVY = '#0E3B70';
+  const shades = ['#4A9AD8', '#3584C6', '#2470B2', '#175A98', '#0E4580']; // Analyze (light) to Test (dark)
+  const phases = ['Analyze', 'Plan', 'Design', 'Build', 'Test'];
+  const incs = [
+    [200, '1'], [600, '2'], [1000, '3'],
+  ];
+  const rad = (d) => d * Math.PI / 180;
+  const pt = (cx, a, r) => `${(cx + r * Math.cos(rad(a))).toFixed(1)},${(CY + r * Math.sin(rad(a))).toFixed(1)}`;
+  const TIP = 6; // degrees the chevron point reaches into the next segment
+  let b = '';
+
+  // arrow band (drawn first, the rings sit on top of it)
+  const BT = 300, BB = 372, BM = (BT + BB) / 2, D = 30;
+  [[10, 400], [400, 800], [800, 1160]].forEach(([x1, x2], i) => {
+    const tip = i === 2 ? 1192 : x2 + D;
+    b += `<polygon points="${x1},${BT} ${x2},${BT} ${tip},${BM} ${x2},${BB} ${x1},${BB} ${x1 + D},${BM}" fill="${i === 2 ? '#5DB2EC' : NAVY}" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>`;
+  });
+
+  for (const [cx, n] of incs) {
+    // white halo so the ring stands off the band
+    b += `<circle cx="${cx}" cy="${CY}" r="${RO + 5}" fill="#FFFFFF"/>`;
+    phases.forEach((p, i) => {
+      const a1 = -126 + i * 72, a2 = a1 + 72;
+      b += `<path d="M${pt(cx, a1, RO)} A${RO},${RO} 0 0 1 ${pt(cx, a2, RO)} L${pt(cx, a2 + TIP, RM)} L${pt(cx, a2, RI)} ` +
+        `A${RI},${RI} 0 0 0 ${pt(cx, a1, RI)} L${pt(cx, a1 + TIP, RM)} Z" fill="${shades[i]}" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>`;
+      const am = a1 + 36 + TIP / 2;
+      b += text(cx + RM * Math.cos(rad(am)), CY + RM * Math.sin(rad(am)), p, { size: F, fill: '#FFFFFF' });
+    });
+    b += `<circle cx="${cx}" cy="${CY}" r="${RI - 6}" fill="#FFFFFF"/>`;
+    b += text(cx, CY - 20, 'Increment', { size: 22, fill: NAVY, family: POPPINS });
+    b += text(cx, CY + 22, n, { size: 46, fill: NAVY, family: POPPINS });
+  }
+  return svg(W, H, b);
+}
+
 export const figures = [
+  ['Figure 3-1: Iterative and Incremental Agile Methodology Cycle for the Project\'s Development', fig31],
   ['Figure 3-4: Proposed Operational Workflow of MPWSD', fig34],
   ['Figure 3-5: System Data Processing and Logic Flowchart', fig35],
   ['Figure 3-6: Hierarchical Input-Process-Output (HIPO) Model', fig36],

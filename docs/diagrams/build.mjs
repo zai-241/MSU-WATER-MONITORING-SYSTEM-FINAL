@@ -31,7 +31,8 @@ const browser = await puppeteer.launch({ executablePath: browserPath, headless: 
 try {
   const page = await browser.newPage();
   for (const fig of figures) {
-    if (only.length && !only.some((o) => fig.file.includes(o))) continue;
+    // "3-1" means Figure_3-1 only, not 3-10 to 3-15
+    if (only.length && !only.some((o) => fig.file === `Figure_${o}` || (!figures.some((f) => f.file === `Figure_${o}`) && fig.file.includes(o)))) continue;
     const svg = fig.draw();
     writeFileSync(resolve(out, fig.file + '.svg'), svg);
     const w = Number(svg.match(/width="(\d+)"/)[1]), h = Number(svg.match(/height="(\d+)"/)[1]);
