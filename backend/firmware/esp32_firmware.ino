@@ -406,6 +406,24 @@ float levelVmin = 0.25;
 float levelVmax = 3.00;
 float tankHeight = 5.00;
 float levelOffset = 0.00;
+
+// Multi-point level calibration (tanks/{id}/levelCalPoints, Admin Panel ->
+// Sensor Calibration -> Level calibration table). A list of (depth m, filtered
+// voltage V) points measured by lowering the sensor step by step into the full
+// tank; the height is interpolated between the two points around the voltage.
+// levelCalCount 0 = no valid table: the two-point Vmin/Vmax line is used, as
+// before. Read with the 1 s command poll and checked with the same rules as
+// validateLevelCalPoints() in frontend/src/lib/levelCalibration.ts.
+#define LEVEL_CAL_MIN_POINTS 2
+#define LEVEL_CAL_MAX_POINTS 20
+const float LEVEL_CAL_MIN_VOLTS = 0.30; // readings outside 0.30-3.25 V are faults
+const float LEVEL_CAL_MAX_VOLTS = 3.25;
+const float LEVEL_CAL_HEIGHT_TOLERANCE_M = 0.005; // last depth vs tankHeight
+float levelCalDepth[LEVEL_CAL_MAX_POINTS];
+float levelCalVolts[LEVEL_CAL_MAX_POINTS];
+volatile int levelCalCount = 0;
+portMUX_TYPE levelCalMux = portMUX_INITIALIZER_UNLOCKED;
+String levelCalState = ""; // last state logged, so only changes are logged
 float phNeutralVoltage = 2.50;
 float phSlope = 0.18;
 float phOffset = 0.00;
@@ -1649,6 +1667,195 @@ bool levelSignalUnstable(int levelPercent, unsigned long now) {
 }
 
 // =================================================================================
+// Multi-point level calibration helpers (see levelCalCount)
+// =================================================================================
+// Reads tanks/{id}/levelCalPoints from the command poll payload. The database
+// returns it as an array [{"depthM":0,"volts":0.6},...] or as an object
+// {"0":{...},"1":{...}}; both are read the same way (each point is one flat
+// {...}). Returns the number of points, 0 if there is no list, -1 if it cannot
+// be read, LEVEL_CAL_MAX_POINTS + 1 if there are too many.
+int parseLevelCalPoints(const String &json, float *depth, float *volts) {
+  int keyIndex = json.indexOf("\"levelCalPoints\"");
+  if (keyIndex == -1)
+    return 0;
+  int colon = json.indexOf(':', keyIndex);
+  if (colon == -1)
+    return -1;
+  int start = colon + 1;
+  int len = json.length();
+  while (start < len && (json[start] == ' ' || json[start] == '\t' ||
+                         json[start] == '\r' || json[start] == '\n'))
+    start++;
+  if (start >= len)
+    return -1;
+  if (json.startsWith("null", start))
+    return 0;
+  if (json[start] != '[' && json[start] != '{')
+    return -1;
+  int level = 0;
+  int end = -1;
+  for (int i = start; i < len; i++) {
+    char c = json[i];
+    if (c == '[' || c == '{') {
+      level++;
+    } else if (c == ']' || c == '}') {
+      level--;
+      if (level == 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end == -1)
+    return -1;
+
+  int count = 0;
+  int pos = start + 1;
+  while (pos < end) {
+    int objStart = json.indexOf('{', pos);
+    if (objStart == -1 || objStart >= end)
+      break;
+    int objEnd = json.indexOf('}', objStart);
+    if (objEnd == -1 || objEnd > end)
+      return -1;
+    String obj = json.substring(objStart, objEnd + 1);
+    if (obj.indexOf('{', 1) != -1)
+      return -1; // a point must be flat
+    float d = getFloatFromJson(obj, "depthM");
+    float v = getFloatFromJson(obj, "volts");
+    if (d == -999.0 || v == -999.0)
+      return -1;
+    if (count >= LEVEL_CAL_MAX_POINTS)
+      return LEVEL_CAL_MAX_POINTS + 1;
+    depth[count] = d;
+    volts[count] = v;
+    count++;
+    pos = objEnd + 1;
+  }
+  return count;
+}
+
+// Same rules as validateLevelCalPoints() in frontend/src/lib/levelCalibration.ts.
+// Returns "" when the table is valid, else the reason.
+String levelCalProblem(const float *depth, const float *volts, int n,
+                       float height) {
+  if (n < LEVEL_CAL_MIN_POINTS)
+    return "fewer than 2 points";
+  if (n > LEVEL_CAL_MAX_POINTS)
+    return "more than 20 points";
+  if (fabsf(depth[0]) > 0.0001)
+    return "the first depth is not 0";
+  if (height <= 0)
+    return "the tank height is not set";
+  if (fabsf(depth[n - 1] - height) > LEVEL_CAL_HEIGHT_TOLERANCE_M)
+    return "the last depth (" + String(depth[n - 1], 3) +
+           " m) is not the tank height (" + String(height, 3) + " m)";
+  for (int i = 0; i < n; i++) {
+    if (volts[i] < LEVEL_CAL_MIN_VOLTS || volts[i] > LEVEL_CAL_MAX_VOLTS)
+      return "point " + String(i + 1) + " voltage is outside 0.30-3.25 V";
+    if (i > 0 && depth[i] <= depth[i - 1])
+      return "the depths do not increase at point " + String(i + 1);
+    if (i > 0 && volts[i] <= volts[i - 1])
+      return "the voltages do not increase at point " + String(i + 1);
+  }
+  return "";
+}
+
+// Water height (m) for a filtered voltage, not clamped (the fault check uses
+// it). Without a valid table: the old two-point line from Vmin to Vmax. With a
+// table: the straight line through the two points around the voltage; below
+// the first or above the last point the first or last segment is extended.
+// Same math as heightFromVoltage() in frontend/src/lib/levelCalibration.ts.
+float levelHeightFromVoltage(float v) {
+  float depth[LEVEL_CAL_MAX_POINTS];
+  float volts[LEVEL_CAL_MAX_POINTS];
+  portENTER_CRITICAL(&levelCalMux);
+  int n = levelCalCount;
+  for (int i = 0; i < n; i++) {
+    depth[i] = levelCalDepth[i];
+    volts[i] = levelCalVolts[i];
+  }
+  portEXIT_CRITICAL(&levelCalMux);
+
+  if (n < LEVEL_CAL_MIN_POINTS) {
+    float valRange = levelVmax - levelVmin;
+    float height = 0.0;
+    if (abs(valRange) > 0.001) {
+      height = (v - levelVmin) * (tankHeight / valRange);
+    }
+    return height;
+  }
+
+  int i = 0; // segment: point i to point i + 1
+  if (v <= volts[0]) {
+    i = 0;
+  } else if (v >= volts[n - 1]) {
+    i = n - 2;
+  } else {
+    while (i < n - 2 && v > volts[i + 1])
+      i++;
+  }
+  float dv = volts[i + 1] - volts[i];
+  if (fabsf(dv) <= 0.001)
+    return 0.0;
+  return depth[i] + (v - volts[i]) * ((depth[i + 1] - depth[i]) / dv);
+}
+
+// Called from the command poll: reads and checks levelCalPoints, swaps in the
+// table (or none), and logs only when the table or its state changes.
+void syncLevelCalibration(const String &payload) {
+  float depth[LEVEL_CAL_MAX_POINTS];
+  float volts[LEVEL_CAL_MAX_POINTS];
+  int n = parseLevelCalPoints(payload, depth, volts);
+  String problem = "";
+  if (n < 0)
+    problem = "the list could not be read";
+  else if (n > LEVEL_CAL_MAX_POINTS)
+    problem = "more than 20 points";
+  else if (n > 0)
+    problem = levelCalProblem(depth, volts, n, tankHeight);
+  int useCount = (n > 0 && problem.length() == 0) ? n : 0;
+
+  portENTER_CRITICAL(&levelCalMux);
+  for (int i = 0; i < useCount; i++) {
+    levelCalDepth[i] = depth[i];
+    levelCalVolts[i] = volts[i];
+  }
+  levelCalCount = useCount;
+  portEXIT_CRITICAL(&levelCalMux);
+
+  String state;
+  if (n == 0) {
+    state = "none";
+  } else if (useCount == 0) {
+    state = "bad:" + problem;
+  } else {
+    state = "ok:";
+    for (int i = 0; i < useCount; i++)
+      state += String(depth[i], 3) + "/" + String(volts[i], 3) + ";";
+  }
+  if (state == levelCalState)
+    return;
+  bool firstPoll = levelCalState.length() == 0;
+  levelCalState = state;
+  if (useCount > 0) {
+    logSystemEvent("Calibration",
+                   "Level calibration: using the " + String(useCount) +
+                       "-point table from the Admin Panel.",
+                   LEVEL_INFO);
+  } else if (n != 0) {
+    logSystemEvent("Calibration",
+                   "Level calibration table ignored (" + problem +
+                       "). Using Vmin/Vmax.",
+                   LEVEL_WARNING);
+  } else if (!firstPoll) {
+    logSystemEvent("Calibration",
+                   "Level calibration table removed. Using Vmin/Vmax.",
+                   LEVEL_INFO);
+  }
+}
+
+// =================================================================================
 // Water Level Sensor Processing Pipeline
 // =================================================================================
 void processLevelSensor() {
@@ -1657,19 +1864,17 @@ void processLevelSensor() {
   bool electricalValid = (rawLevelVoltage > LEVEL_MIN_VALID_VOLTAGE &&
                          rawLevelVoltage < 3.25);
 
-  float valRange = levelVmax - levelVmin;
-  float height = 0.0;
-  if (abs(valRange) > 0.001) {
-    height = (rawLevelVoltage - levelVmin) * (tankHeight / valRange);
-  }
+  // Unclamped height: the calibration table, or the Vmin/Vmax line without one
+  float height = levelHeightFromVoltage(rawLevelVoltage);
 
 #if LEVEL_VOLTAGE_PRINT
   static unsigned long lastVoltagePrint = 0;
   if (millis() - lastVoltagePrint >= 1000) {
     lastVoltagePrint = millis();
     Serial.printf("[LevelCal] V=%.3f V | height=%.3f m | Vmin=%.3f Vmax=%.3f "
-                  "tankHeight=%.2f m\n",
-                  rawLevelVoltage, height, levelVmin, levelVmax, tankHeight);
+                  "tankHeight=%.2f m | table points=%d\n",
+                  rawLevelVoltage, height, levelVmin, levelVmax, tankHeight,
+                  (int)levelCalCount);
   }
 #endif
 
@@ -2695,6 +2900,10 @@ void networkTask(void *pvParameters) {
               phOffset = val;
           }
 
+          // --- MULTI-POINT LEVEL CALIBRATION (tanks/{TANK_ID}/levelCalPoints) ---
+          // After tankHeight, which the table is checked against.
+          syncLevelCalibration(payload);
+
           // --- THIS TANK'S OWN THRESHOLDS (tanks/{TANK_ID}/thresholds) ---
           // Used only when all four are there and valid (low < overflow within
           // 0-100 %, min pH < max pH within 0-14), the same check as the web app.
@@ -2989,6 +3198,7 @@ void networkTask(void *pvParameters) {
             jsonPayload += "\"voltage\":" + String((float)liveLevelVoltage, 3) + ",";
             jsonPayload += "\"heightM\":" + String((float)liveLevelHeight, 3) + ",";
             jsonPayload += "\"percent\":" + String((int)liveLevelPercent) + ",";
+            jsonPayload += "\"calPoints\":" + String((int)levelCalCount) + ",";
             jsonPayload += "\"phVoltage\":" + String((float)livePhVoltage, 3) + ",";
             jsonPayload += "\"at\":{\".sv\":\"timestamp\"}},";
           }

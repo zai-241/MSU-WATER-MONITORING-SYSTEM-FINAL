@@ -118,6 +118,43 @@ $$\text{Level (percentage)} = \text{Clamp}\left( \left( \frac{\text{Clamped Heig
   - Tank Height (`tankHeight`): `5.00 m`
   - Level Offset (`levelOffset`): `0.00 %`
 
+#### 3.1.1 Multi-point (piecewise-linear) calibration
+
+The two-point formula assumes the sensor voltage rises in a straight line with depth. On the Tank 1 pilot drum
+(0.90 m) the readings were right at empty and full but over-read by 3.4 to 6.1 percentage points between 50 and
+80 cm, so 5 of 9 test levels were outside ±5 %. A tank may therefore have a **calibration table**
+(`tanks/{id}/levelCalPoints`): $n$ points $(d_k, V_k)$, $k = 0 \ldots n-1$, of water depth above the sensor tip
+(m) and filtered sensor voltage (V). The height follows the straight line through the two points around the
+reading:
+
+$$\text{Height} = d_k + (V_{raw} - V_k) \times \frac{d_{k+1} - d_k}{V_{k+1} - V_k}, \qquad V_k \le V_{raw} \le V_{k+1}$$
+
+Below $V_0$ the first segment is used and above $V_{n-1}$ the last one (the height is not clamped yet, so the
+±0.5 m physical-validity check and the live `heightM` work as before). Clamping, the percentage and the offset are
+unchanged (the formulas above), so a reading below the first point is 0 % and above the last point 100 %.
+With the two points $(0, V_{min})$ and $(\text{Tank Height}, V_{max})$ this is exactly the two-point formula.
+
+* **Rules** (checked by the Admin Panel, `validateLevelCalPoints()` in `frontend/src/lib/levelCalibration.ts`,
+  and again by the ESP32, `levelCalProblem()`): 2 to 20 points; $d_0 = 0$; $d_{n-1}$ = tank height (±5 mm);
+  depths and voltages strictly increasing; every voltage between 0.30 and 3.25 V (outside that range a reading is
+  a sensor fault). The database rules allow only admins to write the list and check each point's shape.
+* **No table, or an invalid one:** the two-point formula with $V_{min}$/$V_{max}$, exactly as before. An invalid
+  table makes the ESP32 write one WARNING log ("Level calibration table ignored (reason). Using Vmin/Vmax.");
+  applying or removing a table writes an INFO log. The table is read with the 1 s command poll, like $V_{min}$/$V_{max}$.
+* **Unchanged:** the voltage fault limits (0.30 V / 3.25 V), the ±0.5 m physical check, the unstable-signal check,
+  the 2 % deadband, the pump logic and dry-run guard, history every 10 minutes and the live readings. The Dashboard,
+  Reports and alerts use the level % the ESP32 reports, so they follow the table without a change of their own.
+* **Measurement method** (Admin Panel → Sensor Calibration → Level calibration table → "How to measure the points"):
+  1. Keep the tank full; do not drain it. Start the live sensor readings (3.3).
+  2. Hold the sensor just above the water surface: depth 0. Wait about 10 s and press **Use live reading** on that row.
+  3. Lower the sensor step by step (for example every 10 cm; **Start with 10 cm steps** makes the rows). Depth =
+     distance from the water surface to the sensor tip, measured with a steel tape. Keep the sensor vertical and
+     the vent tube open and dry; wait about 10 s per step (the median and moving-average filters need it), then
+     **Use live reading**.
+  4. The last point is the sensor on the floor of the full tank; its depth must equal the tank height (set the tank
+     height to the measured full water depth if they differ).
+  5. Return the sensor to its normal position on the floor. **Save** applies the table.
+
 ### 3.2 pH Calibration
 The glass electrode potential varies linearly with hydrogen ion concentration according to the Nernst equation:
 
@@ -137,7 +174,10 @@ The Admin Panel (Sensor Calibration, `LiveCalibrationPanel.tsx`) replaces the US
    percentage and filtered pH voltage. No extra request is made and no history is written.
 3. The firmware stops sending at `calibrationUntil`, after 30 minutes on its own (`CALIB_LIVE_MAX_MS`), or
    while its NTP clock is not set. A reading older than 8 s is shown as "Waiting for readings".
-4. **Use as Vmin / Vmax / pH neutral** copies the live voltage into the form; **Save** applies it.
+4. **Use as Vmin / Vmax / pH neutral** copies the live voltage into the form, and **Use live reading** on a row of
+   the level calibration table (3.1.1) copies it into that row; **Save** applies it. The reading also carries
+   `calPoints`, the number of table points the controller uses (0 = $V_{min}$/$V_{max}$), and `heightM` comes
+   from the table when there is one.
 
 All four sketches (Tanks 1–4) support it.
 
@@ -318,7 +358,8 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | pumpCommandResult | STRING | ESP32: `accepted`, or `refused-demo-off`, `refused-overflow`, `refused-maintenance`, `refused-lock`, `refused-level-sensor` |
 | pumpFault | STRING | ESP32 dry-run guard (4.1): `no-rise` or `max-run` after it stopped the pump; missing = none. Cleared by a manual ON or a restart |
 | levelSensorOk, phSensorOk | BOOLEAN | sensor health |
-| levelVmin, levelVmax | NUMBER | level sensor calibration (V) |
+| levelVmin, levelVmax | NUMBER | level sensor calibration (V); used when there is no valid `levelCalPoints` |
+| levelCalPoints | ARRAY | admin, optional: multi-point level calibration (3.1.1), 2 to 20 `{depthM, volts}` from 0 m to `tankHeight`, both increasing; missing = `levelVmin`/`levelVmax` |
 | tankHeight | NUMBER | m |
 | capacityLiters | NUMBER | > 0; default 200 L when missing |
 | levelOffset | NUMBER | |
@@ -330,7 +371,7 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | maintenanceMode | BOOLEAN | admin: this tank is under maintenance (no alerts or offline notice, pump held off); missing = off |
 | thresholds | OBJECT | admin, optional: this tank's own `lowLevelThreshold`, `overflowThreshold` (0–100, low < overflow), `minPh`, `maxPh` (0–14, min < max). All four or none; missing = the shared values in `config`. Used by the alerts, Dashboard, Reports and this tank's controller (pump auto start and overflow stop) |
 | calibrationUntil | TIMESTAMP | admin: live calibration view open until (at most 30 min ahead) |
-| calibrationLive | OBJECT | ESP32, while the view is open: `voltage`, `heightM`, `percent`, `phVoltage`, `at` |
+| calibrationLive | OBJECT | ESP32, while the view is open: `voltage`, `heightM`, `percent`, `calPoints` (table points in use, 0 = Vmin/Vmax), `phVoltage`, `at` |
 | lastUpdate | TIMESTAMP | missing = controller never reported ("Planned") |
 
 #### `config`: CONFIG

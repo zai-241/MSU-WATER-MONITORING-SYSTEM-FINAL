@@ -7,6 +7,14 @@ import { z } from 'zod';
 import { DEFAULT_TANK_IDS, tankIdsInOrder } from '@/lib/constants';
 import DeviceAccounts from './DeviceAccounts';
 import LiveCalibrationPanel from './LiveCalibrationPanel';
+import LevelCalibrationTable from './LevelCalibrationTable';
+import {
+  levelCalPointsFromRows,
+  rowsFromLevelCalPoints,
+  validateLevelCalPoints,
+  type LevelCalPoint,
+  type LevelCalRow,
+} from '@/lib/levelCalibration';
 import { errorMessage } from '@/lib/utils';
 import {
   nightSettings,
@@ -114,6 +122,12 @@ const toLimits = (v: Editable<TankThresholds>): TankThresholds => ({
   maxPh: Number(v.maxPh),
 });
 
+/** A level calibration table for the audit log: "none" or "N points: 0 cm 0.600 V, ..." */
+const describeCalPoints = (points: LevelCalPoint[] | null | undefined) =>
+  !points || points.length === 0
+    ? 'none'
+    : `${points.length} points: ${points.map(p => `${Number((p.depthM * 100).toFixed(1))} cm ${p.volts.toFixed(3)} V`).join(', ')}`;
+
 const describeLimits = (t: Editable<TankThresholds>) =>
   `Low ${t.lowLevelThreshold}% | Overflow ${t.overflowThreshold}% | pH ${t.minPh} - ${t.maxPh}`;
 
@@ -169,6 +183,8 @@ const Configuration = () => {
   const [localTank, setLocalTank] = useState<Partial<Editable<Tank>> | null>(null);
   const [isConfigDirty, setIsConfigDirty] = useState(false);
   const [isTankDirty, setIsTankDirty] = useState(false);
+  // Level calibration table rows as typed (tanks/{id}/levelCalPoints); part of the tank form
+  const [calRows, setCalRows] = useState<LevelCalRow[]>([]);
   
   const [controlConfirm, setControlConfirm] = useState<{ key: ControlKey; label: string; newState: boolean } | null>(null);
   const [modeConfirm, setModeConfirm] = useState<PumpMode | null>(null);
@@ -230,6 +246,7 @@ const Configuration = () => {
   useEffect(() => {
     if (selectedTank && (!localTank || !isTankDirty || localTank.id !== selectedTank.id)) {
       setLocalTank(selectedTank);
+      setCalRows(rowsFromLevelCalPoints(selectedTank.levelCalPoints));
     }
     // localTank is only read to see whether the form is empty or shows another tank
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -238,7 +255,9 @@ const Configuration = () => {
   const switchTank = (tankId: string) => {
     setSelectedTankId(tankId);
     setIsTankDirty(false);
-    setLocalTank(tanks.find(t => t.id === tankId) ?? null);
+    const tank = tanks.find(t => t.id === tankId);
+    setLocalTank(tank ?? null);
+    setCalRows(rowsFromLevelCalPoints(tank?.levelCalPoints));
     setPendingTankId(null);
   };
 
@@ -312,6 +331,15 @@ const Configuration = () => {
 
   const handleSaveAll = async () => {
     if (!localConfig) return;
+    // The level calibration table is checked before anything is written
+    const newCalPoints: LevelCalPoint[] | null = calRows.length > 0 ? levelCalPointsFromRows(calRows) : null;
+    if (localTank && newCalPoints) {
+      const calErrors = validateLevelCalPoints(newCalPoints, Number(localTank.tankHeight));
+      if (calErrors.length > 0) {
+        toast.error(`Level calibration table: ${calErrors[0]}`);
+        return;
+      }
+    }
     setIsSaving(true);
     try {
       // Clean and parse all inputs before committing to Firebase
@@ -443,6 +471,8 @@ const Configuration = () => {
           phNeutralVoltage: Number(localTank.phNeutralVoltage),
           phSlope: Number(localTank.phSlope),
           phOffset: Number(localTank.phOffset),
+          // null removes the table: the controller goes back to Vmin/Vmax
+          levelCalPoints: newCalPoints,
         };
 
         const calibValidation = calibrationSchema.safeParse(calibrationUpdates);
@@ -463,6 +493,10 @@ const Configuration = () => {
         const calibrationChanges = (Object.keys(calibrationLabels) as CalibrationKey[])
           .filter(key => selectedTank?.[key] !== calibrationUpdates[key])
           .map(key => `${calibrationLabels[key]} (${selectedTank?.[key] ?? 'unset'} -> ${calibrationUpdates[key]})`);
+        const oldCalPoints = selectedTank?.levelCalPoints ?? null;
+        if (JSON.stringify(oldCalPoints) !== JSON.stringify(newCalPoints)) {
+          calibrationChanges.push(`Level calibration table (${describeCalPoints(oldCalPoints)} -> ${describeCalPoints(newCalPoints)})`);
+        }
 
         await updateTank(selectedTankId, calibrationUpdates);
         setIsTankDirty(false);
@@ -669,6 +703,14 @@ const Configuration = () => {
                   <p className="text-[10px] text-muted-foreground mt-1">Adjustment offset (+/- %)</p>
                 </div>
               </div>
+              <LevelCalibrationTable
+                tank={selectedTank}
+                tankHeight={Number(localTank.tankHeight)}
+                levelOffset={Number(localTank.levelOffset) || 0}
+                rows={calRows}
+                onChange={rows => { setIsTankDirty(true); setCalRows(rows); }}
+                canEdit={isAdmin}
+              />
             </div>
 
             <div className="border-t border-border pt-4">
@@ -1046,7 +1088,7 @@ const Configuration = () => {
                 <p>🌙 <strong>Night Watch:</strong> {localConfig.nightWatchEnabled === false ? 'Off' : `${formatHour12(Number(localConfig.nightStartHour ?? night.startHour))} to ${formatHour12(Number(localConfig.nightEndHour ?? night.endHour))} | Fast: ${localConfig.nightFastDropPercent ?? night.fastDrop}% in ${NIGHT_FAST_WINDOW_MS / 60_000} min | Total: ${localConfig.nightSlowDropPercent ?? night.slowDrop}% | Tanks: ${tankIds.filter(id => isNightWatchedTank(id, localConfig as SystemConfig)).join(', ') || 'none'}`}</p>
                 <p>🔔 <strong>Watchdog & Sound:</strong> Offline: {localConfig.offlineThresholdSec ?? 30}s | Repeat: {localConfig.repeatIntervalSec ?? 60}s | Audio: {localConfig.soundEnabled !== false ? 'Enabled' : 'Disabled'}</p>
                 {localTank && (
-                  <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {localTank.levelVmin}V | Vmax: {localTank.levelVmax}V | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L</p>
+                  <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {localTank.levelVmin}V | Vmax: {localTank.levelVmax}V | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L | Level table: {calRows.length > 0 ? `${calRows.length} points` : 'none (Vmin/Vmax)'}</p>
                 )}
               </div>
               <p className="text-xs text-danger font-medium">

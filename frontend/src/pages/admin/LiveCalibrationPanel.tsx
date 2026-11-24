@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Activity, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Tank, updateTank, useServerTimeOffset } from '@/store/useStore';
-import {
-  CALIBRATION_LIVE_STEP_MS,
-  CALIBRATION_LIVE_MAX_MS,
-  CALIBRATION_LIVE_STALE_MS,
-} from '@/lib/constants';
+import { Tank, updateTank } from '@/store/useStore';
+import { CALIBRATION_LIVE_STEP_MS, CALIBRATION_LIVE_MAX_MS } from '@/lib/constants';
 import { errorMessage } from '@/lib/utils';
+import { useLiveCalibration } from './useLiveCalibration';
 
 export type LiveCalibrationField = 'levelVmin' | 'levelVmax' | 'phNeutralVoltage';
 
@@ -30,23 +27,9 @@ const fmtCountdown = (ms: number) => {
  * 30 min at most). It ends on its own, so a forgotten session costs nothing.
  */
 const LiveCalibrationPanel = ({ tank, canEdit, onUseValue }: Props) => {
-  const serverOffset = useServerTimeOffset();
-  const [now, setNow] = useState(() => Date.now() + serverOffset);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setNow(Date.now() + serverOffset);
-    const id = setInterval(() => setNow(Date.now() + serverOffset), 1000);
-    return () => clearInterval(id);
-  }, [serverOffset]);
-
-  const until = typeof tank.calibrationUntil === 'number' ? tank.calibrationUntil : 0;
-  const active = until > now;
-  const live = tank.calibrationLive;
-  const sessionStart = until - CALIBRATION_LIVE_MAX_MS; // earliest start of the current window
-  const fresh =
-    active && !!live && typeof live.at === 'number' &&
-    now - live.at <= CALIBRATION_LIVE_STALE_MS && live.at >= sessionStart;
+  const { now, until, active, reading: live } = useLiveCalibration(tank);
+  const fresh = live !== null;
 
   const setUntil = async (value: number | null, message: string) => {
     setBusy(true);
@@ -70,12 +53,19 @@ const LiveCalibrationPanel = ({ tank, canEdit, onUseValue }: Props) => {
   const stop = () => setUntil(null, 'Live readings stopped');
 
   const tankHeight = tank.tankHeight;
+  // calPoints: the controller's calibration table size (0 = Vmin/Vmax); missing on older firmware
+  const tablePoints = live && typeof live.calPoints === 'number' ? live.calPoints : null;
+  const usesTable = (tablePoints ?? 0) > 0;
   const heightWarning =
     fresh && live
       ? live.heightM > tankHeight + 0.02
-        ? `Height is above the tank height (${tankHeight} m): Vmax is probably set too low. Put the sensor on the floor of the full tank and use this voltage as Vmax.`
+        ? usesTable
+          ? `Height is above the tank height (${tankHeight} m): the last voltage in the calibration table is probably too low. Measure the last point again with the sensor on the floor of the full tank.`
+          : `Height is above the tank height (${tankHeight} m): Vmax is probably set too low. Put the sensor on the floor of the full tank and use this voltage as Vmax.`
         : live.heightM < -0.02
-          ? 'Height is below 0 m: Vmin is probably set too high. Lift the sensor out of the water and use this voltage as Vmin.'
+          ? usesTable
+            ? 'Height is below 0 m: the first voltage in the calibration table is probably too high. Measure the 0 cm point again with the sensor just above the water.'
+            : 'Height is below 0 m: Vmin is probably set too high. Lift the sensor out of the water and use this voltage as Vmin.'
           : null
       : null;
 
@@ -160,6 +150,12 @@ const LiveCalibrationPanel = ({ tank, canEdit, onUseValue }: Props) => {
               value={typeof live.phVoltage === 'number' ? `${live.phVoltage.toFixed(3)} V` : '—'}
             />
           </div>
+          {tablePoints !== null && (
+            <p className="text-xs text-muted-foreground">
+              The controller computes the level from{' '}
+              <strong>{usesTable ? `the ${tablePoints}-point calibration table` : 'Vmin and Vmax (no calibration table)'}</strong>.
+            </p>
+          )}
           {heightWarning && (
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
               {heightWarning}

@@ -356,6 +356,31 @@ The meter was only for turning the knobs. **The Admin Panel needs the ESP32's ow
 7. Within a few seconds the Serial Monitor shows the new `Vmin=` and `Vmax=`, and `height=` should match `h`.
 8. When finished (after Part E), set `LEVEL_VOLTAGE_PRINT` back to `0` and upload the firmware again.
 
+The Admin Panel's **Live sensor readings** (Calibration → Start) show the same `V=` and `height=` without a USB
+cable, so steps 2–7 can also be done from the web app.
+
+## D2. Multi-point calibration table (recommended after ZERO/SPAN)
+
+Vmin/Vmax draw a straight line from empty to full. The pilot drum's sensor is not perfectly straight: it read
+3.4–6.1 % too high between 50 and 80 cm. The **level calibration table** follows the real curve instead
+(`docs/Methodology.md` 3.1.1). Do it after the knobs are set (Part C), and redo it whenever a knob is turned.
+
+1. Keep the drum **full**; do not drain it. Admin Panel → Calibration → Tank 1 → **Start** the live readings.
+2. In **Level calibration table**, press **Start with 10 cm steps** (rows 0, 10, … 90 cm).
+3. Hold the sensor **just above the water surface** (depth 0). Wait **10 s**, then **Use live reading** on row 0 cm.
+4. Lower the sensor to **10 cm** below the surface. Depth = distance from the water surface to the **sensor tip**,
+   measured with a **steel tape**. Keep the sensor **vertical**, the **vent tube open and dry**. Wait **10 s**,
+   then **Use live reading** on that row. Repeat every 10 cm.
+5. The last row is the sensor **on the floor** of the full drum: its depth must equal the tank height (0.90 m).
+   If the full water depth is different, set **Physical Tank Height** to the measured depth.
+6. Put the sensor back in its normal position on the floor. Check that the voltages rise row by row (the form
+   shows any problem in yellow), then **Save**.
+7. The live readings then say "The controller computes the level from the N-point calibration table" and the
+   Logs show "Level calibration: using the N-point table". If the Logs show "Level calibration table ignored",
+   fix what it names and save again.
+
+Then repeat the depth check (E1) at all 9 test depths.
+
 ---
 
 # Part E: Final check and record sheet

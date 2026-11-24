@@ -12,7 +12,7 @@ Two phases, and the paper must keep them apart:
 - **Actual deployment (target):** the system is designed for real-time monitoring of Reservoir Tank No. 1, the
   elevated water tank of the MSU Motor Pool on 3rd Street behind CICS: 16,852.25 US gal (about 63,793 L), about 4.0 m
   water height. Nothing is installed there yet. Moving there means setting tank height 4.0 m and `capacityLiters`
-  63793 in the Admin Panel and recalibrating Vmin/Vmax. With Tank 1's current HW-685 setting (0.600 V empty, about
+  63793 in the Admin Panel and recalibrating Vmin/Vmax and the level calibration table. With Tank 1's current HW-685 setting (0.600 V empty, about
   0.84 V per m) the reading would pass the 3.25 V fault limit above about 3.2 m, so SPAN must be turned down until
   4.0 m reads at most 3.0 V (`docs/Level_Sensor_Zero_Span_Calibration.md`, C2).
 
@@ -60,6 +60,16 @@ the future the ESP32 adds `tanks/{id}/calibrationLive` (filtered level V, unclam
 No extra request, one record overwritten, no history. The firmware stops by itself at that time, after 30 min (`CALIB_LIVE_MAX_MS`), or while
 its NTP clock is unset. "Use as Vmin/Vmax/pH neutral" only fills the form; Save applies it. All four sketches have it.
 
+Multi-point level calibration: a tank may have `tanks/{id}/levelCalPoints`, 2 to 20 `{depthM, volts}` points from 0 m
+to `tankHeight` (±5 mm), depths and voltages strictly increasing, voltages 0.30–3.25 V (Admin Panel → Calibration →
+Level calibration table, `LevelCalibrationTable.tsx`; "Use live reading" fills a row from the live readings; Save applies).
+The ESP32 reads it with the 1 s command poll, checks the same rules (`levelCalProblem()`) and interpolates linearly between the
+two points around the voltage (`levelHeightFromVoltage()`; outside the table the end segment is extended, then clamped as before,
+so below the first point 0 % and above the last 100 %). No list or an invalid one = the Vmin/Vmax line, exactly as before (an invalid
+one logs one WARNING). Fault limits, deadband, pump logic and history are unchanged. `calibrationLive.calPoints` says which one
+the controller uses (0 = Vmin/Vmax). Web math and checks: `frontend/src/lib/levelCalibration.ts`; method: `docs/Methodology.md` 3.1.1.
+All four sketches have it (Tank 4 is the new-tank template).
+
 Night watch (leak detection): no water is used at night, so between 10 PM and 3 AM (Philippine time, UTC+8;
 Admin Panel → Night Watch) a falling level means a leak or an open faucet. Admin Panel → Night Watch → "Tanks to watch" picks the tanks it covers
 (`config/nightWatchTanks/{id}`, only `false` leaves a tank out, so a new tank is watched; `isNightWatchedTank()`;
@@ -73,7 +83,7 @@ because the firmware level deadband is 2 %. No firmware change; details in `docs
 
 | Path | Written by | Contents |
 |---|---|---|
-| `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin), `maintenanceMode` (per-tank maintenance, admin), `thresholds` (admin, optional: this tank's own `lowLevelThreshold`, `overflowThreshold`, `minPh`, `maxPh`; all four or none, set in Admin Panel → Reservoir Settings → Tank N; used by alerts, Dashboard, Reports and the tank's controller instead of the shared `/config` values, `tankThresholds()` in `alertEngine.ts`). `pumpOn` is the pump command: the ESP32 writes it only when it changes the pump itself or refuses a command, never in its regular sensor upload (that overwrote commands). It acknowledges each command with `pumpCommandAt` + `pumpCommandResult`; the dashboard shows a spinner until then (15 s timeout, `PUMP_COMMAND_TIMEOUT_MS`). After a reboot the ESP32 writes its own state (OFF) before reading commands. `pumpFault` (`no-rise` / `max-run`) is set by the dry-run guard and raises `alert-{id}-pumpFault`; a manual ON clears it |
+| `/tanks/{id}` | ESP32 (one per tank), web app (commands, calibration) | Live level, pH, pump state, sensor health, link info, calibration, `capacityLiters` (set per tank by the admin), `levelCalPoints` (admin, optional multi-point level calibration; missing = `levelVmin`/`levelVmax`), `maintenanceMode` (per-tank maintenance, admin), `thresholds` (admin, optional: this tank's own `lowLevelThreshold`, `overflowThreshold`, `minPh`, `maxPh`; all four or none, set in Admin Panel → Reservoir Settings → Tank N; used by alerts, Dashboard, Reports and the tank's controller instead of the shared `/config` values, `tankThresholds()` in `alertEngine.ts`). `pumpOn` is the pump command: the ESP32 writes it only when it changes the pump itself or refuses a command, never in its regular sensor upload (that overwrote commands). It acknowledges each command with `pumpCommandAt` + `pumpCommandResult`; the dashboard shows a spinner until then (15 s timeout, `PUMP_COMMAND_TIMEOUT_MS`). After a reboot the ESP32 writes its own state (OFF) before reading commands. `pumpFault` (`no-rise` / `max-run`) is set by the dry-run guard and raises `alert-{id}-pumpFault`; a manual ON clears it |
 | `/config` | Admin Panel | Shared thresholds (low 15 %, overflow 95 %, pH 6.5 to 8.5; a tank may override them in `tanks/{id}/thresholds`), `pumpControlLock` (the ESP32 refuses every dashboard pump command, admins included, and the Dashboard greys out the switch for everyone), night watch (`nightWatchEnabled`, `nightStartHour`/`nightEndHour`, `nightFastDropPercent`, `nightSlowDropPercent`, `nightWatchTanks`), maintenance mode, locks, `pumpDemoMode` (shown as "Pump System"; missing = on: shows the pump UI and lets the ESP32 run the pump), `pumpMode` (`"auto"` / `"manual"`, admin-only; missing = auto; manual skips the low-level auto start, safety stops stay; all sketches) |
 | `/history/tanks/{id}` | ESP32 | One sample every 10 min, also during a sensor fault (with `levelSensorOk` / `phSensorOk` flags; Reports marks those "Fault") |
 | `/logs` | ESP32, web app | Audit events (INFO / WARNING / ERROR / CRITICAL). Tank 2–4 controllers add `tankId`; ESP32 entries without it belong to Tank 1. Dashboard pump commands (`PUMP_ON` / `PUMP_OFF`) carry `tankId` and `performedByRole`; Reports → Pump Activity Log pairs them with the controller's accepted/refused entry (`buildPumpEvents` in `reportLogs.ts`) |
@@ -99,6 +109,9 @@ copies the Tank 4 sketch to `backend/firmware/tank<id>/` with that `TANK_ID`, th
 - `frontend/src/lib/predictive.ts` (web app only) turns the 10-minute history into peak hours, peak day of the week,
   expected use today, time until the low threshold and the pH trend (Reports → Predictive Analytics, also in the
   Excel sheet, PDF section and CSV blocks via `buildPredictiveReport()`; not on the Dashboard). Philippine time; skips pump-on, fault, gap and glitch intervals. Details: `docs/Methodology.md` 4.4.
+- `frontend/src/lib/levelCalibration.ts` (web app only) is the multi-point level math and validation; the four sketches
+  repeat it in C++ (`levelHeightFromVoltage()`, `levelCalProblem()`). Change both together. The Dashboard, Reports and
+  alerts use the level % the ESP32 sends, so they compute no level from voltage themselves.
 - `frontend/src/lib/constants.ts` holds web-app timings, retention (90 days), and the default tank capacity (200 L);
   each tank's own capacity is `tanks/{id}/capacityLiters` and drives the estimated volume in Reports and exports.
 - Firmware constants (filter windows, deadbands, pump cooldown 30 s, history 10 min) live at the top of
@@ -135,7 +148,7 @@ The sketches have no fallback credentials: a build without all five values in `s
 | Older review records (open items mirror the list above) | `WEB_NOTIFICATION_RECOMMENDATIONS.md`, `docs/Code_Cleanup.md` (all done) |
 | Cloud setup steps (roles, worker, push, App Check) | `PHASE3_SETUP.md` |
 | Thesis tooling | `.claude/agents/` (thesis-code-checker, proofreader, etc.), `thesis-review/` |
-| What to change in the paper after a system change | `thesis-review/paper-changes-YYYY-MM-DD.md` (local only: `thesis-review/` is git-ignored) (one per batch; 2026-11-19: live calibration, night watch, predictive analytics), facts in `thesis-review/Paper_Facts.md` |
+| What to change in the paper after a system change | `thesis-review/paper-changes-YYYY-MM-DD.md` (local only: `thesis-review/` is git-ignored) (one per batch; 2026-11-19: live calibration, night watch, predictive analytics; 2026-11-24: multi-point level calibration), facts in `thesis-review/Paper_Facts.md` |
 
 ## Keeping this map current (team)
 
@@ -149,7 +162,7 @@ The sketches have no fallback credentials: a build without all five values in `s
 
 - When a change touches a number or behavior described in the thesis (thresholds, intervals, filter
   stages, roles), say so, and run the `thesis-code-checker` agent before adviser meetings or the defense.
-- Paper edits go into the Google Doc (Drive: "FINAL_CAPSTONE_PAPER_2026-11-19") as **suggestions**. Never edit or save
+- Paper edits go into the Google Doc (Drive: "FINAL_CAPSTONE_PAPER_2026-11-24", since 23 Nov 2026; not the 11-19 Doc) as **suggestions**. Never edit or save
   a capstone paper .docx on a local machine; local .docx files are for reading only.
 - Deploy database rules only after the needed `/roles` entries exist, or the ESP32 gets rejected.
 - Keep it free: no paid Firebase plan features, no Play Store fees.

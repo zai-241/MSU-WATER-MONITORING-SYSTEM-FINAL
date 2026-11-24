@@ -42,6 +42,7 @@ import {
   isValidTankId,
 } from '@/lib/constants';
 import { planRaise, planResolve, archiveOf, ownTankThresholds, type RaisePlan, type RaiseOutcome, type TankThresholds } from '@/lib/alertEngine';
+import { parseLevelCalPoints, type LevelCalPoint } from '@/lib/levelCalibration';
 
 export type UserRole = 'admin' | 'worker' | 'viewer';
 export type TankStatus = 'safe' | 'warning' | 'danger' | 'offline';
@@ -50,10 +51,12 @@ export type TankStatus = 'safe' | 'warning' | 'danger' | 'offline';
 export interface CalibrationLive {
   /** Filtered level sensor voltage (V) */
   voltage: number;
-  /** Height from the current Vmin/Vmax, not clamped to the tank (m) */
+  /** Height from the calibration table (or Vmin/Vmax without one), not clamped to the tank (m) */
   heightM: number;
   /** Level % as the dashboard shows it (0–100) */
   percent: number;
+  /** Points in the calibration table the controller uses (0 = Vmin/Vmax); missing on older firmware */
+  calPoints?: number;
   /** Filtered pH sensor voltage (V) */
   phVoltage?: number;
   /** Server time of the reading (ms) */
@@ -89,6 +92,11 @@ export interface Tank {
   capacityLiters?: number;
   /** User‑defined offset applied to the calculated water level */
   levelOffset: number;
+  /**
+   * Multi-point level calibration (admin): (depth m, voltage V) points from 0 m to the tank
+   * height. Missing = the Vmin/Vmax line. See lib/levelCalibration.ts.
+   */
+  levelCalPoints?: LevelCalPoint[] | null;
   /** Voltage reading corresponding to neutral pH (7.0) */
   phNeutralVoltage: number;
   /** Slope factor to convert voltage difference to pH units */
@@ -557,6 +565,7 @@ export function sanitizeTank(key: string, raw: unknown): Tank {
     tankHeight: isNumber(r.tankHeight) ? r.tankHeight : 5.0,
     capacityLiters: tankCapacityLiters(r),
     levelOffset: isNumber(r.levelOffset) ? r.levelOffset : 0,
+    levelCalPoints: parseLevelCalPoints(r.levelCalPoints),
     phNeutralVoltage: isNumber(r.phNeutralVoltage) ? r.phNeutralVoltage : 2.5,
     phSlope: isNumber(r.phSlope) ? r.phSlope : 0.18,
     phOffset: isNumber(r.phOffset) ? r.phOffset : 0.0,

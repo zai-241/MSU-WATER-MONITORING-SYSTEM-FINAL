@@ -78,6 +78,12 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
 - [x] **B3 Flash every installed controller** with the current sketch (Tank 1: RC filter fault limit 0.30 V, per-tank
   maintenance, live calibration, per-tank thresholds from 20 Nov). *Done 2026-11-20:* Tank 1 runs the sketch from
   commit `08fbded`, so its pump uses the tank's own thresholds when set. Re-flash after any later firmware change.
+- [ ] **B4 Multi-point level calibration (24 Nov 2026).** In this order: (1) deploy the database rules
+  (`levelCalPoints`: admin only, 2–20 points); (2) `npm run deploy:hosting` (web and APK); (3) flash Tank 1 (and any
+  other installed controller) with the current sketch; (4) measure the table on the full drum (Admin Panel →
+  Calibration → Level calibration table, `docs/Level_Sensor_Zero_Span_Calibration.md` D2) and Save; (5) check the Logs
+  for "Level calibration: using the N-point table"; (6) re-test level accuracy at the 9 depths (10–90 cm) against
+  the steel tape. Paper changes: `thesis-review/paper-changes-2026-11-24.md` (local).
 
 ### C. Thesis (before the defense)
 
