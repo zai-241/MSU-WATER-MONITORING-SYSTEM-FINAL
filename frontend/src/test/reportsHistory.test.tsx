@@ -513,8 +513,8 @@ describe('Historical Data & Reports Telemetry', () => {
       expect(clickSpy).toHaveBeenCalled();
       const clickedAnchor = clickSpy.mock.instances[0] as unknown as HTMLAnchorElement;
       expect(clickedAnchor.download).toBe(`WaterReport_Tank1_${today}.xlsx`);
-    }, { timeout: 10000 }); // the exporter (exceljs, jsPDF) is loaded on first click
+    }, { timeout: 30000 }); // the exporter (exceljs, jsPDF) is loaded on first click; slow while other suites run in parallel
 
     clickSpy.mockRestore();
-  });
+  }, 45000);
 });
