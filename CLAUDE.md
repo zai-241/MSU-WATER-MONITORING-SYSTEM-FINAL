@@ -152,6 +152,7 @@ The sketches have no fallback credentials: a build without all five values in `s
 | Older review records (open items mirror the list above) | `WEB_NOTIFICATION_RECOMMENDATIONS.md`, `docs/Code_Cleanup.md` (all done) |
 | Cloud setup steps (roles, worker, push, App Check) | `PHASE3_SETUP.md` |
 | Thesis tooling | `.claude/agents/` (thesis-code-checker, proofreader, etc.), `thesis-review/` |
+| System facts for the paper; paper status, open issues and change log | `paper/SYSTEM_FACTS.md`, `paper/PAPER_TRACKER.md` (committed) |
 | What to change in the paper after a system change | `thesis-review/paper-changes-YYYY-MM-DD.md` (local only: `thesis-review/` is git-ignored) (one per batch; 2026-11-19: live calibration, night watch, predictive analytics; 2026-11-24: multi-point level calibration), facts in `thesis-review/Paper_Facts.md` |
 
 ## Keeping this map current (team)
@@ -168,5 +169,15 @@ The sketches have no fallback credentials: a build without all five values in `s
   stages, roles), say so, and run the `thesis-code-checker` agent before adviser meetings or the defense.
 - Paper edits go into the Google Doc (Drive: "FINAL_CAPSTONE_PAPER_2026-11-24", since 23 Nov 2026; not the 11-19 Doc) as **suggestions**. Never edit or save
   a capstone paper .docx on a local machine; local .docx files are for reading only.
+- **Paper Sync Rule:** whenever code, firmware, hardware config, schema or a feature is added, changed or removed:
+  1. Update `paper/SYSTEM_FACTS.md`.
+  2. Find every paper section it affects (scope, objectives, architecture, requirements, methodology, results,
+     screenshots, abstract, conclusions, recommendations) and write the new wording in `paper/PAPER_TRACKER.md` →
+     Misalignment Log. It goes into the Google Doc as a suggestion only after the team approves it in chat.
+  3. A removed feature still in the paper is removed or moved to Recommendations.
+  4. Re-check the cross-chapter chain (objective → method → result → conclusion) for those sections.
+  5. Add a row to `PAPER_TRACKER.md` → Change Log and update its Chapter Status Dashboard.
+  6. Name the affected paper sections in the commit message.
+  At the start of a session, run `git log` since the last Change Log entry and sync anything missed (teammates' pushes too).
 - Deploy database rules only after the needed `/roles` entries exist, or the ESP32 gets rejected.
 - Keep it free: no paid Firebase plan features, no Play Store fees.
