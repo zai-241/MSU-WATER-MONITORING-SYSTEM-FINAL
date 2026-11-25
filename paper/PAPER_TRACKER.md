@@ -16,9 +16,9 @@ had been resolved (139 accepted, 7 rejected); none were pending.
 | Abstract | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 1 Introduction | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 2 Review of Related Literature and Systems | 👤 Waiting on Us | ✅ | ✅ | 1 | 2026-11-26 |
-| Ch 3 Methodology | 👤 Waiting on Us | 🟡 (fix M-01 suggested, not yet accepted) | ✅ | 2 | 2026-11-26 |
-| Ch 4 Results and Discussion | 👤 Waiting on Us | 🟡 (fix M-02 suggested, not yet accepted) | ✅ | 2 | 2026-11-26 |
-| Ch 5 Summary, Conclusion, Recommendations | 👤 Waiting on Us | ✅ | ✅ | 2 | 2026-11-26 |
+| Ch 3 Methodology | 👤 Waiting on Us | ✅ | ✅ | 1 (MI-02 figure images) | 2026-11-26 |
+| Ch 4 Results and Discussion | 👤 Waiting on Us | ✅ | ✅ | 1 (D-01 pH test date) | 2026-11-26 |
+| Ch 5 Summary, Conclusion, Recommendations | 👤 Waiting on Us | ✅ | ✅ | 1 (M-04, after D-01) | 2026-11-26 |
 | References | ✅ Done | n/a | ✅ (every citation listed, every entry cited) | 0 | 2026-11-26 |
 | Appendices | 👤 Waiting on Us | ✅ | ✅ | 1 | 2026-11-26 |
 
@@ -53,6 +53,9 @@ adviser only if the template requires them.
 - Network failover, self-restart (3 min, doubling to 24 min, never while the pump runs), pump rules and logs match the firmware.
 - Figure and table captions are numbered in order and every one is referred to in the text.
 
+**Ch 3 / Ch 4 / Ch 5 (26 Nov)**
+- M-01–M-03 accepted: level fault limit now 0.20 V in 3.4.2 and 4.1.1, matching the firmware; 5.2 brackets merged.
+
 **Ch 5**
 - Recommendations list only features the system does not have (reservoir deployment, Tanks 2–4 hardware, solar,
   real pump control, turbidity/TDS/temperature, ML and flow meters, GSM SMS, iOS).
@@ -68,9 +71,9 @@ Records in `thesis-review/final-check-2026-11-25.md` and `thesis-review/paper-re
 
 | ID | Chapter/Section | What the paper says | What the system/other chapter says | Fix applied or proposed | Status |
 |---|---|---|---|---|---|
-| M-01 | Ch 3, 3.4.2 System Data Processing Algorithm [p755] | Fault when the input "stays at or below 0.30V for the level sensor" | `LEVEL_MIN_VALID_VOLTAGE = 0.20` in all four sketches since `d1c4af6` (25 Nov 2026) | "at or below **0.30V** for the level sensor" → "at or below **0.20V** for the level sensor" | Approved; suggested in the Doc 26 Nov 2026, waiting to be accepted |
-| M-02 | Ch 4, 4.1.1 [p1012] | "level readings at or below 0.30 V … are treated as invalid"; "For this reason the lower limit for the level sensor is 0.30 V, while an empty drum reads about 0.389 V." | Same as M-01 | "level readings at or below **0.30 V**" → "**0.20 V**"; "the lower limit for the level sensor is **0.30 V**, while an empty drum reads about 0.389 V" → "the lower limit for the level sensor is **0.20 V**, **above the 0.14 V of a disconnected sensor and below the 0.389 V of an empty drum**" | Approved; suggested in the Doc 26 Nov 2026, waiting to be accepted |
-| M-03 | Ch 5, 5.2 [p1688] | "…in all 70 recorded measurements (push notifications were switched off during the test) (the longest was 0.33 seconds)." | Grammar: two parentheses in a row | → "…in all 70 recorded measurements (the longest was 0.33 seconds; push notifications were switched off during the test)." | Approved; suggested in the Doc 26 Nov 2026, waiting to be accepted |
+| M-01 | Ch 3, 3.4.2 System Data Processing Algorithm [p755] | Fault when the input "stays at or below 0.30V for the level sensor" | `LEVEL_MIN_VALID_VOLTAGE = 0.20` in all four sketches since `d1c4af6` (25 Nov 2026) | "at or below **0.30V** for the level sensor" → "at or below **0.20V** for the level sensor" | ✅ Done: accepted in the Doc 26 Nov 2026 (verified) |
+| M-02 | Ch 4, 4.1.1 [p1012] | "level readings at or below 0.30 V … are treated as invalid"; "For this reason the lower limit for the level sensor is 0.30 V, while an empty drum reads about 0.389 V." | Same as M-01 | "level readings at or below **0.30 V**" → "**0.20 V**"; "the lower limit for the level sensor is **0.30 V**, while an empty drum reads about 0.389 V" → "the lower limit for the level sensor is **0.20 V**, **above the 0.14 V of a disconnected sensor and below the 0.389 V of an empty drum**" | ✅ Done: accepted in the Doc 26 Nov 2026 (verified) |
+| M-03 | Ch 5, 5.2 [p1688] | "…in all 70 recorded measurements (push notifications were switched off during the test) (the longest was 0.33 seconds)." | Grammar: two parentheses in a row | → "…in all 70 recorded measurements (the longest was 0.33 seconds; push notifications were switched off during the test)." | ✅ Done: accepted in the Doc 26 Nov 2026 (verified) |
 | M-04 | Ch 5, 5.2 [p1689] | "and subject to the results still to be confirmed" | The pH results are reported as final (±0.16 pH) in the Abstract, 4.2.1 and 5.1 | Delete the phrase once D-01 is filled in | Waiting on D-01 |
 | M-05 | List of Figures [p151–p189] | Figure 3.1 "Agile Methodology Cycle…"; 3.12 "Entity-Relationship Diagram (ERD)"; 3.13–3.16 shifted by one | Captions: 3.1 "Iterative and Incremental Agile Methodology Cycle…"; 3.12 Data Model…; 3.13 Data Model of the Realtime Database…; 3.14 Architectural Design; 3.15 Network Design Topology; there is no 3.16 | Refresh the list in the Doc (MI-01) | Waiting on us |
 
@@ -113,3 +116,4 @@ All 37 references were checked on 26 Nov 2026. ✅ = DOI registered or URL loads
 | 2026-11-25 | `d1c4af6` dry-run fault kept in flash; level fault limit 0.30 V → 0.20 V | 3.4.2 [p755], 4.1.1 [p1012] | Dry-run wording already correct; 0.20 V proposed as M-01, M-02 |
 | 2026-11-26 | (no code change) tracker and fact sheet created | none | First run of the finalization prompt |
 | 2026-11-26 | (paper only) M-01–M-03 suggested in the Doc | 3.4.2, 4.1.1, 5.2 | 0.30 V → 0.20 V (3 places), 5.2 brackets; verified as suggestions |
+| 2026-11-26 | (paper only) M-01–M-03 accepted by the team | 3.4.2, 4.1.1, 5.2 | Re-read the Doc: no pending suggestions, no "0.30 V" left |
