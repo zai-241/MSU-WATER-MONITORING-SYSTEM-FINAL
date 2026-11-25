@@ -15,12 +15,12 @@ had been resolved (139 accepted, 7 rejected); none were pending.
 | Front matter (title, TOC, List of Figures/Tables) | 👤 Waiting on Us | ✅ | ❌ (List of Figures out of date) | 2 | 2026-11-26 |
 | Abstract | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 1 Introduction | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
-| Ch 2 Review of Related Literature and Systems | 👤 Waiting on Us | ✅ | ✅ | 1 | 2026-11-26 |
+| Ch 2 Review of Related Literature and Systems | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 3 Methodology | 👤 Waiting on Us | ✅ | ✅ | 1 (MI-02 figure images) | 2026-11-26 |
 | Ch 4 Results and Discussion | 👤 Waiting on Us | ✅ | ✅ | 1 (D-01 pH test date) | 2026-11-26 |
 | Ch 5 Summary, Conclusion, Recommendations | 👤 Waiting on Us | ✅ | ✅ | 1 (M-04, after D-01) | 2026-11-26 |
 | References | ✅ Done | n/a | ✅ (every citation listed, every entry cited) | 0 | 2026-11-26 |
-| Appendices | 👤 Waiting on Us | ✅ | ✅ | 1 | 2026-11-26 |
+| Appendices | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 
 Structure note: the paper follows its own CICS capstone template (Ch 1 = Project Context, Purpose and Description,
 Objectives, Scope and Limitations, Significance; Ch 2 = Related Concepts, Theories, Systems, Technical Background).
@@ -60,6 +60,9 @@ adviser only if the template requires them.
 - Recommendations list only features the system does not have (reservoir deployment, Tanks 2–4 hardware, solar,
   real pump control, turbidity/TDS/temperature, ML and flow meters, GSM SMS, iOS).
 
+**Ch 2 (26 Nov)**
+- S-01 closed: the Rogers (1995) quote is on p. 5 of the 4th edition, as cited.
+
 **References**
 - All 37 entries checked on 26 Nov 2026: every DOI is registered (doi.org handle API) and every URL loads, except
   sites that block automated checks (see F).
@@ -91,7 +94,7 @@ Records in `thesis-review/final-check-2026-11-25.md` and `thesis-review/paper-re
 | ID | Chapter/Section | Data needed | How to collect it (instrument, respondents, procedure) | Where it goes in the paper | Placeholder tag |
 |---|---|---|---|---|---|
 | D-01 | Ch 4, 4.2.1 [p1092] | Date of the pH accuracy test | From the pH test record sheet (`thesis-review/pH_Sensor_Test_Record.xlsx`) or the team's notes / photo timestamps | Replace the placeholder; then remove the phrase in M-04 | `[NEEDS DATA: date of the pH accuracy test]` (already in the Doc) |
-| D-02 | Appendix A [p1807–p1808] | The real answer to "Do you think students, faculty, and staff should also have limited access to water supply information…" (the current answer is a copy of the next one, [p1811]) | Interview recording or written notes from the stakeholder interview | Replace the answer under the question at [p1807] | none yet (suggest `[[DATA NEEDED: D-02]]` if the record is not found before submission) |
+| D-02 | Appendix A, question 16 [p1807–p1808] | The real answer to "Do you think students, faculty, and staff should also have limited access to water supply information…" (it was a copy of the answer to question 17) | Supplied by the team on 26 Nov 2026 | ✅ Done: accepted in the Doc 26 Nov 2026 (verified; the copied text is gone) | none |
 
 ## F. Sources Needed / Verified
 
@@ -99,7 +102,7 @@ All 37 references were checked on 26 Nov 2026. ✅ = DOI registered or URL loads
 
 | ID | Claim in the paper | Source (APA 7th, as in the paper) | DOI/URL | Verified ✅/❌ |
 |---|---|---|---|---|
-| S-01 | Rogers' definition of diffusion, quoted "(p. 5)" in 2.2.2 [p359] | Rogers, E. M. (1995). *Diffusion of innovations* (4th ed.). Free Press. | book, no URL | 🟡 Book exists; **page number unconfirmed** (published papers cite p. 5 or p. 10). Check the 4th edition, Ch. 1 "Elements of Diffusion" |
+| S-01 | Rogers' definition of diffusion, quoted "(p. 5)" in 2.2.2 [p359] | Rogers, E. M. (1995). *Diffusion of innovations* (4th ed.). Free Press. | book (4th ed., ISBN 0-02-926671-8; Internet Archive scan diffusionofinnov00roge_0) | ✅ Page 5 confirmed by the team in the 4th edition on 26 Nov 2026; the paper was already correct |
 | S-02 | 2.1.6 wireless bridge | Mitchell, B. (2020). Wi-Fi wireless bridging explained. Lifewire. | https://www.lifewire.com/what-is-a-wireless-bridge-816540 | 🟡 Site refused the automated check (HTTP 402); open it in a browser once |
 | S-03 | USE Questionnaire | Lund, A. M. (2001). Measuring usability with the USE questionnaire. *Usability Interface, 8*(2), 3–6. | no DOI (newsletter) | ✅ Standard citation for the instrument |
 | S-04 | Journal articles | Dai et al. (2025), Davis (1989), Davis et al. (1989), Gubbi et al. (2013), Larman & Basili (2003), López et al. (2026), Andaya et al. (2025), Mehrotra & Musolesi (2017), Pasika & Gandla (2020), Raghava Rao et al. (2018) | DOIs in the reference list | ✅ All DOIs registered |
@@ -117,3 +120,5 @@ All 37 references were checked on 26 Nov 2026. ✅ = DOI registered or URL loads
 | 2026-11-26 | (no code change) tracker and fact sheet created | none | First run of the finalization prompt |
 | 2026-11-26 | (paper only) M-01–M-03 suggested in the Doc | 3.4.2, 4.1.1, 5.2 | 0.30 V → 0.20 V (3 places), 5.2 brackets; verified as suggestions |
 | 2026-11-26 | (paper only) M-01–M-03 accepted by the team | 3.4.2, 4.1.1, 5.2 | Re-read the Doc: no pending suggestions, no "0.30 V" left |
+| 2026-11-26 | (paper only) Appendix A question 16 answer replaced (D-02) | Appendix A | Answer text supplied by the team; suggested and accepted 26 Nov 2026 |
+| 2026-11-26 | (paper only) S-01 closed | none | Rogers (1995) quote is on p. 5 of the 4th edition, as the paper says |
