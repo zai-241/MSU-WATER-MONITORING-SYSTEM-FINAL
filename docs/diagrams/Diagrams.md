@@ -12,6 +12,8 @@ These replace the figures that no longer match the system. They keep the design 
 
 For Google Docs, `thesis-review/figures-2026-11-22/` (local only) has 2000 px wide copies of every figure the Doc still needs replaced, and `thesis-review/data-model-2026-11-22/` (local only) has 2000 px wide copies of the two data model figures: Docs refuses images over 25 megapixels, and the full-size PNGs here are about 31.
 
+**System update (2026-11-25), multi-point level calibration:** 3-7 computes height and level % on the tank's calibration table (Vmin/Vmax line without one) and lists the multi-point level table under admin calibration; 3-8 adds the level calibration table (levelCalPoints) to the admin calibration input; 3-9 says "Use live reading" fills a row of the level calibration table; 3-13 adds `levelCalPoints` to TANKS. 3-14 (Architectural Design) shows photos of the 5 V relay module on GPIO 32 and the 5 V mini refill pump in the sensor node (`assets/relay-5v.png`, `assets/pump-5v.png`, background removed; the relay photo is a store product image), so the figure is 140 units taller. 2000 px copies for Google Docs: `thesis-review/figures-2026-11-25/` (local only).
+
 **System update (2026-11-19):** 3-5, 3-6, 3-13 and 3-14 say W5500 Ethernet instead of LAN8720; 3-13 shows the pump relay on GPIO 32 as installed (refill pump of the drum model); 3-10 uses "Pump System" instead of "Pump Demo Mode"; Data_Model_1/2 add pumpMode, the night watch settings, pumpCommandAt/Result, calibrationUntil/Live and the history sensor flags. The W5500 picture in 3-13 is still the module photo from the original figure.
 
 **Features of 14–19 Nov (2026-11-19, second pass):**

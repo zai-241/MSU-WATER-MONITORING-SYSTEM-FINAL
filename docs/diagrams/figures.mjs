@@ -312,7 +312,7 @@ function ipo(rows) {
 // Figure 3-7 (redrawn 2026-11-19 in the style of 3-8 and 3-9; the original said LAN8720 and had no pump or fault handling)
 const fig37 = () => ipo([
   [['Hydrostatic Level Sensor', 'Analog voltage (0–3.3 V) through the current-to-voltage module, GPIO 35'],
-    ['Signal Processing & Depth Calculation', 'Median and moving-average filters, bounds and spike checks; height and level % from Vmin, Vmax and tank height'],
+    ['Signal Processing & Depth Calculation', 'Median and moving-average filters, bounds and spike checks; height and level % interpolated on the calibration table of the tank (Vmin/Vmax line without one)'],
     ['Calibrated Level & Depth', 'Level % and water height (m), with the level sensor health flag']],
   [['pH Glass Electrode Sensor', 'Analog voltage (0–3.3 V), GPIO 34'],
     ['pH Calibration & Conversion', 'Voltage check; neutral-voltage slope formula + offset'],
@@ -329,7 +329,7 @@ const fig37 = () => ipo([
   [['Alert Threshold & Night Watch Configuration', 'Shared limits (default level 15%–95%, pH 6.5–8.5) or the tank\'s own; night window 10 PM–3 AM'],
     ['Alert State Machine & Validation', '5-second persistence check; repeat every 60 s until acknowledged; night level-drop check'],
     ['Real-Time In-App / Toast Alerts & Logs', 'In-app toast & audible chime, push notifications, audit entries']],
-  [['Admin Calibration & System Control', 'Shared and per-tank thresholds, calibration, maintenance mode (all tanks or one tank), live calibration view'],
+  [['Admin Calibration & System Control', 'Shared and per-tank thresholds, calibration (multi-point level table), maintenance mode (all tanks or one tank), live calibration view'],
     ['RTDB Configuration Sync', 'Read by the ESP32 every second; live readings sent once per second while the view is open'],
     ['Updated System Behavior', 'No re-flashing required; changes apply live']],
   [['User Authentication & Role Data', 'User credentials & roles (Admin / Worker / Viewer)'],
@@ -356,7 +356,7 @@ const fig38 = () => ipo([
   [['Reports & Historical\nRequests', 'Tank ID, date range\nfilters (7 / 14 / 30 days)'],
     ['Query Logs & Build Datasets', 'Filter RTDB telemetry & diagnostic logs by tank and range; build trend arrays and usage analytics (peak hours, peak day, forecasts)'],
     ['Interactive Analytics\n& Exportable Reports', 'Recharts trends, predictive analytics, Pump Activity Log & reports (PDF, Excel, CSV)']],
-  [['Admin Calibration\n& Capacity Input', 'Vmin/Vmax, tankHeight, phSlope, phOffset, capacityLiters (per tank); live calibration view (calibrationUntil)'],
+  [['Admin Calibration\n& Capacity Input', 'Level calibration table (levelCalPoints) or Vmin/Vmax, tankHeight, phSlope, phOffset, capacityLiters (per tank); live calibration view (calibrationUntil)'],
     ['Update Calibration\nParams in RTDB', 'Admin selects a tank\nand writes parameters\nto tanks/{id} fields'],
     ['Dynamic Sensor\nCalibration', 'ESP32 applies updated calibration on next poll; live readings once per second while the view is open']],
   [['Pump Command', 'pumpOn written by an Admin or the assigned Worker'],
@@ -396,7 +396,7 @@ const fig39 = () => ipo([
     ['Validate input, write\nto config/ & tanks/', 'updateConfig /\nupdateTank RTDB write,\ntoast confirm'],
     ['Updated system\nconfig & calibration\nsettings', 'Changes apply live,\nESP32 picks up on poll']],
   [['Live calibration view', 'Start or +10 min for one tank (30 min at most)'],
-    ['Write calibrationUntil, listen to calibrationLive', 'Readings once per second; "Use as Vmin / Vmax / pH neutral" fills the form'],
+    ['Write calibrationUntil, listen to calibrationLive', 'Readings once per second; "Use live reading" fills a row of the level calibration table, "Use as pH neutral" the pH field'],
     ['Live sensor readings', 'Level voltage, height, %, pH voltage; Save applies the values']],
   [['User management', 'New user, role\n(admin/worker/viewer)'],
     ['Register via\nsecondary Auth,\nFirestore profile', 'onSnapshot user list; activate/deactivate (no delete); online status'],
@@ -712,7 +712,7 @@ function figDataModel2() {
     ['lowLevelAlert', 'STRING'], ['highLevelAlert', 'STRING'], ['phAlert', 'STRING'], ['pumpOn (state and command)', 'BOOLEAN'],
     ['pumpCommandAt', 'TIMESTAMP'], ['pumpCommandResult', 'STRING'],
     ['levelSensorOk', 'BOOLEAN'], ['phSensorOk', 'BOOLEAN'], ['levelVmin (V)', 'NUMBER'], ['levelVmax (V)', 'NUMBER'],
-    ['tankHeight (m)', 'NUMBER'], ['capacityLiters (default 200)', 'NUMBER'], ['levelOffset', 'NUMBER'], ['phNeutralVoltage (V)', 'NUMBER'],
+    ['levelCalPoints (2-20 depthM, volts)', 'ARRAY'], ['tankHeight (m)', 'NUMBER'], ['capacityLiters (default 200)', 'NUMBER'], ['levelOffset', 'NUMBER'], ['phNeutralVoltage (V)', 'NUMBER'],
     ['phSlope', 'NUMBER'], ['phOffset', 'NUMBER'], ['rssi (dBm)', 'NUMBER'], ['wifiConnected', 'BOOLEAN'], ['ethConnected', 'BOOLEAN'],
     ['firebaseConnected', 'BOOLEAN'], ['controllerOffline', 'BOOLEAN'], ['calibrationUntil (max 30 min ahead)', 'TIMESTAMP'],
     ['calibrationLive (V, m, %, pH V)', 'OBJECT'], ['thresholds (own low, overflow, pH)', 'OBJECT'],
@@ -757,7 +757,8 @@ function bellIcon(cx, cy, r = 46) {
     `<circle cx="${cx}" cy="${cy + 27}" r="6" fill="#FFFFFF"/><circle cx="${cx}" cy="${cy - 26}" r="4" fill="#FFFFFF"/>`;
 }
 function fig313() {
-  const W = PAGE_W, H = 940, IMG = 'arch', NET = 'net';
+  // S: extra height of the sensor node for the relay and pump row (2026-11-25); everything below moves down by S
+  const S = 140, W = PAGE_W, H = 940 + S, IMG = 'arch', NET = 'net', RELAY = 'relay5v', PUMP = 'pump5v';
   const P = (x, y, t, size = 19) => text(x, y, t, { size, family: POPPINS, weight: 600, lh: 1.35 });
   const A = (pts, o) => arrow(pts, { sw: 2.5, color: '#000', ...o });
   let b = '';
@@ -766,17 +767,20 @@ function fig313() {
   b += A([[388, 151], [405, 151], [405, 300], [423, 300]]);
   b += A([[192, 380], [423, 380]]);
   b += A([[545, 262], [545, 230]]);
+  // ESP32 -> 5 V relay (GPIO 32) -> 5 V mini pump (installed on Tank 1, the Pilot Test Tank)
+  b += A([[423, 400], [370, 400], [370, 468]]);
+  b += A([[444, 520], [516, 520]]);
   // bridge and router
   b += A([[647, 172], [758, 172]]);
   b += A([[822, 172], [888, 172]], { dash: '8 6', start: true });
   b += A([[952, 172], [1016, 172]]);
-  b += A([[508, 466], [508, 545], [1000, 545], [1000, 215], [1016, 215]], { dash: '8 6' });
+  b += A([[596, 395], [716, 395], [716, 545 + S], [1000, 545 + S], [1000, 215], [1016, 215]], { dash: '8 6' });
   // cloud and client
-  b += A([[1075, 243], [1075, 612]]) + A([[1105, 612], [1105, 243]]);
-  b += A([[852, 690], [1032, 690]], { start: true });
-  b += A([[748, 690], [572, 690]]);
-  b += A([[468, 690], [362, 690]], { dash: '8 6' });
-  b += A([[1090, 822], [1090, 860], [252, 860], [252, 822]], { start: true });
+  b += A([[1075, 243], [1075, 612 + S]]) + A([[1105, 612 + S], [1105, 243]]);
+  b += A([[852, 690 + S], [1032, 690 + S]], { start: true });
+  b += A([[748, 690 + S], [572, 690 + S]]);
+  b += A([[468, 690 + S], [362, 690 + S]], { dash: '8 6' });
+  b += A([[1090, 822 + S], [1090, 860 + S], [252, 860 + S], [252, 822 + S]], { start: true });
   // photos and icons
   b += crop(IMG, [15, 165, 136, 110], 25, 85, 163, 132);
   b += crop(IMG, [15, 360, 139, 112], 30, 318, 154, 124);
@@ -785,37 +789,38 @@ function fig313() {
   b += crop(NET, [325, 145, 55, 155], 760, 88, 60, 169);
   b += crop(NET, [680, 145, 55, 155], 890, 88, 60, 169);
   b += crop(IMG, [630, 255, 140, 130], 1018, 110, 140, 130);
-  b += crop(IMG, [873, 245, 106, 140], 1037, 615);
-  b += crop(IMG, [1130, 255, 170, 105], 150, 630, 204, 126);
+  b += crop(IMG, [873, 245, 106, 140], 1037, 615 + S);
+  b += crop(IMG, [1130, 255, 170, 105], 150, 630 + S, 204, 126);
+  b += crop(RELAY, [0, 0, 277, 199], 302, 470, 140, 101);
+  b += crop(PUMP, [0, 0, 333, 374], 520, 472, 88, 99);
   // current-to-voltage module, drawn as a small board
   b += `<rect x="274" y="115" width="112" height="72" rx="6" fill="#2B5C9E" stroke="#1B3B66" stroke-width="2"/>`;
   b += `<rect x="286" y="127" width="28" height="22" rx="2" fill="#4A90E2" stroke="#FFF"/><rect x="330" y="129" width="44" height="18" rx="2" fill="#111"/>`;
   for (let i = 0; i < 4; i++) b += `<rect x="${292 + i * 20}" y="165" width="10" height="16" fill="#E2B33B"/>`;
-  b += serverIcon(800, 690) + bellIcon(520, 690);
-  // pump relay on GPIO 32 (installed on Tank 1, the Pilot Test Tank)
-  b += rect(620, 300, 62, 44, { fill: '#FFF', rx: 5, stroke: '#111', sw: 2 });
-  b += A([[594, 322], [620, 322]]);
-  b += P(651, 322, 'Relay', 17) + P(651, 386, 'GPIO 32\n(Refill\nPump)', 16);
+  b += serverIcon(800, 690 + S) + bellIcon(520, 690 + S);
   // one sensor node per tank: the group is repeated at every registered tank
-  b += rect(8, 50, 682, 452, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
+  b += rect(8, 50, 682, 452 + S, { fill: 'none', rx: 14, stroke: '#555', sw: 2, dash: '10 7' });
   b += P(349, 28, 'One Sensor Node per Registered Tank');
   // labels
   b += P(112, 262, 'Hydrostatic Water\nLevel Sensor\n(4–20 mA)');
   b += P(330, 85, 'Current-to-Voltage\nModule');
   b += P(110, 469, 'pH Sensor\n(PH-4502C)');
   b += P(508, 436, 'ESP32\nMicrocontroller');
+  b += P(372, 600, '5V Relay Module\n(GPIO 32)', 17);
+  b += P(564, 600, '5V Mini\nRefill Pump', 17);
   b += P(572, 85, 'W5500\nEthernet Module');
   b += P(855, 45, 'TP-Link CPE210\nP2P Bridge (2.4GHz)');
-  b += P(725, 152, 'RJ45', 17);
+  b += P(724, 152, 'RJ45', 17);
   b += P(1088, 60, 'Internet\nConnection\n(Wireless Router)');
-  b += lbl(754, 545, 'Standby: 2.4GHz Wi-Fi\n(Used if Ethernet Goes Down)', { size: 18, family: POPPINS, weight: 500 });
-  b += P(1090, 790, 'Firebase Cloud\nService');
-  b += P(800, 775, 'Cloud-Hosted\nAlert Service');
-  b += P(520, 775, 'Firebase Cloud\nMessaging (FCM)');
-  b += lbl(415, 690, 'Push', { size: 18, family: POPPINS, weight: 500 });
-  b += P(252, 790, 'Web & Mobile\nDashboard Client');
-  b += P(250, 540, 'Physical Perception Layer', 24) + P(820, 905, 'Network & Cloud Infrastructure Layer', 24) + P(252, 905, 'Client Application Layer', 24);
-  return svg(W, H, b, imageDef(IMG, 'old-3-13-architecture.png', 1385, 579) + imageDef(NET, 'old-3-14-network.png', 1430, 523));
+  b += lbl(858, 585 + S, 'Standby: 2.4GHz Wi-Fi\n(Used if Ethernet Goes Down)', { size: 18, family: POPPINS, weight: 500 });
+  b += P(1090, 790 + S, 'Firebase Cloud\nService');
+  b += P(800, 775 + S, 'Cloud-Hosted\nAlert Service');
+  b += P(520, 775 + S, 'Firebase Cloud\nMessaging (FCM)');
+  b += lbl(415, 690 + S, 'Push', { size: 18, family: POPPINS, weight: 500 });
+  b += P(252, 790 + S, 'Web & Mobile\nDashboard Client');
+  b += P(250, 540 + S, 'Physical Perception Layer', 24) + P(820, 905 + S, 'Network & Cloud Infrastructure Layer', 24) + P(252, 905 + S, 'Client Application Layer', 24);
+  return svg(W, H, b, imageDef(IMG, 'old-3-13-architecture.png', 1385, 579) + imageDef(NET, 'old-3-14-network.png', 1430, 523) +
+    imageDef(RELAY, 'relay-5v.png', 277, 199) + imageDef(PUMP, 'pump-5v.png', 333, 374));
 }
 
 // ======================================================================
