@@ -137,8 +137,10 @@ describe('validateLevelCalPoints', () => {
   it('needs voltages strictly increasing and inside the valid sensor range', () => {
     const flat = [{ depthM: 0, volts: 0.6 }, { depthM: 0.4, volts: 0.9 }, { depthM: 0.9, volts: 0.9 }];
     expect(validateLevelCalPoints(flat, H).join(' ')).toMatch(/Row 3: voltage must be greater/);
-    expect(validateLevelCalPoints([{ depthM: 0, volts: 0.2 }, { depthM: 0.9, volts: 1.36 }], H).join(' '))
-      .toMatch(/Row 1: voltage must be between/);
+    expect(validateLevelCalPoints([{ depthM: 0, volts: 0.15 }, { depthM: 0.9, volts: 1.36 }], H).join(' '))
+      .toMatch(/Row 1: voltage must be between 0.20 and 3.25 V/);
+    // 0.20 V is the firmware's level fault limit (LEVEL_MIN_VALID_VOLTAGE): still a valid point
+    expect(validateLevelCalPoints([{ depthM: 0, volts: 0.2 }, { depthM: 0.9, volts: 1.36 }], H)).toEqual([]);
     expect(validateLevelCalPoints([{ depthM: 0, volts: 0.6 }, { depthM: 0.9, volts: 3.3 }], H).join(' '))
       .toMatch(/Row 2: voltage must be between/);
   });

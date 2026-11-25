@@ -17,6 +17,11 @@ Hydrostatic level sensor ──4–20 mA──► HW-685 ──OUT──► R1 1
 > (full drum, water about 1 inch below the rim = 100 %), tank height 0.90 m. Empty is only 0.10 V above the
 > 0.30 V fault limit; raise ZERO toward 0.50 V if an empty drum ever shows a false level sensor fault.
 > The thesis is **not** updated yet (see "For the paper").
+>
+> **25 Nov 2026:** after the multi-point calibration the empty drum read only 0.389 V, so the limit was lowered from
+> 0.30 V to **0.20 V** (all four sketches). A disconnected sensor (0.142 V) is still below it; a short reading of
+> 0.20–0.30 V right after power-on (like the 0.28 V above) now reads 0 % instead of a fault. Repeat the unplug test
+> (section 6) after uploading this firmware.
 
 **Only the level sensor line changes.** Do not touch:
 
@@ -60,11 +65,11 @@ of these is true, and raises a **level sensor fault** after it stays invalid for
 
 | Check | Code | Low-side limit |
 |---|---|---|
-| Voltage | `electricalValid = (V > LEVEL_MIN_VALID_VOLTAGE && V < 3.25)` | **0.30 V** (`LEVEL_MIN_VALID_VOLTAGE`): at or below this the reading is a fault. Was 0.05 V until 20 Nov 2026 |
+| Voltage | `electricalValid = (V > LEVEL_MIN_VALID_VOLTAGE && V < 3.25)` | **0.20 V** (`LEVEL_MIN_VALID_VOLTAGE`): at or below this the reading is a fault. Was 0.05 V until 20 Nov 2026 and 0.30 V until 25 Nov 2026 |
 | Height | `physicalValid = (height >= -0.5 && height <= tankHeight + 0.5)` | height below **−0.5 m** is a fault |
 | Stability | `levelSignalUnstable()` | swing of 25 % or more within 30 s |
 
-A voltage between 0.30 V and Vmin only reads as **0 %** (the level is clamped); it is not a fault. That is why
+A voltage between 0.20 V and Vmin only reads as **0 %** (the level is clamped); it is not a fault. That is why
 ZERO must never be set below 0.50 V on the meter (`docs/Level_Sensor_Zero_Span_Calibration.md` C2).
 
 The height check gives a second, calibration-dependent limit:

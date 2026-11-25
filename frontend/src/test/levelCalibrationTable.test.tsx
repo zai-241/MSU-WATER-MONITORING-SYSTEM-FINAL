@@ -255,7 +255,7 @@ describe('database rules: levelCalPoints', () => {
     const point = node.$i['.validate'];
     expect(point).toContain('$i.matches(/^1?[0-9]$/)'); // 20 points at most (keys 0-19)
     expect(point).toContain("hasChildren(['depthM', 'volts'])");
-    expect(point).toContain("newData.child('volts').val() >= 0.3");
+    expect(point).toContain("newData.child('volts').val() >= 0.2");
     expect(point).toContain("newData.child('volts').val() <= 3.25");
     expect(node.$i.$other['.validate']).toBe("$other === 'depthM' || $other === 'volts'");
   });

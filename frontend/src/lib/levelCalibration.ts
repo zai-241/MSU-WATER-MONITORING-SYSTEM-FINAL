@@ -18,8 +18,8 @@ export interface LevelCalPoint {
 
 export const LEVEL_CAL_MIN_POINTS = 2;
 export const LEVEL_CAL_MAX_POINTS = 20;
-/** Readings outside this range are sensor faults in the firmware (LEVEL_MIN_VALID_VOLTAGE on Tank 1, 3.25 V) */
-export const LEVEL_CAL_MIN_VOLTS = 0.3;
+/** Readings outside this range are sensor faults in the firmware (LEVEL_MIN_VALID_VOLTAGE 0.20 V since 25 Nov 2026, 3.25 V) */
+export const LEVEL_CAL_MIN_VOLTS = 0.2;
 export const LEVEL_CAL_MAX_VOLTS = 3.25;
 /** How close the last depth must be to the tank height (m) */
 export const LEVEL_CAL_HEIGHT_TOLERANCE_M = 0.005;

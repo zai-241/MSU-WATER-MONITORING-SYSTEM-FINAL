@@ -84,6 +84,11 @@ This is the one current list. `docs/Code_Cleanup.md` is fully done, and the "Sti
   Calibration → Level calibration table, `docs/Level_Sensor_Zero_Span_Calibration.md` D2) and Save; (5) check the Logs
   for "Level calibration: using the N-point table"; (6) re-test level accuracy at the 9 depths (10–90 cm) against
   the steel tape. Paper changes: `thesis-review/paper-changes-2026-11-24.md` (local).
+- [ ] **B5 Upload the firmware of 25 Nov 2026 to Tank 1** (the dry-run pump fault is kept in flash across restarts and
+  power cuts; the level voltage fault limit is 0.20 V instead of 0.30 V). Use **ESP32 Arduino core 3.3.12** (Boards
+  Manager): core 4.0.0 stops the build on Windows when the user folder name has a space (its `configure_link_libs.cmd`
+  hook) and fills 97 % of flash (91 % on 3.3.12). After uploading, repeat the unplug test
+  (`docs/Level_Sensor_RC_Filter_Wiring.md`, section 6): the unplugged sensor (about 0.14 V) must still raise a level fault.
 
 ### C. Thesis (before the defense)
 

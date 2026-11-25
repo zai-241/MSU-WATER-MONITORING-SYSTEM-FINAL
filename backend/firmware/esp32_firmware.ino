@@ -2,6 +2,7 @@
 #include <ETH.h>
 #include <SPI.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
@@ -247,8 +248,9 @@ const unsigned long PUMP_MIN_OFF_TIME = 30000; // anti-chatter
 // within PUMP_NO_RISE_TIMEOUT_MS, and may run at most PUMP_MAX_RUN_MS in one go.
 // Otherwise it is stopped (empty source, closed valve, blocked pipe, pump
 // running dry), tanks/{id}/pumpFault is set, and no automatic start happens
-// until an operator turns the pump ON from the dashboard or the controller
-// restarts. Tune both times to the pump: time a refill from the low to the
+// until an operator turns the pump ON from the dashboard. The fault is kept in
+// flash (savePumpFault()), so a restart or a power cut does not clear it. Tune
+// both times to the pump: time a refill from the low to the
 // overflow threshold and allow about 1.5 times that.
 const unsigned long PUMP_NO_RISE_TIMEOUT_MS = 10UL * 60UL * 1000UL; // 10 min
 const int PUMP_MIN_RISE_PERCENT = 3; // above the 2 % level deadband
@@ -257,6 +259,31 @@ unsigned long pumpRunStartMs = 0; // when the pump last started (0 = off)
 unsigned long pumpRiseRefMs = 0;  // when the level last rose by PUMP_MIN_RISE_PERCENT
 int pumpRiseRefLevel = 0;         // the level at that time
 String pumpFaultReason = "";      // "" | "no-rise" | "max-run" (tanks/{id}/pumpFault)
+bool pumpFaultRestored = false;   // a fault was loaded from flash at boot
+
+// The dry-run fault is kept in flash (NVS namespace "pump"), written only when it
+// is set or cleared, so a restart (for example by the cloud watchdog while the
+// internet is down) or a power cut keeps blocking automatic starts. Only a
+// manual ON from the dashboard clears it.
+void savePumpFault() {
+  Preferences prefs;
+  if (prefs.begin("pump", false)) {
+    prefs.putString("fault", pumpFaultReason);
+    prefs.end();
+  }
+}
+
+void loadPumpFault() {
+  Preferences prefs;
+  if (prefs.begin("pump", false)) {
+    String saved = prefs.getString("fault", "");
+    prefs.end();
+    if (saved == "no-rise" || saved == "max-run") {
+      pumpFaultReason = saved;
+      pumpFaultRestored = true;
+    }
+  }
+}
 
 float lastPhValue = 7.0;
 
@@ -416,7 +443,7 @@ float levelOffset = 0.00;
 // validateLevelCalPoints() in frontend/src/lib/levelCalibration.ts.
 #define LEVEL_CAL_MIN_POINTS 2
 #define LEVEL_CAL_MAX_POINTS 20
-const float LEVEL_CAL_MIN_VOLTS = 0.30; // readings outside 0.30-3.25 V are faults
+const float LEVEL_CAL_MIN_VOLTS = 0.20; // readings outside 0.20-3.25 V are faults (LEVEL_MIN_VALID_VOLTAGE)
 const float LEVEL_CAL_MAX_VOLTS = 3.25;
 const float LEVEL_CAL_HEIGHT_TOLERANCE_M = 0.005; // last depth vs tankHeight
 float levelCalDepth[LEVEL_CAL_MAX_POINTS];
@@ -473,9 +500,11 @@ const int LEVEL_UNSTABLE_RANGE = 25;
 // pull-down on GPIO 35 (docs/Level_Sensor_RC_Filter_Wiring.md) a disconnected
 // HW-685 OUT wire is 0 V, but the ESP32 ADC reports about 0.14 V for 0 V, so
 // the old 0.05 V limit never fired and only the height check (-0.5 m) caught
-// it, by 12 mV on Tank 1 (20 Nov 2026). An empty tank reads at least 0.50 V
-// (ZERO is never set lower), so 0.30 V is safely between the two.
-const float LEVEL_MIN_VALID_VOLTAGE = 0.30;
+// it, by 12 mV on Tank 1 (20 Nov 2026). The limit was 0.30 V until 25 Nov 2026;
+// since then the empty drum reads only about 0.39 V, which left 0.09 V of
+// margin, so it is 0.20 V: still above a disconnected sensor (0.142 V measured
+// on 20 Nov) and about 0.19 V below the empty drum. Keep it above about 0.20 V.
+const float LEVEL_MIN_VALID_VOLTAGE = 0.20;
 
 int consecutivePhSpikes = 0;
 unsigned long phFaultTimer = 0;
@@ -693,6 +722,12 @@ String resetReasonText(esp_reset_reason_t reason) {
 // buffer if the log upload fails.
 void reportBootReason() {
   bootReported = true;
+  if (pumpFaultRestored)
+    logSystemEvent("Pump Controller",
+                   "Pump fault \"" + pumpFaultReason +
+                       "\" kept from before the restart. Automatic starts stay "
+                       "blocked until the pump is turned ON from the dashboard.",
+                   LEVEL_WARNING);
   esp_reset_reason_t reason = esp_reset_reason();
   bool selfRestart = (reason == ESP_RST_SW &&
                       rtcRestartMagic == RESTART_INFO_MAGIC &&
@@ -1752,7 +1787,7 @@ String levelCalProblem(const float *depth, const float *volts, int n,
            " m) is not the tank height (" + String(height, 3) + " m)";
   for (int i = 0; i < n; i++) {
     if (volts[i] < LEVEL_CAL_MIN_VOLTS || volts[i] > LEVEL_CAL_MAX_VOLTS)
-      return "point " + String(i + 1) + " voltage is outside 0.30-3.25 V";
+      return "point " + String(i + 1) + " voltage is outside 0.20-3.25 V";
     if (i > 0 && depth[i] <= depth[i - 1])
       return "the depths do not increase at point " + String(i + 1);
     if (i > 0 && volts[i] <= volts[i - 1])
@@ -2443,6 +2478,7 @@ void processAutomaticPumpControl() {
       lastPumpStopTime = now;
       pumpRunStartMs = 0;
       pumpFaultReason = fault;
+      savePumpFault();
       logSystemEvent("Pump Controller",
                      "Pump stopped automatically. Water level: " +
                          String(levelPercent) + "%. Reason: " + why +
@@ -2667,7 +2703,7 @@ void networkTask(void *pvParameters) {
   // 10 s heartbeat.
   static bool lastSentEthLink = false;
   static bool lastSentWifiLink = false;
-  static String lastSentPumpFault = "";
+  static String lastSentPumpFault = "?"; // not sent yet: the first upload writes it
 
   for (;;) {
     esp_task_wdt_reset(); // Pet the watchdog
@@ -2827,6 +2863,7 @@ void networkTask(void *pvParameters) {
                                      "\" cleared by a manual ON command.",
                                  LEVEL_INFO);
                   pumpFaultReason = "";
+                  savePumpFault();
                 }
                 currentPumpState = true;
                 notePumpStarted(lvlPct);
@@ -3324,6 +3361,13 @@ void setup() {
     rtcLastRestartWasNoCloud = 0;
     rtcLastNoCloudSeconds = 0;
   }
+
+  // Dry-run pump fault from before this restart (kept in flash)
+  loadPumpFault();
+  if (pumpFaultRestored)
+    Serial.println("[Pump] Dry-run fault \"" + pumpFaultReason +
+                   "\" kept from before the restart: automatic starts stay "
+                   "blocked.");
 
   // Create the shared sensor data mutex
   sensorDataMutex = xSemaphoreCreateMutex();

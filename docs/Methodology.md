@@ -76,9 +76,9 @@ graph TD
 
 ### 2.4 Stage 3: Bounds Validation & Spike Rejection
 1. **Electrical Voltage Bounds**:
-   - Safe operational limits: level sensor $0.30\text{V} < V_{raw} < 3.25\text{V}$ (`LEVEL_MIN_VALID_VOLTAGE`); pH sensor $0.05\text{V} < V_{raw} < 3.25\text{V}$.
+   - Safe operational limits: level sensor $0.20\text{V} < V_{raw} < 3.25\text{V}$ (`LEVEL_MIN_VALID_VOLTAGE`); pH sensor $0.05\text{V} < V_{raw} < 3.25\text{V}$.
    - Voltages at or below the lower limit (open circuit / disconnected wire) or $\ge 3.25\text{V}$ (short circuit to rail) trigger a fault timer.
-   - Why 0.30 V for the level sensor: a 100 kΩ pull-down on GPIO 35 (`docs/Level_Sensor_RC_Filter_Wiring.md`) pulls a disconnected HW-685 output to 0 V, but the ESP32 ADC reports about 0.14 V for 0 V, so a 0.05 V limit never fired. On Tank 1 (20 Nov 2026) the unplugged sensor was caught only by the height check (−0.52 m against −0.5 m). An empty tank reads at least 0.50 V (ZERO is never set lower), so 0.30 V separates the two with margin.
+   - Why 0.20 V for the level sensor (0.30 V from 20 to 25 Nov 2026, 0.05 V before): a 100 kΩ pull-down on GPIO 35 (`docs/Level_Sensor_RC_Filter_Wiring.md`) pulls a disconnected HW-685 output to 0 V, but the ESP32 ADC reports about 0.14 V for 0 V, so a 0.05 V limit never fired. On Tank 1 (20 Nov 2026) the unplugged sensor was caught only by the height check (−0.52 m against −0.5 m). The limit was first raised to 0.30 V; after the 25 Nov 2026 calibration the empty drum read only about 0.39 V (0.09 V above it), so it was lowered to 0.20 V, which still lies above a disconnected sensor (0.142 V measured) and about 0.19 V below the empty drum.
    - If an electrical fault persists for $\ge 10,000\text{ ms}$ (`SENSOR_FAULT_TIMEOUT`), the sensor health is set to `false`, an emergency error is logged, and the pump is prevented from auto-starting.
    - Monitoring is never suspended by a fault. During the 10 s check the last good value is held (so a short glitch does not show); once the fault is confirmed, the live reading, clamped to the physical range (pH 0 to 14, level 0 to 100 %), keeps going to the dashboard, the 10-minute history and the alerts, flagged by `levelSensorOk` / `phSensorOk = false`. Threshold alerts (low water, overflow, pH) keep being evaluated and say that the reading may be inaccurate. Only the pump is held off while the level sensor is faulty.
    - Recovery requires stable readings for at least $3,000\text{ ms}$.
@@ -136,7 +136,7 @@ With the two points $(0, V_{min})$ and $(\text{Tank Height}, V_{max})$ this is e
 
 * **Rules** (checked by the Admin Panel, `validateLevelCalPoints()` in `frontend/src/lib/levelCalibration.ts`,
   and again by the ESP32, `levelCalProblem()`): 2 to 20 points; $d_0 = 0$; $d_{n-1}$ = tank height (±5 mm);
-  depths and voltages strictly increasing; every voltage between 0.30 and 3.25 V (outside that range a reading is
+  depths and voltages strictly increasing; every voltage between 0.20 and 3.25 V (outside that range a reading is
   a sensor fault). The database rules allow only admins to write the list and check each point's shape.
 * **No table, or an invalid one:** the two-point formula with $V_{min}$/$V_{max}$, exactly as before. An invalid
   table makes the ESP32 write one WARNING log ("Level calibration table ignored (reason). Using Vmin/Vmax.");
@@ -145,7 +145,7 @@ With the two points $(0, V_{min})$ and $(\text{Tank Height}, V_{max})$ this is e
   "Fallback" (not editable) and **Save** sets them to the table's first and last voltage, so the fallback is the
   straight line between the table's empty and full points. Without a table they are typed (or filled with
   **Use as Vmin / Vmax**) as before.
-* **Unchanged:** the voltage fault limits (0.30 V / 3.25 V), the ±0.5 m physical check, the unstable-signal check,
+* **Unchanged:** the voltage fault limits (0.20 V / 3.25 V since 25 Nov 2026), the ±0.5 m physical check, the unstable-signal check,
   the 2 % deadband, the pump logic and dry-run guard, history every 10 minutes and the live readings. The Dashboard,
   Reports and alerts use the level % the ESP32 reports, so they follow the table without a change of their own.
 * **Measurement method** (Admin Panel → Sensor Calibration → Level calibration table → "How to measure the points"):
@@ -210,7 +210,9 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
      blocked pipe, pump running dry), a CRITICAL log is written, and `tanks/{id}/pumpFault` is set to `"no-rise"` or
      `"max-run"`.
    - After such a stop no automatic start happens until an operator turns the pump ON from the dashboard (that clears
-     the fault and restarts the guard) or the controller restarts. The alert engine raises "Pump Stopped: Check Water
+     the fault and restarts the guard). The fault is kept in the ESP32's flash (NVS namespace `pump`, `savePumpFault()`),
+     so a restart (for example by the cloud watchdog while the internet is down) or a power cut does not clear it; after
+     such a restart the controller logs a WARNING that the fault was kept. The alert engine raises "Pump Stopped: Check Water
      Supply" (`alert-{id}-pumpFault`, danger, push), and the Dashboard card shows the reason.
    - Both times are starting values for the drum-model pump: time a refill from the low to the overflow threshold and
      set `PUMP_MAX_RUN_MS` to about 1.5 times that.
@@ -360,7 +362,7 @@ Written by the tank's ESP32 (live readings), the Admin (setup, calibration, capa
 | pumpOn | BOOLEAN | virtual pump state, and the command field: the web app writes it; the ESP32 writes it only when it changes the pump itself or refuses a command (not in its regular sensor upload) |
 | pumpCommandAt | TIMESTAMP | ESP32: server time it last handled a pump command from the web app |
 | pumpCommandResult | STRING | ESP32: `accepted`, or `refused-demo-off`, `refused-overflow`, `refused-maintenance`, `refused-lock`, `refused-level-sensor` |
-| pumpFault | STRING | ESP32 dry-run guard (4.1): `no-rise` or `max-run` after it stopped the pump; missing = none. Cleared by a manual ON or a restart |
+| pumpFault | STRING | ESP32 dry-run guard (4.1): `no-rise` or `max-run` after it stopped the pump; missing = none. Cleared only by a manual ON; kept in the ESP32's flash across restarts and power cuts |
 | levelSensorOk, phSensorOk | BOOLEAN | sensor health |
 | levelVmin, levelVmax | NUMBER | level sensor calibration (V); used when there is no valid `levelCalPoints` |
 | levelCalPoints | ARRAY | admin, optional: multi-point level calibration (3.1.1), 2 to 20 `{depthM, volts}` from 0 m to `tankHeight`, both increasing; missing = `levelVmin`/`levelVmax` |

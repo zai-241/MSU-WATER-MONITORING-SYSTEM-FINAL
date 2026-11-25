@@ -80,7 +80,7 @@
         "levelCalPoints": {
           ".validate": "root.child('roles').child(auth.uid).val() === 'admin' && newData.hasChildren(['0', '1'])",
           "$i": {
-            ".validate": "$i.matches(/^1?[0-9]$/) && newData.hasChildren(['depthM', 'volts']) && newData.child('depthM').isNumber() && newData.child('depthM').val() >= 0 && newData.child('volts').isNumber() && newData.child('volts').val() >= 0.3 && newData.child('volts').val() <= 3.25",
+            ".validate": "$i.matches(/^1?[0-9]$/) && newData.hasChildren(['depthM', 'volts']) && newData.child('depthM').isNumber() && newData.child('depthM').val() >= 0 && newData.child('volts').isNumber() && newData.child('volts').val() >= 0.2 && newData.child('volts').val() <= 3.25",
             "$other": {
               ".validate": "$other === 'depthM' || $other === 'volts'"
             }
