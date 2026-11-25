@@ -78,6 +78,8 @@ import Configuration from '@/pages/admin/Configuration';
 const table = () => screen.getByTestId('level-calibration-table');
 const depthInput = (row: number) => within(table()).getByLabelText(`Depth (cm), row ${row}`) as HTMLInputElement;
 const voltInput = (row: number) => within(table()).getByLabelText(`Voltage (V), row ${row}`) as HTMLInputElement;
+const vminInput = () => screen.getByLabelText('Vmin (Empty Tank Voltage)') as HTMLInputElement;
+const vmaxInput = () => screen.getByLabelText('Vmax (Full Tank Voltage)') as HTMLInputElement;
 
 const save = () => {
   fireEvent.click(screen.getByRole('button', { name: /Save All Configurations/ }));
@@ -110,6 +112,11 @@ describe('Admin Panel: level calibration table', () => {
     }
     expect(within(table()).getByText('10 points')).toBeInTheDocument();
     expect(within(table()).queryByRole('alert')).not.toBeInTheDocument();
+    // The fallback is filled from the table and cannot be typed while it has rows
+    expect(vminInput()).toBeDisabled();
+    expect(vmaxInput()).toBeDisabled();
+    expect(vminInput().value).toBe('0.600');
+    expect(vmaxInput().value).toBe('1.320');
 
     save();
     await waitFor(() => expect(mockUpdateTank).toHaveBeenCalledTimes(1));
@@ -119,7 +126,43 @@ describe('Admin Panel: level calibration table', () => {
     expect(updates.levelCalPoints[0]).toEqual({ depthM: 0, volts: 0.6 });
     expect(updates.levelCalPoints[4]).toEqual({ depthM: 0.4, volts: 0.92 });
     expect(updates.levelCalPoints[9]).toEqual({ depthM: 0.9, volts: 1.32 });
+    // Vmin/Vmax fallback = the table's first and last voltage
+    expect(updates.levelVmin).toBe(0.6);
+    expect(updates.levelVmax).toBe(1.32);
     expect(calibrationLogDetails()).toContain('Level calibration table (none -> 10 points: 0 cm 0.600 V');
+    expect(calibrationLogDetails()).toContain('Level Vmax (1.36 -> 1.32)');
+  });
+
+  it('without a table, Vmin and Vmax are typed and saved as before', async () => {
+    render(<Configuration />);
+    expect(screen.getByTestId('level-fallback')).toHaveTextContent('Used while this tank has no calibration table');
+    expect(vminInput()).not.toBeDisabled();
+    fireEvent.change(vminInput(), { target: { value: '0.55' } });
+    fireEvent.change(vmaxInput(), { target: { value: '1.4' } });
+    save();
+    await waitFor(() => expect(mockUpdateTank).toHaveBeenCalledTimes(1));
+    const [, updates] = mockUpdateTank.mock.calls[0];
+    expect(updates.levelVmin).toBe(0.55);
+    expect(updates.levelVmax).toBe(1.4);
+    expect(updates.levelCalPoints).toBeNull();
+  });
+
+  it('offers "Use as Vmin/Vmax" in the live readings only while there is no table', () => {
+    const live = {
+      calibrationUntil: Date.now() + 5 * 60_000,
+      calibrationLive: { voltage: 0.61, heightM: 0.01, percent: 1, calPoints: 0, at: Date.now() },
+    };
+    mockTanks[0] = makeTank('1', live);
+    const { unmount } = render(<Configuration />);
+    expect(screen.getByRole('button', { name: /Use as Vmin/ })).toBeInTheDocument();
+    unmount();
+
+    mockTanks[0] = makeTank('1', { ...live, levelCalPoints: savedTable });
+    render(<Configuration />);
+    expect(screen.queryByRole('button', { name: /Use as Vmin/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Use as Vmax/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Use as pH neutral/ })).toBeInTheDocument();
+    expect(screen.getByText(/Vmin and Vmax are taken from it/)).toBeInTheDocument();
   });
 
   it('shows the problems before saving and writes nothing while the table is invalid', async () => {

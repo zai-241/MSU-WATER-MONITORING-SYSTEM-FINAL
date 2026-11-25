@@ -232,6 +232,10 @@ const Configuration = () => {
   };
 
   const selectedTank = tanks.find(t => t.id === selectedTankId);
+  // While the calibration table has rows, Vmin/Vmax are not typed: Save takes them from its first and last voltage
+  const tableSetsFallback = calRows.length > 0;
+  const shownVmin = tableSetsFallback ? calRows[0].volts : localTank?.levelVmin ?? '';
+  const shownVmax = tableSetsFallback ? calRows[calRows.length - 1].volts : localTank?.levelVmax ?? '';
   const selectedTankLabel = `Tank ${selectedTankId}`;
 
   // Initialize and synchronize local states when database loads (B8: don't overwrite if form is dirty)
@@ -462,9 +466,10 @@ const Configuration = () => {
 
       if (localTank) {
         // B9: Send only calibration fields to avoid overwriting live telemetry / pump commands
+        // With a calibration table, the Vmin/Vmax fallback is the line from its first to its last point
         const calibrationUpdates: Partial<Tank> = {
-          levelVmin: Number(localTank.levelVmin),
-          levelVmax: Number(localTank.levelVmax),
+          levelVmin: newCalPoints ? newCalPoints[0].volts : Number(localTank.levelVmin),
+          levelVmax: newCalPoints ? newCalPoints[newCalPoints.length - 1].volts : Number(localTank.levelVmax),
           tankHeight: Number(localTank.tankHeight),
           capacityLiters: Number(localTank.capacityLiters),
           levelOffset: Number(localTank.levelOffset),
@@ -636,6 +641,7 @@ const Configuration = () => {
               <LiveCalibrationPanel
                 tank={selectedTank}
                 canEdit={isAdmin}
+                levelTableInUse={tableSetsFallback}
                 onUseValue={(field, value) => {
                   setIsTankDirty(true);
                   setLocalTank(prev => (prev ? { ...prev, [field]: value } : prev));
@@ -645,29 +651,7 @@ const Configuration = () => {
             )}
             <div>
               <h4 className="font-semibold mb-3 text-sm text-muted-foreground uppercase tracking-wider">Water Level Sensor Calibration</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Vmin (Empty Tank Voltage)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={localTank.levelVmin ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmin: e.target.value }); }}
-                    className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 0% full</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Vmax (Full Tank Voltage)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={localTank.levelVmax ?? ''}
-                    onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmax: e.target.value }); }}
-                    className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 100% full</p>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold mb-1">Physical Tank Height (m)</label>
                   <input
@@ -711,6 +695,43 @@ const Configuration = () => {
                 onChange={rows => { setIsTankDirty(true); setCalRows(rows); }}
                 canEdit={isAdmin}
               />
+
+              <div className="mt-4 rounded-lg border border-dashed border-border p-4" data-testid="level-fallback">
+                <h5 className="font-semibold text-sm">Fallback: Vmin and Vmax</h5>
+                <p className="text-[11px] text-muted-foreground mt-1 mb-3">
+                  {tableSetsFallback
+                    ? 'Filled from the calibration table when you Save (its first and last voltage). The controller uses this straight line only if the table cannot be used, for example after the tank height changes or on older firmware.'
+                    : 'Used while this tank has no calibration table: the level is a straight line from Vmin (empty) to Vmax (full). A calibration table (above) is more accurate.'}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="level-vmin" className="block text-xs font-semibold mb-1">Vmin (Empty Tank Voltage)</label>
+                    <input
+                      id="level-vmin"
+                      type="number"
+                      step="0.01"
+                      value={shownVmin}
+                      disabled={tableSetsFallback}
+                      onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmin: e.target.value }); }}
+                      className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background disabled:opacity-60"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 0% full</p>
+                  </div>
+                  <div>
+                    <label htmlFor="level-vmax" className="block text-xs font-semibold mb-1">Vmax (Full Tank Voltage)</label>
+                    <input
+                      id="level-vmax"
+                      type="number"
+                      step="0.01"
+                      value={shownVmax}
+                      disabled={tableSetsFallback}
+                      onChange={e => { setIsTankDirty(true); setLocalTank({ ...localTank, levelVmax: e.target.value }); }}
+                      className="w-full rounded-lg border border-input px-3 py-2 text-sm bg-background disabled:opacity-60"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Voltage when tank is 100% full</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="border-t border-border pt-4">
@@ -1088,7 +1109,7 @@ const Configuration = () => {
                 <p>🌙 <strong>Night Watch:</strong> {localConfig.nightWatchEnabled === false ? 'Off' : `${formatHour12(Number(localConfig.nightStartHour ?? night.startHour))} to ${formatHour12(Number(localConfig.nightEndHour ?? night.endHour))} | Fast: ${localConfig.nightFastDropPercent ?? night.fastDrop}% in ${NIGHT_FAST_WINDOW_MS / 60_000} min | Total: ${localConfig.nightSlowDropPercent ?? night.slowDrop}% | Tanks: ${tankIds.filter(id => isNightWatchedTank(id, localConfig as SystemConfig)).join(', ') || 'none'}`}</p>
                 <p>🔔 <strong>Watchdog & Sound:</strong> Offline: {localConfig.offlineThresholdSec ?? 30}s | Repeat: {localConfig.repeatIntervalSec ?? 60}s | Audio: {localConfig.soundEnabled !== false ? 'Enabled' : 'Disabled'}</p>
                 {localTank && (
-                  <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {localTank.levelVmin}V | Vmax: {localTank.levelVmax}V | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L | Level table: {calRows.length > 0 ? `${calRows.length} points` : 'none (Vmin/Vmax)'}</p>
+                  <p>⚙️ <strong>Sensor Calibrations ({selectedTankLabel}):</strong> Vmin: {shownVmin}V | Vmax: {shownVmax}V{tableSetsFallback ? ' (from the table)' : ''} | Height: {localTank.tankHeight}m | Capacity: {localTank.capacityLiters} L | Level table: {calRows.length > 0 ? `${calRows.length} points` : 'none (Vmin/Vmax)'}</p>
                 )}
               </div>
               <p className="text-xs text-danger font-medium">

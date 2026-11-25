@@ -374,7 +374,8 @@ Vmin/Vmax draw a straight line from empty to full. The pilot drum's sensor is no
 5. The last row is the sensor **on the floor** of the full drum: its depth must equal the tank height (0.90 m).
    If the full water depth is different, set **Physical Tank Height** to the measured depth.
 6. Put the sensor back in its normal position on the floor. Check that the voltages rise row by row (the form
-   shows any problem in yellow), then **Save**.
+   shows any problem in yellow), then **Save**. Save also sets **Vmin/Vmax** (under "Fallback") to the first and
+   last voltage of the table, so you do not type them.
 7. The live readings then say "The controller computes the level from the N-point calibration table" and the
    Logs show "Level calibration: using the N-point table". If the Logs show "Level calibration table ignored",
    fix what it names and save again.

@@ -11,6 +11,8 @@ export type LiveCalibrationField = 'levelVmin' | 'levelVmax' | 'phNeutralVoltage
 interface Props {
   tank: Tank;
   canEdit: boolean;
+  /** The form has a level calibration table: Vmin/Vmax come from it, so their buttons are hidden */
+  levelTableInUse?: boolean;
   /** Copies a live voltage into the calibration form (the admin still saves it) */
   onUseValue: (field: LiveCalibrationField, value: number) => void;
 }
@@ -26,7 +28,7 @@ const fmtCountdown = (ms: number) => {
  * tanks/{id}/calibrationLive once per second until that time (10 min per step,
  * 30 min at most). It ends on its own, so a forgotten session costs nothing.
  */
-const LiveCalibrationPanel = ({ tank, canEdit, onUseValue }: Props) => {
+const LiveCalibrationPanel = ({ tank, canEdit, levelTableInUse = false, onUseValue }: Props) => {
   const [busy, setBusy] = useState(false);
   const { now, until, active, reading: live } = useLiveCalibration(tank);
   const fresh = live !== null;
@@ -162,13 +164,14 @@ const LiveCalibrationPanel = ({ tank, canEdit, onUseValue }: Props) => {
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            {fillButton('Use as Vmin (sensor out of water)', 'levelVmin', live.voltage)}
-            {fillButton('Use as Vmax (sensor on floor, full tank)', 'levelVmax', live.voltage)}
+            {!levelTableInUse && fillButton('Use as Vmin (sensor out of water)', 'levelVmin', live.voltage)}
+            {!levelTableInUse && fillButton('Use as Vmax (sensor on floor, full tank)', 'levelVmax', live.voltage)}
             {fillButton('Use as pH neutral (pH 7 buffer)', 'phNeutralVoltage', live.phVoltage)}
           </div>
           <p className="text-[11px] text-muted-foreground">
             Wait about 10 s after moving the sensor so the filter settles. "Use as" only fills the form below;
             press Save to apply it.
+            {levelTableInUse && ' For the water level, use "Use live reading" in the calibration table; Vmin and Vmax are taken from it.'}
           </p>
         </div>
       )}

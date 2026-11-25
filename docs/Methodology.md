@@ -141,6 +141,10 @@ With the two points $(0, V_{min})$ and $(\text{Tank Height}, V_{max})$ this is e
 * **No table, or an invalid one:** the two-point formula with $V_{min}$/$V_{max}$, exactly as before. An invalid
   table makes the ESP32 write one WARNING log ("Level calibration table ignored (reason). Using Vmin/Vmax.");
   applying or removing a table writes an INFO log. The table is read with the 1 s command poll, like $V_{min}$/$V_{max}$.
+* **$V_{min}$/$V_{max}$ as the fallback:** while a tank has a table, the Admin Panel shows $V_{min}$/$V_{max}$ under
+  "Fallback" (not editable) and **Save** sets them to the table's first and last voltage, so the fallback is the
+  straight line between the table's empty and full points. Without a table they are typed (or filled with
+  **Use as Vmin / Vmax**) as before.
 * **Unchanged:** the voltage fault limits (0.30 V / 3.25 V), the ±0.5 m physical check, the unstable-signal check,
   the 2 % deadband, the pump logic and dry-run guard, history every 10 minutes and the live readings. The Dashboard,
   Reports and alerts use the level % the ESP32 reports, so they follow the table without a change of their own.

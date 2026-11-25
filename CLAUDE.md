@@ -63,6 +63,8 @@ its NTP clock is unset. "Use as Vmin/Vmax/pH neutral" only fills the form; Save 
 Multi-point level calibration: a tank may have `tanks/{id}/levelCalPoints`, 2 to 20 `{depthM, volts}` points from 0 m
 to `tankHeight` (±5 mm), depths and voltages strictly increasing, voltages 0.30–3.25 V (Admin Panel → Calibration →
 Level calibration table, `LevelCalibrationTable.tsx`; "Use live reading" fills a row from the live readings; Save applies).
+Vmin/Vmax stay as the fallback: while the table has rows they are shown under "Fallback" (not editable) and Save sets them to
+the table's first and last voltage; the live panel's "Use as Vmin/Vmax" buttons are hidden then.
 The ESP32 reads it with the 1 s command poll, checks the same rules (`levelCalProblem()`) and interpolates linearly between the
 two points around the voltage (`levelHeightFromVoltage()`; outside the table the end segment is extended, then clamped as before,
 so below the first point 0 % and above the last 100 %). No list or an invalid one = the Vmin/Vmax line, exactly as before (an invalid
