@@ -231,7 +231,8 @@ bool commandClientConfigured = false;
 // Global Variables
 // ==========================================
 bool lastPumpState = false;
-bool currentPumpState = false;
+// Read by sensorTask (relay), written by networkTask.
+volatile bool currentPumpState = false;
 bool lastSentPumpState = false;
 // pumpOn in tanks/{TANK_ID} is a command field: the web app writes it, and the
 // ESP32 writes it only through updateFirebasePumpState() (never in the regular
@@ -542,21 +543,108 @@ void applyThresholds() {
   minPh = ownThresholdsSet ? ownMinPh : sharedMinPh;
   maxPh = ownThresholdsSet ? ownMaxPh : sharedMaxPh;
 }
-bool maintenanceMode = false; // config/maintenanceMode: all tanks
+volatile bool maintenanceMode = false; // config/maintenanceMode: all tanks
 // tanks/{TANK_ID}/maintenanceMode: this tank only (set by an admin, read with the
 // 1 s command poll). Either one holds the pump off and refuses pump ON commands.
-bool tankMaintenanceMode = false;
+volatile bool tankMaintenanceMode = false;
 bool maintenanceActive() { return maintenanceMode || tankMaintenanceMode; }
 bool pumpControlLock = false;
 // Pump demo mode (config/pumpDemoMode, on unless an admin turns it off): when off, the
 // virtual pump stays OFF and every pump command is refused.
-bool pumpDemoMode = true;
+volatile bool pumpDemoMode = true;
 // Pump mode (config/pumpMode = "auto" | "manual"; missing or invalid = auto).
 // Manual: only operator commands start the pump (no low-level auto refill); the
 // safety stops (demo off, maintenance, faulty level sensor, overflow, dry-run
 // guard) still apply.
 bool pumpManualMode = false;
 bool pumpModeLoaded = false; // false until the first /config read sets the mode
+
+// =================================================================================
+// Pump safety settings kept in flash (NVS namespace "safety")
+// =================================================================================
+// Until this boot has read tanks/{id} and /config, the controller only knows the
+// built-in defaults (tankHeight 5.00 m, Vmin 0.25 V, Vmax 3.00 V, auto mode, no
+// maintenance). On Tank 1 (0.90 m drum) those defaults read a full drum as about
+// 30 %, so after a power cut without internet the overflow stop never fired. The
+// level calibration (Vmin, Vmax, tank height, offset) and the switches that block
+// the pump (maintenance, Pump System, pump mode) are therefore saved in flash
+// when they change, and loaded at boot. Automatic starts wait until both are
+// known (from flash or from Firebase); stops and safety rules always apply.
+// A multi-point table is not saved: Save in the Admin Panel sets Vmin/Vmax to
+// its first and last voltage, so the saved line is the fallback until the poll.
+bool levelCalKnown = false;     // calibration from flash or Firebase
+bool pumpSettingsKnown = false; // pump switches from flash or /config
+// Set by networkTask when the level calibration changes; sensorTask then
+// clears the 30 s stability window so the jump is not taken as a faulty sensor.
+volatile bool levelWindowResetPending = false;
+
+struct SafetySettings {
+  float vmin, vmax, height, offset;
+  bool maint, tankMaint, demo, manual;
+};
+SafetySettings savedSafety = {-1, -1, -1, -999, false, false, true, false};
+bool savedSafetyValid = false;
+
+void saveSafetySettings() {
+  if (!(tankHeight > 0.05) || fabsf(levelVmax - levelVmin) <= 0.001)
+    return; // never save an unusable calibration
+  SafetySettings now = {levelVmin, levelVmax, tankHeight, levelOffset,
+                        (bool)maintenanceMode, (bool)tankMaintenanceMode,
+                        (bool)pumpDemoMode, pumpManualMode};
+  if (savedSafetyValid && now.vmin == savedSafety.vmin &&
+      now.vmax == savedSafety.vmax && now.height == savedSafety.height &&
+      now.offset == savedSafety.offset && now.maint == savedSafety.maint &&
+      now.tankMaint == savedSafety.tankMaint &&
+      now.demo == savedSafety.demo && now.manual == savedSafety.manual)
+    return; // unchanged: no flash write
+  Preferences prefs;
+  if (prefs.begin("safety", false)) {
+    prefs.putFloat("vmin", now.vmin);
+    prefs.putFloat("vmax", now.vmax);
+    prefs.putFloat("height", now.height);
+    prefs.putFloat("offset", now.offset);
+    prefs.putBool("maint", now.maint);
+    prefs.putBool("tankMaint", now.tankMaint);
+    prefs.putBool("demo", now.demo);
+    prefs.putBool("manual", now.manual);
+    prefs.end();
+    savedSafety = now;
+    savedSafetyValid = true;
+  }
+}
+
+// Called once in setup(), before the tasks start.
+void loadSafetySettings() {
+  Preferences prefs;
+  if (!prefs.begin("safety", true))
+    return; // nothing saved yet (first boot with this firmware)
+  if (prefs.isKey("height")) {
+    float h = prefs.getFloat("height", 0);
+    float vmin = prefs.getFloat("vmin", 0);
+    float vmax = prefs.getFloat("vmax", 0);
+    if (h > 0.05 && fabsf(vmax - vmin) > 0.001) {
+      tankHeight = h;
+      levelVmin = vmin;
+      levelVmax = vmax;
+      levelOffset = prefs.getFloat("offset", 0);
+      levelCalKnown = true;
+    }
+  }
+  if (prefs.isKey("demo")) {
+    maintenanceMode = prefs.getBool("maint", false);
+    tankMaintenanceMode = prefs.getBool("tankMaint", false);
+    pumpDemoMode = prefs.getBool("demo", true);
+    pumpManualMode = prefs.getBool("manual", false);
+    pumpSettingsKnown = true;
+  }
+  prefs.end();
+  if (levelCalKnown && pumpSettingsKnown) {
+    savedSafety = {levelVmin, levelVmax, tankHeight, levelOffset,
+                   (bool)maintenanceMode, (bool)tankMaintenanceMode,
+                   (bool)pumpDemoMode, pumpManualMode};
+    savedSafetyValid = true;
+  }
+}
 
 SystemAlert lowLevelAlert = {"Low Water Level", STATE_NORMAL, 0, 0, 0, false};
 SystemAlert highLevelAlert = {"High Water Level", STATE_NORMAL, 0, 0, 0, false};
@@ -1934,6 +2022,10 @@ void processLevelSensor() {
 
   unsigned long now = millis();
 
+  if (levelWindowResetPending) { // calibration changed (networkTask)
+    levelWindowResetPending = false;
+    levelWindowFilled = 0;
+  }
   bool signalUnstable = levelSignalUnstable(levelPercent, now);
   bool readingValid = electricalValid && physicalValid && !signalUnstable;
 
@@ -2496,6 +2588,12 @@ void processAutomaticPumpControl() {
     return;
   }
 
+  // No automatic start on the built-in defaults: wait until the calibration and
+  // the pump switches are known (flash or Firebase, see loadSafetySettings()).
+  if (!levelCalKnown || !pumpSettingsKnown) {
+    return;
+  }
+
   // Automatic start when level falls to lowLevelThreshold or below
   if (!currentPumpState && (levelPercent <= (int)lowLevelThreshold)) {
     if (pumpFaultReason.length() > 0) {
@@ -2649,19 +2747,24 @@ void sensorTask(void *pvParameters) {
         continue;
       }
 
-      // Alert state machine
-      bool isLowAbnormal = (lowLevelAlert.state == STATE_NORMAL)
-                               ? (lvlPct < lowLevelThreshold)
-                               : !(lvlPct >= (lowLevelThreshold + 2.0));
+      // Alert state machine (-999 = no reading yet after boot: no alert)
+      bool lvlKnown = (lvlPct != -999);
+      bool phKnown = (phV != -999.0);
+      bool isLowAbnormal = lvlKnown &&
+                           ((lowLevelAlert.state == STATE_NORMAL)
+                                ? (lvlPct < lowLevelThreshold)
+                                : !(lvlPct >= (lowLevelThreshold + 2.0)));
 
-      bool isHighAbnormal = (highLevelAlert.state == STATE_NORMAL)
-                                ? (lvlPct > overflowThreshold)
-                                : !(lvlPct <= (overflowThreshold - 2.0));
+      bool isHighAbnormal = lvlKnown &&
+                            ((highLevelAlert.state == STATE_NORMAL)
+                                 ? (lvlPct > overflowThreshold)
+                                 : !(lvlPct <= (overflowThreshold - 2.0)));
 
       bool isPhAbnormal =
-          (phAlert.state == STATE_NORMAL)
-              ? (phV < minPh || phV > maxPh)
-              : !(phV >= (minPh + 0.15) && phV <= (maxPh - 0.15));
+          phKnown &&
+          ((phAlert.state == STATE_NORMAL)
+               ? (phV < minPh || phV > maxPh)
+               : !(phV >= (minPh + 0.15) && phV <= (maxPh - 0.15)));
 
       updateAlertState(lowLevelAlert, isLowAbnormal,
                        "Water level is extremely low: " + String(lvlPct) + "%");
@@ -2671,8 +2774,15 @@ void sensorTask(void *pvParameters) {
       updateAlertState(phAlert, isPhAbnormal,
                        "Unsafe pH level detected: " + String(phV, 2));
 
-      // Drive relay directly with no network dependency (no pin when PUMP_RELAY_ENABLED is 0)
-      bool desiredPumpState = currentPumpState;
+      // Drive relay directly with no network dependency (no pin when PUMP_RELAY_ENABLED is 0).
+      // Safety stop here as well, every 200 ms: networkTask can be blocked for
+      // many seconds by slow HTTPS requests, so the relay opens at once on
+      // overflow, a faulty or missing level reading, maintenance or Pump System
+      // off. networkTask then sets the pump state OFF, logs and reports it.
+      bool safetyStop = !levelSensorOk || lvlPct < 0 ||
+                        lvlPct >= (int)overflowThreshold ||
+                        maintenanceActive() || !pumpDemoMode;
+      bool desiredPumpState = currentPumpState && !safetyStop;
       if (desiredPumpState != lastActualPumpState) {
 #if PUMP_RELAY_ENABLED
         digitalWrite(RELAY_PIN, desiredPumpState ? HIGH : LOW);
@@ -2847,13 +2957,17 @@ void networkTask(void *pvParameters) {
                     LEVEL_WARNING);
                 updateFirebasePumpStateWithResult(currentPumpState,
                                                   "refused-lock");
-              } else if (!lvlOk) {
+              } else if (!lvlOk || lvlPct < 0) {
+                // lvlPct < 0: no level reading yet (first seconds after boot),
+                // so the overflow stop and dry-run guard could not protect it.
                 DEBUG_PRINTLN("[Pump] Manual ON command refused: Level sensor "
-                              "is faulty.");
+                              "is faulty or has no reading yet.");
                 logSystemEvent("Pump Controller",
-                               "Manual pump ON command refused: Water level "
-                               "sensor is faulty.",
-                               LEVEL_CRITICAL);
+                               lvlOk ? String("Manual pump ON command refused: "
+                                              "No water level reading yet.")
+                                     : String("Manual pump ON command refused: "
+                                              "Water level sensor is faulty."),
+                               lvlOk ? LEVEL_WARNING : LEVEL_CRITICAL);
                 updateFirebasePumpStateWithResult(false, "refused-level-sensor");
                 currentPumpState = false;
               } else {
@@ -2901,6 +3015,9 @@ void networkTask(void *pvParameters) {
           }
 
           // --- DYNAMIC CALIBRATION SYNC ---
+          float prevVmin = levelVmin, prevVmax = levelVmax;
+          float prevHeight = tankHeight, prevOffset = levelOffset;
+          String prevCalState = levelCalState;
           if (hasKeyInJson(payload, "levelVmin")) {
             float val = getFloatFromJson(payload, "levelVmin");
             if (val != -999.0)
@@ -2913,7 +3030,7 @@ void networkTask(void *pvParameters) {
           }
           if (hasKeyInJson(payload, "tankHeight")) {
             float val = getFloatFromJson(payload, "tankHeight");
-            if (val != -999.0)
+            if (val != -999.0 && val > 0.05) // 0 or less would divide by zero
               tankHeight = val;
           }
           if (hasKeyInJson(payload, "levelOffset")) {
@@ -2928,7 +3045,7 @@ void networkTask(void *pvParameters) {
           }
           if (hasKeyInJson(payload, "phSlope")) {
             float val = getFloatFromJson(payload, "phSlope");
-            if (val != -999.0)
+            if (val != -999.0 && fabsf(val) > 0.001) // 0 would divide by zero
               phSlope = val;
           }
           if (hasKeyInJson(payload, "phOffset")) {
@@ -2940,6 +3057,14 @@ void networkTask(void *pvParameters) {
           // --- MULTI-POINT LEVEL CALIBRATION (tanks/{TANK_ID}/levelCalPoints) ---
           // After tankHeight, which the table is checked against.
           syncLevelCalibration(payload);
+          // A calibration change moves the level at once; clear the stability
+          // window so that jump is not reported as an unstable (faulty) sensor.
+          if (levelVmin != prevVmin || levelVmax != prevVmax ||
+              tankHeight != prevHeight || levelOffset != prevOffset ||
+              (prevCalState.length() > 0 && levelCalState != prevCalState)) {
+            levelWindowResetPending = true;
+          }
+          levelCalKnown = true;
 
           // --- THIS TANK'S OWN THRESHOLDS (tanks/{TANK_ID}/thresholds) ---
           // Used only when all four are there and valid (low < overflow within
@@ -3002,6 +3127,8 @@ void networkTask(void *pvParameters) {
                                (tankMaintenanceMode ? "enabled" : "disabled"),
                            LEVEL_INFO);
           }
+          if (pumpSettingsKnown)
+            saveSafetySettings(); // calibration and tank maintenance, if changed
         } else {
           commandClient.stop();
           firebaseConnected = false;
@@ -3081,6 +3208,9 @@ void networkTask(void *pvParameters) {
                                (pumpManualMode ? "MANUAL" : "AUTO"),
                            LEVEL_INFO);
           }
+          pumpSettingsKnown = true;
+          if (levelCalKnown)
+            saveSafetySettings(); // pump switches, if changed
         } else {
           if (configResponseCode <= 0) {
             commandClient.stop();
@@ -3145,12 +3275,15 @@ void networkTask(void *pvParameters) {
       continue;
     }
 
+    // -999 = no reading yet after boot: not sent (see the upload below).
     bool levelChangedSignificantly =
-        (lastSentWaterLevelPercent == -999) ||
-        (abs(snapLevel - lastSentWaterLevelPercent) >= WATER_LEVEL_DEADBAND);
+        (snapLevel != -999) &&
+        ((lastSentWaterLevelPercent == -999) ||
+         (abs(snapLevel - lastSentWaterLevelPercent) >= WATER_LEVEL_DEADBAND));
     bool phChangedSignificantly =
-        (lastSentPhValue == -999.0) ||
-        (abs(snapPh - lastSentPhValue) >= PH_LEVEL_DEADBAND);
+        (snapPh != -999.0) &&
+        ((lastSentPhValue == -999.0) ||
+         (abs(snapPh - lastSentPhValue) >= PH_LEVEL_DEADBAND));
     bool phHealthChanged = (snapPhOk != lastSentPhHealth);
     bool levelHealthChanged = (snapLevelOk != lastSentLevelHealth);
     String snapPumpFault = pumpFaultReason;
@@ -3199,9 +3332,14 @@ void networkTask(void *pvParameters) {
           jsonPayload.reserve(704);
 
           jsonPayload = "{";
-          jsonPayload += "\"waterLevel\":" + String(snapLevel) + ",";
-          jsonPayload += "\"phLevel\":" + String(snapPh, 2) + ",";
-          jsonPayload += "\"waterHeight\":" + String(snapHeight, 2) + ",";
+          // No reading yet (-999): leave the last value in the database.
+          if (snapLevel != -999) {
+            jsonPayload += "\"waterLevel\":" + String(snapLevel) + ",";
+            jsonPayload += "\"waterHeight\":" + String(snapHeight, 2) + ",";
+          }
+          if (snapPh != -999.0) {
+            jsonPayload += "\"phLevel\":" + String(snapPh, 2) + ",";
+          }
           jsonPayload += "\"status\":\"" + status + "\",";
           // No pumpOn here: it is written only by updateFirebasePumpState().
           // pumpFault: set by the dry-run guard; null removes it.
@@ -3364,6 +3502,12 @@ void setup() {
 
   // Dry-run pump fault from before this restart (kept in flash)
   loadPumpFault();
+  // Level calibration and pump switches from before this restart (flash)
+  loadSafetySettings();
+  Serial.printf("[Pump] Saved settings: calibration %s, pump switches %s. "
+                "Automatic starts wait until both are known.\n",
+                levelCalKnown ? "loaded" : "not saved yet",
+                pumpSettingsKnown ? "loaded" : "not saved yet");
   if (pumpFaultRestored)
     Serial.println("[Pump] Dry-run fault \"" + pumpFaultReason +
                    "\" kept from before the restart: automatic starts stay "

@@ -218,6 +218,22 @@ Pump control is executed deterministically on Core 1 by `processAutomaticPumpCon
      set `PUMP_MAX_RUN_MS` to about 1.5 times that.
    - The guard also bounds the cloud watchdog's "never restart while the pump is ON" rule (4.2): a pump can no longer
      run for hours with no internet.
+5. **Safe start after a restart, and a relay stop that does not wait for the network** (added 26 Nov 2026, Tank 1 sketch only):
+   - The level calibration (`levelVmin`, `levelVmax`, `tankHeight`, `levelOffset`) and the switches that block the pump
+     (both maintenance switches, Pump System, pump mode) are saved in the ESP32's flash (NVS namespace `safety`) when they
+     change, and loaded at boot (`saveSafetySettings()`, `loadSafetySettings()`). Before this, a restart without internet
+     ran on the built-in defaults (tank height 5.00 m, 0.25-3.00 V), which read a full 0.90 m drum as about 30 %, so the
+     95 % overflow stop could never fire. Automatic starts now wait until the calibration and the switches are known (from
+     flash or Firebase). On the first boot with this firmware, with no internet, the pump therefore does not start by itself.
+     A multi-point table is not saved; its first and last voltage are (Save sets Vmin/Vmax to them).
+   - The sensor task (every 200 ms) opens the relay at once on overflow, a faulty or missing level reading, maintenance
+     or Pump System off, even while the network task is blocked by a slow HTTPS request; the network task then logs and
+     reports the stop as before.
+   - A manual ON is refused (`refused-level-sensor`) while there is no level reading yet (first seconds after boot).
+   - When the level calibration changes, the 30 s stability window (`LEVEL_UNSTABLE_RANGE`) is cleared, so the jump is
+     not reported as a faulty level sensor.
+   - Until a sensor has its first reading, no local alert is raised and that value is left out of the upload (it was
+     sent as -999). `tankHeight` of 0 m or less and `phSlope` of 0 from the database are ignored.
 
 ### 4.2 Network Failover & Resilience
 1. **Dual-Interface Failover**:

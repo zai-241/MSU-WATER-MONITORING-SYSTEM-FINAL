@@ -71,6 +71,7 @@ The pump decision runs on the ESP32, not in the cloud.
 | Command/config poll | every 1 s | `esp32_firmware.ino:301` |
 | History sample | every 10 min (also during faults, flagged) | `esp32_firmware.ino:2527` |
 | Pump anti-chatter | 30 s minimum OFF time | `esp32_firmware.ino:245` |
+| Safe start after restart (Tank 1 only, 26 Nov 2026) | level calibration and pump switches kept in flash; no automatic start until they are known; relay opened within 200 ms on overflow or level fault | `saveSafetySettings()`, `loadSafetySettings()`, `sensorTask` |
 | Dry-run guard | stop if level has not risen 3 % in 10 min, or after 60 min; fault kept in flash (NVS) until a manual ON | `esp32_firmware.ino:255-257`, `savePumpFault()` |
 | Local alert validation | 5 s to raise, 5 s to recover, 60 s cooldown | `esp32_firmware.ino:569-571` |
 | Duplicate log suppression | 5 min for an entry identical to the previous one | `esp32_firmware.ino:605` |
