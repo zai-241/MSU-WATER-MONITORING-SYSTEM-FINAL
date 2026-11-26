@@ -16,7 +16,7 @@ had been resolved (139 accepted, 7 rejected); none were pending.
 | Abstract | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 1 Introduction | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 2 Review of Related Literature and Systems | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
-| Ch 3 Methodology | 👤 Waiting on Us | ✅ | ✅ | 1 (MI-02 figure images) | 2026-11-26 |
+| Ch 3 Methodology | ✅ Done | ✅ | ✅ | 0 | 2026-11-26 |
 | Ch 4 Results and Discussion | 👤 Waiting on Us | ✅ | ✅ | 1 (D-01 pH test date) | 2026-11-26 |
 | Ch 5 Summary, Conclusion, Recommendations | 👤 Waiting on Us | ✅ | ✅ | 1 (M-04, after D-01) | 2026-11-26 |
 | References | ✅ Done | n/a | ✅ (every citation listed, every entry cited) | 0 | 2026-11-26 |
@@ -78,14 +78,14 @@ Records in `thesis-review/final-check-2026-11-25.md` and `thesis-review/paper-re
 | M-02 | Ch 4, 4.1.1 [p1012] | "level readings at or below 0.30 V … are treated as invalid"; "For this reason the lower limit for the level sensor is 0.30 V, while an empty drum reads about 0.389 V." | Same as M-01 | "level readings at or below **0.30 V**" → "**0.20 V**"; "the lower limit for the level sensor is **0.30 V**, while an empty drum reads about 0.389 V" → "the lower limit for the level sensor is **0.20 V**, **above the 0.14 V of a disconnected sensor and below the 0.389 V of an empty drum**" | ✅ Done: accepted in the Doc 26 Nov 2026 (verified) |
 | M-03 | Ch 5, 5.2 [p1688] | "…in all 70 recorded measurements (push notifications were switched off during the test) (the longest was 0.33 seconds)." | Grammar: two parentheses in a row | → "…in all 70 recorded measurements (the longest was 0.33 seconds; push notifications were switched off during the test)." | ✅ Done: accepted in the Doc 26 Nov 2026 (verified) |
 | M-04 | Ch 5, 5.2 [p1689] | "and subject to the results still to be confirmed" | The pH results are reported as final (±0.16 pH) in the Abstract, 4.2.1 and 5.1 | Delete the phrase once D-01 is filled in | Waiting on D-01 |
-| M-05 | List of Figures [p151–p189] | Figure 3.1 "Agile Methodology Cycle…"; 3.12 "Entity-Relationship Diagram (ERD)"; 3.13–3.16 shifted by one | Captions: 3.1 "Iterative and Incremental Agile Methodology Cycle…"; 3.12 Data Model…; 3.13 Data Model of the Realtime Database…; 3.14 Architectural Design; 3.15 Network Design Topology; there is no 3.16 | Refresh the list in the Doc (MI-01) | Waiting on us |
+| M-05 | List of Figures [p151–p189] | Figure 3.1 "Agile Methodology Cycle…"; 3.12 "Entity-Relationship Diagram (ERD)"; 3.13–3.16 shifted by one | Captions: 3.1 "Iterative and Incremental Agile Methodology Cycle…"; 3.12 Data Model…; 3.13 Data Model of the Realtime Database…; 3.14 Architectural Design; 3.15 Network Design Topology; there is no 3.16 | Replaced by a plain table as a suggestion, 26 Nov 2026 (see MI-01) | Waiting to be accepted |
 
 ## D. Manual Intervention Needed (with solutions)
 
 | ID | Chapter/Section | Problem | Why Claude can't do it | Recommended solution / steps for us | Priority |
 |---|---|---|---|---|---|
-| MI-01 | List of Figures, Table of Contents | List of Figures still has the old 3.1 title, the ERD and the old 3.12–3.16 numbers; page numbers may also be stale | It is a generated list; refreshing it is done in the Docs editor, not through the API | In the Doc, click inside the List of Figures → refresh (or retype entries 3.1 and 3.12–3.15 and delete 3.16); then refresh the Table of Contents and the List of Tables; check page numbers in print preview | High |
-| MI-02 | Ch 3 Figures 3.7, 3.8, 3.9, 3.13, 3.14 | New images (multi-point calibration, pump relay) were made on 25 Nov; whether they were swapped in cannot be seen from the text | The Docs API cannot upload local images | Right-click each figure → Replace image → Upload, using the files in `thesis-review/figures-2026-11-25/` | High |
+| MI-01 | List of Figures | The old list was a generated block (imported from Word) that the API cannot edit and that a Google Docs refresh would rebuild from headings, dropping the figures | Column widths cannot be set as a suggestion, and a direct edit was blocked | **26 Nov 2026:** replaced, as one suggestion, by a borderless 2-column table whose 36 entries match the captions (3.1 retitled, ERD removed, 3.12–3.15 renumbered; page numbers kept from the old list). To finish: (1) accept the suggestion; (2) click inside the table → Format → Table → Table properties → Columns: column 1 = 5.94 in, column 2 = 0.56 in; (3) check page numbers in print preview, especially 3.12–3.15 and Ch 4; (4) refresh the Table of Contents | High |
+| MI-02 | Ch 3 Figures 3.7, 3.8, 3.9, 3.13, 3.14 | Were the 25 Nov redrawn images swapped in? | — | ✅ **Done (checked 26 Nov 2026):** the images in the Doc were downloaded and compared with `docs/diagrams/images/` and `thesis-review/figures-2026-11-25/`. All five match the new versions (calibration table, `levelCalPoints`, relay and pump photos); 3.14 is byte-identical to the 25 Nov file | — |
 | MI-03 | Tank 1 hardware | The paper will describe the 0.20 V limit and the stored dry-run fault; on 25 Nov the new firmware was not on the Tank 1 ESP32 and the 0.20 V database rules were not deployed | Needs the physical board and the Firebase login | Upload `backend/firmware/esp32_firmware.ino` over USB (ESP32 core 3.x), then `npx firebase deploy --only database,firestore` | High |
 | MI-04 | Signatures / approval sheet | Not checked here | Requires signatures | Collect adviser, panel and dean signatures on the approval sheet before submission | Medium |
 
@@ -122,3 +122,5 @@ All 37 references were checked on 26 Nov 2026. ✅ = DOI registered or URL loads
 | 2026-11-26 | (paper only) M-01–M-03 accepted by the team | 3.4.2, 4.1.1, 5.2 | Re-read the Doc: no pending suggestions, no "0.30 V" left |
 | 2026-11-26 | (paper only) Appendix A question 16 answer replaced (D-02) | Appendix A | Answer text supplied by the team; suggested and accepted 26 Nov 2026 |
 | 2026-11-26 | (paper only) S-01 closed | none | Rogers (1995) quote is on p. 5 of the 4th edition, as the paper says |
+| 2026-11-26 | (paper only) List of Figures rebuilt as a plain table (MI-01, M-05) | Front matter | Suggested; column widths and page numbers left to the team |
+| 2026-11-26 | (paper only) MI-02 checked | Ch 3 figures | Figures 3.7, 3.8, 3.9, 3.13, 3.14 in the Doc are already the redrawn versions from `b50ce69` |
